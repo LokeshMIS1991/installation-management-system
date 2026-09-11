@@ -1,37 +1,38 @@
 import streamlit as st
 import pandas as pd
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime, timedelta
 from google.oauth2.service_account import Credentials
+from datetime import datetime, timedelta
 
+# Spreadsheet ID extracted from your link
+SPREADSHEET_KEY = "19rQC3aNtosjhSwyctKAk9ojUt0c8gyOPH-Q8trW5q5s"
+
+# Initialize Google Sheets Connection
 def get_gspread_client():
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ]
-    
     if "gcp_service_account" in st.secrets:
         creds_dict = dict(st.secrets["gcp_service_account"])
-        # Format the key properly to prevent base64 decoding errors
         if "private_key" in creds_dict:
             creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     else:
         creds = Credentials.from_service_account_file("credentials.json", scopes=scopes)
-        
+    
     return gspread.authorize(creds)
 
-# Helper function to append rows to a specific worksheet
+# Helper function to append rows to a specific worksheet by key
 def append_to_sheet(sheet_name, row_data):
     client = get_gspread_client()
-    sheet = client.open_by_key("https://docs.google.com/spreadsheets/d/19rQC3aNtosjhSwyctKAk9ojUt0c8gyOPH-Q8trW5q5s/edit?gid=1303505636#gid=1303505636").worksheet(sheet_name)
+    sheet = client.open_by_key(SPREADSHEET_KEY).worksheet(sheet_name)
     sheet.append_row(row_data)
 
-# Helper function to read worksheet data into DataFrame
+# Helper function to read worksheet data into DataFrame by key
 def read_sheet(sheet_name):
     client = get_gspread_client()
-    sheet = client.open_by_key("https://docs.google.com/spreadsheets/d/19rQC3aNtosjhSwyctKAk9ojUt0c8gyOPH-Q8trW5q5s/edit?gid=1303505636#gid=1303505636").worksheet(sheet_name)
+    sheet = client.open_by_key(SPREADSHEET_KEY).worksheet(sheet_name)
     data = sheet.get_all_records()
     return pd.DataFrame(data)
 
@@ -65,18 +66,17 @@ if menu == "New Installation Order":
 
     col1, col2 = st.columns(2)
     
-    # Left Column: Details (Team -> City -> Address)
+    # Left Column: Team Details -> City Name -> Address
     with col1:
         team_details = st.text_input("Team's Details", placeholder="e.g., Rajeer + 2 Helpers")
         city_name = st.text_input("City Name", "Mumbai").strip()
         site_address = st.text_area("Site Address", placeholder="Full installation site address...")
 
-        # Automatically extract first 3 letters of city as prefix code
+        # Extract first 3 letters as city prefix
         city_prefix = city_name[:3].upper() if city_name else "GEN"
 
-    # Right Column: Dates sequentially one by one
+    # Right Column: Dates arranged one by one in a vertical column
     with col2:
-        # Date limits: Allow picking up to 7 days in the past
         min_past_date = datetime.now() - timedelta(days=7)
         
         # 1. Order Created Date as Installation Date
@@ -102,7 +102,7 @@ if menu == "New Installation Order":
 
     st.divider()
 
-    # Changed label to "Select The product"
+    # Product Selector
     col_cat, col_sub = st.columns(2)
     with col_cat:
         selected_category = st.selectbox("Select The product", list(PRODUCT_CATALOG.keys()))
@@ -133,7 +133,7 @@ if menu == "New Installation Order":
                 timestamp_str = datetime.now().strftime("%Y%m%d-%H%M%S")
                 inst_id = f"{city_prefix}-{timestamp_str}"
                 
-                # Append Header to 'Installations' Sheet
+                # Append to 'Installations' Sheet
                 inst_row = [
                     inst_id, 
                     city_prefix, 
@@ -146,7 +146,7 @@ if menu == "New Installation Order":
                 ]
                 append_to_sheet("Installations", inst_row)
                 
-                # Append Item to 'Order_Items' Sheet
+                # Append to 'Order_Items' Sheet
                 item_row = [inst_id, selected_category, final_product_name, dimensions, int(quantity)]
                 append_to_sheet("Order_Items", item_row)
                 
