@@ -21,16 +21,17 @@ def get_gspread_client():
         creds = Credentials.from_service_account_file("credentials.json", scopes=scopes)
         
     return gspread.authorize(creds)
+
 # Helper function to append rows to a specific worksheet
 def append_to_sheet(sheet_name, row_data):
     client = get_gspread_client()
-    sheet = client.open("Installation_Schedules").worksheet(sheet_name)
+    sheet = client.open_by_key("https://docs.google.com/spreadsheets/d/19rQC3aNtosjhSwyctKAk9ojUt0c8gyOPH-Q8trW5q5s/edit?gid=1303505636#gid=1303505636").worksheet(sheet_name)
     sheet.append_row(row_data)
 
 # Helper function to read worksheet data into DataFrame
 def read_sheet(sheet_name):
     client = get_gspread_client()
-    sheet = client.open("Installation_Schedules").worksheet(sheet_name)
+    sheet = client.open_by_key("https://docs.google.com/spreadsheets/d/19rQC3aNtosjhSwyctKAk9ojUt0c8gyOPH-Q8trW5q5s/edit?gid=1303505636#gid=1303505636").worksheet(sheet_name)
     data = sheet.get_all_records()
     return pd.DataFrame(data)
 
