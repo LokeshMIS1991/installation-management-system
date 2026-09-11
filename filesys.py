@@ -51,12 +51,89 @@ PRODUCT_CATALOG = {
 
 st.set_page_config(page_title="Sidharth Shutter & Automation", layout="wide")
 
+# Custom Brand Styling (Injecting CSS matching Brand Logo Colors)
+st.markdown("""
+    <style>
+    /* Brand Colors: Deep Blue (#0F4C81), Accent Green (#00A859), Soft Background (#F4F6F9) */
+    
+    /* Global Page Styling */
+    .stApp {
+        background-color: #FAFCFF;
+    }
+    
+    /* Headers & Typography */
+    h1 {
+        color: #0F4C81 !important;
+        font-weight: 700 !important;
+        border-bottom: 2px solid #00A859;
+        padding-bottom: 10px;
+    }
+    h2, h3, h4 {
+        color: #163B72 !important;
+    }
+    
+    /* Sidebar Customization */
+    section[data-testid="stSidebar"] {
+        background-color: #F0F4F8 !important;
+        border-right: 1px solid #D0DCE5;
+    }
+    
+    /* Primary Action Buttons */
+    .stButton > button[kind="primary"], div.stFormSubmitButton > button {
+        background-color: #0F4C81 !important;
+        color: #FFFFFF !important;
+        border-radius: 6px !important;
+        border: none !important;
+        font-weight: 600 !important;
+        transition: all 0.3s ease;
+    }
+    .stButton > button[kind="primary"]:hover, div.stFormSubmitButton > button:hover {
+        background-color: #00A859 !important;
+        color: #FFFFFF !important;
+    }
+
+    /* Secondary Buttons */
+    .stButton > button {
+        border: 1px solid #0F4C81 !important;
+        color: #0F4C81 !important;
+        border-radius: 6px !important;
+    }
+    .stButton > button:hover {
+        background-color: #00A859 !important;
+        color: #FFFFFF !important;
+        border-color: #00A859 !important;
+    }
+
+    /* Input Field Highlights */
+    div[data-baseweb="input"] {
+        border-radius: 6px !important;
+    }
+    div[data-baseweb="input"]:focus-within {
+        border-color: #00A859 !important;
+    }
+
+    /* Form Container Box */
+    [data-testid="stForm"] {
+        background-color: #FFFFFF;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 12px rgba(15, 76, 129, 0.08);
+        border: 1px solid #E1E8EE;
+    }
+    
+    /* Success Banners */
+    .stAlert {
+        border-radius: 6px;
+    }
+    </style>
+""", unsafe_html=unsafe_allow_html=True)
+
 # Safe Logo Display solely in the Sidebar Navigation Area
 if os.path.exists(LOGO_PATH):
     st.sidebar.image(LOGO_PATH, use_container_width=True)
     st.sidebar.markdown("---")
 
-# Main Title Header (Clean Text)
+# Main Title Header
 st.title("🛠️ Installation Management System")
 
 menu = st.sidebar.radio("Navigation", [
@@ -263,7 +340,7 @@ elif menu == "View Logs (By Installation ID)":
 
 # 4. MASTER DATABASE
 elif menu == "Master Database":
-    st.header("Daily Logs Viewer ")
+    st.header("Master Database View (Google Sheets)")
     
     st.subheader("1. All Installations")
     st.dataframe(read_sheet("Installations"), use_container_width=True)
