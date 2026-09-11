@@ -4,7 +4,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 
-# Spreadsheet ID extracted from your link
+# Spreadsheet ID
 SPREADSHEET_KEY = "19rQC3aNtosjhSwyctKAk9ojUt0c8gyOPH-Q8trW5q5s"
 
 # Initialize Google Sheets Connection
@@ -23,13 +23,13 @@ def get_gspread_client():
     
     return gspread.authorize(creds)
 
-# Helper function to append rows to a specific worksheet by key
+# Helper function to append rows
 def append_to_sheet(sheet_name, row_data):
     client = get_gspread_client()
     sheet = client.open_by_key(SPREADSHEET_KEY).worksheet(sheet_name)
     sheet.append_row(row_data)
 
-# Helper function to read worksheet data into DataFrame by key
+# Helper function to read worksheet data
 def read_sheet(sheet_name):
     client = get_gspread_client()
     sheet = client.open_by_key(SPREADSHEET_KEY).worksheet(sheet_name)
@@ -47,8 +47,18 @@ PRODUCT_CATALOG = {
     "Other": ["Other"]
 }
 
-st.set_page_config(page_title="Installation Management System", layout="wide")
-st.title("🛠️ Installation Management System")
+st.set_page_config(page_title="Sidharth Shutter & Automation", layout="wide")
+
+# Place Logo at the top of the Sidebar
+st.sidebar.image("Company Logo.jpeg", use_container_width=True)
+st.sidebar.markdown("---")
+
+# Main Title Header with Brand Logo
+col_logo, col_title = st.columns([1, 4])
+with col_logo:
+    st.image("Company Logo.jpeg", width=180)
+with col_title:
+    st.title("Installation Management System")
 
 menu = st.sidebar.radio("Navigation", [
     "New Installation Order", 
@@ -72,28 +82,24 @@ if menu == "New Installation Order":
         city_name = st.text_input("City Name", "Mumbai").strip()
         site_address = st.text_area("Site Address", placeholder="Full installation site address...")
 
-        # Extract first 3 letters as city prefix
         city_prefix = city_name[:3].upper() if city_name else "GEN"
 
-    # Right Column: Dates arranged one by one in a vertical column
+    # Right Column: Dates
     with col2:
         min_past_date = datetime.now() - timedelta(days=7)
         
-        # 1. Order Created Date as Installation Date
         order_created_date = st.date_input(
             "Installation Date (Order Created Date)", 
             value=datetime.now(), 
             min_value=min_past_date
         )
         
-        # 2. Site Clearance Date
         site_clearance = st.date_input(
             "Site Clearance Date", 
             value=datetime.now(), 
             min_value=min_past_date
         )
         
-        # 3. Target Handover Date
         target_ho_date = st.date_input(
             "Target Handover Date", 
             value=datetime.now() + timedelta(days=15), 
@@ -102,7 +108,6 @@ if menu == "New Installation Order":
 
     st.divider()
 
-    # Product Selector
     col_cat, col_sub = st.columns(2)
     with col_cat:
         selected_category = st.selectbox("Select The product", list(PRODUCT_CATALOG.keys()))
@@ -133,7 +138,6 @@ if menu == "New Installation Order":
                 timestamp_str = datetime.now().strftime("%Y%m%d-%H%M%S")
                 inst_id = f"{city_prefix}-{timestamp_str}"
                 
-                # Append to 'Installations' Sheet
                 inst_row = [
                     inst_id, 
                     city_prefix, 
@@ -146,7 +150,6 @@ if menu == "New Installation Order":
                 ]
                 append_to_sheet("Installations", inst_row)
                 
-                # Append to 'Order_Items' Sheet
                 item_row = [inst_id, selected_category, final_product_name, dimensions, int(quantity)]
                 append_to_sheet("Order_Items", item_row)
                 
