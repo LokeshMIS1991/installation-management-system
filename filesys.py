@@ -51,20 +51,13 @@ PRODUCT_CATALOG = {
 
 st.set_page_config(page_title="Sidharth Shutter & Automation", layout="wide")
 
-# Safe Logo Display on Sidebar
+# Safe Logo Display solely in the Sidebar Navigation Area
 if os.path.exists(LOGO_PATH):
     st.sidebar.image(LOGO_PATH, use_container_width=True)
     st.sidebar.markdown("---")
 
-# Main Title Header with Brand Logo
-if os.path.exists(LOGO_PATH):
-    col_logo, col_title = st.columns([1, 4])
-    with col_logo:
-        st.image(LOGO_PATH, width=180)
-    with col_title:
-        st.title("Installation Management System")
-else:
-    st.title("🛠️ Installation Management System")
+# Main Title Header (Clean Text)
+st.title("🛠️ Installation Management System")
 
 menu = st.sidebar.radio("Navigation", [
     "New Installation Order", 
