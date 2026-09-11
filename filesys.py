@@ -4,7 +4,6 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, timedelta
 
-# Initialize Google Sheets Connection
 def get_gspread_client():
     scope = [
         "https://spreadsheets.google.com/feeds",
@@ -12,6 +11,9 @@ def get_gspread_client():
     ]
     if "gcp_service_account" in st.secrets:
         creds_dict = dict(st.secrets["gcp_service_account"])
+        # Fix potential escaping issues with private_key in Streamlit secrets
+        if "private_key" in creds_dict:
+            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     else:
         creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
