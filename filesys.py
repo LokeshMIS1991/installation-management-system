@@ -1,11 +1,13 @@
+import os
 import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 
-# Spreadsheet ID
+# Google Spreadsheet Key
 SPREADSHEET_KEY = "19rQC3aNtosjhSwyctKAk9ojUt0c8gyOPH-Q8trW5q5s"
+LOGO_PATH = "Company Logo.jpeg"
 
 # Initialize Google Sheets Connection
 def get_gspread_client():
@@ -49,16 +51,20 @@ PRODUCT_CATALOG = {
 
 st.set_page_config(page_title="Sidharth Shutter & Automation", layout="wide")
 
-# Place Logo at the top of the Sidebar
-st.sidebar.image("Company Logo.jpeg", use_container_width=True)
-st.sidebar.markdown("---")
+# Safe Logo Display on Sidebar
+if os.path.exists(LOGO_PATH):
+    st.sidebar.image(LOGO_PATH, use_container_width=True)
+    st.sidebar.markdown("---")
 
 # Main Title Header with Brand Logo
-col_logo, col_title = st.columns([1, 4])
-with col_logo:
-    st.image("Company Logo.jpeg", width=180)
-with col_title:
-    st.title("Installation Management System")
+if os.path.exists(LOGO_PATH):
+    col_logo, col_title = st.columns([1, 4])
+    with col_logo:
+        st.image(LOGO_PATH, width=180)
+    with col_title:
+        st.title("Installation Management System")
+else:
+    st.title("🛠️ Installation Management System")
 
 menu = st.sidebar.radio("Navigation", [
     "New Installation Order", 
@@ -84,7 +90,7 @@ if menu == "New Installation Order":
 
         city_prefix = city_name[:3].upper() if city_name else "GEN"
 
-    # Right Column: Dates
+    # Right Column: Dates Sequentially
     with col2:
         min_past_date = datetime.now() - timedelta(days=7)
         
