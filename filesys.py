@@ -126,7 +126,7 @@ st.markdown("""
         border-radius: 6px;
     }
     </style>
-""", unsafe_html=unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 # Safe Logo Display solely in the Sidebar Navigation Area
 if os.path.exists(LOGO_PATH):
