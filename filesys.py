@@ -263,7 +263,7 @@ elif menu == "View Logs (By Installation ID)":
 
 # 4. MASTER DATABASE
 elif menu == "Master Database":
-    st.header("Master Database View (Google Sheets)")
+    st.header("Daily Logs Viewer ")
     
     st.subheader("1. All Installations")
     st.dataframe(read_sheet("Installations"), use_container_width=True)
