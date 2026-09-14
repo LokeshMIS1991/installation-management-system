@@ -68,7 +68,7 @@ st.title("🛠️ Installation Management System")
 
 menu = st.sidebar.radio("Navigation", [
     "New Installation Order", 
-    "Log Daily Tasks",
+    "Log Daily Tasks (Day 1, 2, 3...)",
     "Edit / Update Daily Tasks",
     "View Logs & Update Status", 
     "Master Database"
@@ -157,14 +157,15 @@ if menu == "New Installation Order":
                 
                 st.success(f"Saved to Google Sheets! Generated ID: **{inst_id}**")
 
-# 2. LOG DAILY TASKS
-elif menu == "Log Daily Tasks":
-    st.header("📋 Log Daily Tasks")
+# 2. LOG DAILY TASKS (AUTOMATICALLY COPIES DETAILS FOR NEXT DAY TASKS)
+elif menu == "Log Daily Tasks (Day 1, 2, 3...)":
+    st.header("📋 Log Daily Tasks & Next Day Progress")
     
-    log_date = st.date_input("Select Log Date", value=datetime.now(), min_value=datetime.now() - timedelta(days=7))
+    log_date = st.date_input("Select Log Date", value=datetime.now(), min_value=datetime.now() - timedelta(days=14))
     auto_log_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     df_inst = read_sheet("Installations")
+    df_logs = read_sheet("Daily_Logs")
     
     if df_inst.empty:
         st.warning("No active Installation IDs found. Please create a new order first.")
@@ -176,22 +177,30 @@ elif menu == "Log Daily Tasks":
             inst_ids = active_inst["installation_id"].tolist()
             selected_id = st.selectbox("Select Installation ID", inst_ids)
 
+            # Auto-calculate Day Number (Day 1, Day 2, Day 3, etc.)
+            existing_logs_for_id = df_logs[df_logs["installation_id"] == selected_id] if not df_logs.empty else pd.DataFrame()
+            day_number = len(existing_logs_for_id) + 1
+
+            inst_info = active_inst[active_inst["installation_id"] == selected_id].iloc[0]
+
             df_items = read_sheet("Order_Items")
             site_items = df_items[df_items["installation_id"] == selected_id]
             
             product_options = [f"{row['sub_category']} ({row['dimensions']})" for _, row in site_items.iterrows()]
             product_options.append("General Site Work / Preparation")
 
+            st.info(f"📍 **Site Address:** {inst_info['site_address']} | 👥 **Team:** {inst_info['team_details']} | 📌 **Current Day:** Day {day_number}")
+
             st.divider()
-            st.subheader(f"Task Entry for Installation ID: `{selected_id}`")
+            st.subheader(f"Day {day_number} Task Entry for Installation ID: `{selected_id}`")
             
             col1, col2 = st.columns(2)
             with col1:
-                product_worked_on = st.selectbox("Choose the product", product_options)
+                product_worked_on = st.selectbox("Choose the product worked on", product_options)
             with col2:
-                submitted_by = st.text_input("Technician Name", placeholder="e.g., Rajeer")
+                submitted_by = st.text_input("Technician Name", value=inst_info['team_details'].split('+')[0].strip())
 
-            st.markdown("#### Detailed Work Completed Today / Planned Tasks")
+            st.markdown("#### Tasks Completed Today & Planned Tasks for Next Day")
 
             tasks_list = []
             for i in range(st.session_state.task_count):
@@ -214,10 +223,23 @@ elif menu == "Log Daily Tasks":
                     combined_work_desc = "\n".join(tasks_list)
                     log_id = f"LOG-{datetime.now().strftime('%Y%m%d%H%M%S')}"
                     
-                    log_row = [log_id, selected_id, auto_log_time, str(log_date), product_worked_on, combined_work_desc, submitted_by]
+                    # Appends row with complete copied details right next to the task log in Google Sheets
+                    log_row = [
+                        log_id, 
+                        selected_id, 
+                        f"Day {day_number}",
+                        inst_info['site_address'],
+                        inst_info['team_details'],
+                        auto_log_time, 
+                        str(log_date), 
+                        product_worked_on, 
+                        combined_work_desc, 
+                        submitted_by,
+                        inst_info['status']
+                    ]
                     append_to_sheet("Daily_Logs", log_row)
                     
-                    st.success(f"Tasks logged to Google Sheets for **{selected_id}** (Log ID: `{log_id}`)!")
+                    st.success(f"Day {day_number} Tasks logged to Google Sheets for **{selected_id}** (Log ID: `{log_id}`)!")
                     st.session_state.task_count = 5
 
 # 3. EDIT / UPDATE DAILY TASKS (PRIMARY KEY BASED)
@@ -236,7 +258,7 @@ elif menu == "Edit / Update Daily Tasks":
 
         log_data = df_logs[df_logs["log_id"] == selected_log_id].iloc[0]
 
-        st.info(f"**Installation ID:** `{log_data['installation_id']}` | **Date Logged:** {log_data['logged_date']} | **Technician:** {log_data['submitted_by']}")
+        st.info(f"**Installation ID:** `{log_data['installation_id']}` | **Day:** {log_data.get('day_number', 'N/A')} | **Date:** {log_data['logged_date']}")
 
         with st.form("edit_log_form"):
             updated_product = st.text_input("Product Worked On", value=log_data['product_worked_on'])
@@ -319,7 +341,7 @@ elif menu == "View Logs & Update Status":
                     day_data = site_logs[site_logs["logged_date"] == day]
                     for _, row in day_data.iterrows():
                         st.markdown(f"""
-                        * **Log Key ID:** `{row['log_id']}`
+                        * **Log Key ID:** `{row['log_id']}` | **Day:** `{row.get('day_number', 'Day 1')}`
                         * **Time:** `{str(row['logged_timestamp']).split(' ')[-1]}`
                         * **Product/Area:** {row['product_worked_on']}
                         * **Technician:** {row['submitted_by']}
@@ -340,5 +362,5 @@ elif menu == "Master Database":
     st.subheader("2. All Order Items")
     st.dataframe(read_sheet("Order_Items"), use_container_width=True)
     
-    st.subheader("3. All Log Entries")
+    st.subheader("3. All Log Entries (Next-Row Sequential Day Format)")
     st.dataframe(read_sheet("Daily_Logs"), use_container_width=True)
