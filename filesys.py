@@ -35,7 +35,7 @@ def read_sheet(sheet_name):
     data = sheet.get_all_records()
     return pd.DataFrame(data)
 
-# Helper function to update a specific record in Google Sheets by key column
+# Helper function to update a specific record in Google Sheets by Primary Key
 def update_sheet_row(sheet_name, key_column_name, key_value, updated_row_dict):
     sheet = get_worksheet(sheet_name)
     records = sheet.get_all_records()
@@ -68,14 +68,17 @@ st.title("🛠️ Installation Management System")
 
 menu = st.sidebar.radio("Navigation", [
     "New Installation Order", 
-    "Log Daily Tasks (Day 1, 2, 3...)",
-    "Edit / Update Daily Tasks",
+    "Log Daily Tasks",
+    "Edit Task Log (By Primary Key)",
     "View Logs & Update Status", 
     "Master Database"
 ])
 
 if "task_count" not in st.session_state:
     st.session_state.task_count = 5
+
+if "next_task_count" not in st.session_state:
+    st.session_state.next_task_count = 3
 
 # 1. NEW INSTALLATION ORDER
 if menu == "New Installation Order":
@@ -157,9 +160,9 @@ if menu == "New Installation Order":
                 
                 st.success(f"Saved to Google Sheets! Generated ID: **{inst_id}**")
 
-# 2. LOG DAILY TASKS (AUTOMATICALLY COPIES DETAILS FOR NEXT DAY TASKS)
-elif menu == "Log Daily Tasks (Day 1, 2, 3...)":
-    st.header("📋 Log Daily Tasks & Next Day Progress")
+# 2. LOG DAILY TASKS (LONG-FORMAT ROW ARCHITECTURE)
+elif menu == "Log Daily Tasks":
+    st.header("📋 Log Daily Tasks")
     
     log_date = st.date_input("Select Log Date", value=datetime.now(), min_value=datetime.now() - timedelta(days=14))
     auto_log_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -177,9 +180,9 @@ elif menu == "Log Daily Tasks (Day 1, 2, 3...)":
             inst_ids = active_inst["installation_id"].tolist()
             selected_id = st.selectbox("Select Installation ID", inst_ids)
 
-            # Auto-calculate Day Number (Day 1, Day 2, Day 3, etc.)
-            existing_logs_for_id = df_logs[df_logs["installation_id"] == selected_id] if not df_logs.empty else pd.DataFrame()
-            day_number = len(existing_logs_for_id) + 1
+            existing_logs = df_logs[df_logs["installation_id"] == selected_id] if not df_logs.empty else pd.DataFrame()
+            day_number_int = len(existing_logs) + 1
+            day_label = f"Day {day_number_int}"
 
             inst_info = active_inst[active_inst["installation_id"] == selected_id].iloc[0]
 
@@ -189,10 +192,18 @@ elif menu == "Log Daily Tasks (Day 1, 2, 3...)":
             product_options = [f"{row['sub_category']} ({row['dimensions']})" for _, row in site_items.iterrows()]
             product_options.append("General Site Work / Preparation")
 
-            st.info(f"📍 **Site Address:** {inst_info['site_address']} | 👥 **Team:** {inst_info['team_details']} | 📌 **Current Day:** Day {day_number}")
+            st.info(f"📍 **Site Address:** {inst_info['site_address']} | 👥 **Team:** {inst_info['team_details']} | 📌 **Logging For:** {day_label}")
+
+            # Check if previous day had planned tasks to display as reference
+            if not existing_logs.empty:
+                last_log = existing_logs.iloc[-1]
+                prev_planned = last_log.get('next_day_planned_tasks', '')
+                if prev_planned and str(prev_planned).strip():
+                    with st.expander(f"📌 Tasks Planned Yesterday ({last_log.get('day_number', 'Previous Day')})", expanded=True):
+                        st.info(prev_planned)
 
             st.divider()
-            st.subheader(f"Day {day_number} Task Entry for Installation ID: `{selected_id}`")
+            st.subheader(f"Task Entry for `{selected_id}` ({day_label})")
             
             col1, col2 = st.columns(2)
             with col1:
@@ -200,78 +211,106 @@ elif menu == "Log Daily Tasks (Day 1, 2, 3...)":
             with col2:
                 submitted_by = st.text_input("Technician Name", value=inst_info['team_details'].split('+')[0].strip())
 
-            st.markdown("#### Tasks Completed Today & Planned Tasks for Next Day")
+            st.markdown("#### Today's Tasks Completed")
 
             tasks_list = []
             for i in range(st.session_state.task_count):
-                task_val = st.text_input(f"Task / Sub-Task {i + 1}", key=f"task_field_{i}", placeholder=f"Enter task {i + 1} description...")
+                task_val = st.text_input(f"Task {i + 1}", key=f"today_task_{i}", placeholder="Write tasks only...")
                 if task_val.strip():
                     tasks_list.append(f"{i + 1}. {task_val.strip()}")
 
-            if st.button("➕ Add Another Task Field"):
+            if st.button("➕ Add Another Completed Task Field"):
                 st.session_state.task_count += 1
+                st.rerun()
+
+            st.divider()
+            st.markdown("#### Planned Tasks for Next Day")
+
+            next_tasks_list = []
+            for j in range(st.session_state.next_task_count):
+                next_val = st.text_input(f"Next Day Task {j + 1}", key=f"next_task_{j}", placeholder="Write planned tasks only...")
+                if next_val.strip():
+                    next_tasks_list.append(f"{j + 1}. {next_val.strip()}")
+
+            if st.button("➕ Add Another Next Day Task Field"):
+                st.session_state.next_task_count += 1
                 st.rerun()
 
             st.divider()
 
             if st.button("Submit Daily Task Log", type="primary"):
                 if not tasks_list:
-                    st.error("Please enter at least one task description.")
+                    st.error("Please enter at least one completed task description.")
                 elif not submitted_by.strip():
                     st.error("Please enter Technician Name.")
                 else:
-                    combined_work_desc = "\n".join(tasks_list)
+                    combined_completed_tasks = "\n".join(tasks_list)
+                    combined_next_tasks = "\n".join(next_tasks_list) if next_tasks_list else "None planned"
                     log_id = f"LOG-{datetime.now().strftime('%Y%m%d%H%M%S')}"
                     
-                    # Appends row with complete copied details right next to the task log in Google Sheets
+                    # Row data matches Daily_Logs long-format schema
                     log_row = [
                         log_id, 
                         selected_id, 
-                        f"Day {day_number}",
-                        inst_info['site_address'],
-                        inst_info['team_details'],
+                        day_label,
                         auto_log_time, 
                         str(log_date), 
                         product_worked_on, 
-                        combined_work_desc, 
-                        submitted_by,
-                        inst_info['status']
+                        combined_completed_tasks, 
+                        combined_next_tasks, 
+                        submitted_by
                     ]
                     append_to_sheet("Daily_Logs", log_row)
                     
-                    st.success(f"Day {day_number} Tasks logged to Google Sheets for **{selected_id}** (Log ID: `{log_id}`)!")
+                    st.success(f"{day_label} Tasks logged successfully to Google Sheets! Log Key: `{log_id}`")
                     st.session_state.task_count = 5
+                    st.session_state.next_task_count = 3
 
-# 3. EDIT / UPDATE DAILY TASKS (PRIMARY KEY BASED)
-elif menu == "Edit / Update Daily Tasks":
-    st.header("✏️ Edit / Update Daily Task Log by Primary Key")
+# 3. EDIT TASK LOG (BY PRIMARY KEY)
+elif menu == "Edit Task Log (By Primary Key)":
+    st.header("✏️ Edit Task Log Entry by Primary Key (`log_id`)")
 
     df_logs = read_sheet("Daily_Logs")
 
     if df_logs.empty:
         st.warning("No task logs found in the database.")
     else:
-        st.subheader("Select Primary Key (Log ID)")
+        st.subheader("Select Primary Key")
         
-        log_ids = df_logs["log_id"].tolist()
-        selected_log_id = st.selectbox("Select Log ID to Edit:", log_ids)
-
+        col_k1, col_k2 = st.columns(2)
+        with col_k1:
+            log_ids = df_logs["log_id"].tolist()
+            selected_log_id = st.selectbox("Select Log ID (Primary Key):", log_ids)
+            
         log_data = df_logs[df_logs["log_id"] == selected_log_id].iloc[0]
 
-        st.info(f"**Installation ID:** `{log_data['installation_id']}` | **Day:** {log_data.get('day_number', 'N/A')} | **Date:** {log_data['logged_date']}")
+        with col_k2:
+            st.write(f"**Installation ID:** `{log_data['installation_id']}`")
+            st.write(f"**Day:** {log_data.get('day_number', 'N/A')} | **Logged Date:** {log_data['logged_date']}")
+
+        st.divider()
 
         with st.form("edit_log_form"):
-            updated_product = st.text_input("Product Worked On", value=log_data['product_worked_on'])
-            updated_tech = st.text_input("Technician Name", value=log_data['submitted_by'])
-            updated_desc = st.text_area("Work Description / Next Day Tasks", value=log_data['work_description'], height=200)
+            col_e1, col_e2 = st.columns(2)
+            with col_e1:
+                updated_product = st.text_input("Product Worked On", value=log_data['product_worked_on'])
+            with col_e2:
+                updated_tech = st.text_input("Technician Name", value=log_data['submitted_by'])
+
+            st.markdown("#### 1. Edit Completed Tasks")
+            updated_completed = st.text_area("Completed Tasks", value=log_data['tasks_completed'], height=150)
             
-            save_edit = st.form_submit_button("Update Log Entry")
+            st.markdown("#### 2. Edit Planned Next Day Tasks")
+            updated_next = st.text_area("Planned Next Day Tasks", value=log_data.get('next_day_planned_tasks', ''), height=150)
+
+            save_edit = st.form_submit_button("Update Log Entry in Google Sheets")
 
             if save_edit:
                 updates = {
                     "product_worked_on": updated_product,
                     "submitted_by": updated_tech,
-                    "work_description": updated_desc,
+                    "tasks_completed": updated_completed,
+                    "next_day_planned_tasks": updated_next,
                     "logged_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S") + " (Edited)"
                 }
                 
@@ -279,7 +318,7 @@ elif menu == "Edit / Update Daily Tasks":
                 if success:
                     st.success(f"Log ID `{selected_log_id}` updated successfully!")
                 else:
-                    st.error("Failed to update Google Sheet entry.")
+                    st.error("Failed to update Google Sheet entry. Verify column headers.")
 
 # 4. VIEW LOGS & UPDATE STATUS
 elif menu == "View Logs & Update Status":
@@ -301,7 +340,7 @@ elif menu == "View Logs & Update Status":
         st.divider()
 
         # STATUS UPDATION SECTION
-        st.subheader("📌 Update Installation Status")
+        st.subheader("📌 Update Overall Status")
         col_status, col_btn = st.columns([2, 1])
         
         current_status = site_info['status'] if site_info['status'] in STATUS_OPTIONS else "In Progress"
@@ -313,8 +352,8 @@ elif menu == "View Logs & Update Status":
             st.write(" ")
             st.write(" ")
             if st.button("Update Status", type="primary"):
-                updated = update_sheet_row("Installations", "installation_id", selected_id, {"status": new_status})
-                if updated:
+                updated_inst = update_sheet_row("Installations", "installation_id", selected_id, {"status": new_status})
+                if updated_inst:
                     st.success(f"Status updated to **{new_status}**!")
                     st.rerun()
                 else:
@@ -328,7 +367,7 @@ elif menu == "View Logs & Update Status":
         st.table(site_items[["category", "sub_category", "dimensions", "quantity"]])
 
         st.divider()
-        st.subheader("📅 Activity Logs for this Installation")
+        st.subheader("📅 Activity Timeline")
         
         df_logs = read_sheet("Daily_Logs")
         site_logs = df_logs[df_logs["installation_id"] == selected_id]
@@ -336,21 +375,24 @@ elif menu == "View Logs & Update Status":
         if site_logs.empty:
             st.info("No logs recorded for this Installation ID yet.")
         else:
-            for day in site_logs["logged_date"].unique():
-                with st.expander(f"📅 **Date: {day}**", expanded=True):
-                    day_data = site_logs[site_logs["logged_date"] == day]
-                    for _, row in day_data.iterrows():
-                        st.markdown(f"""
-                        * **Log Key ID:** `{row['log_id']}` | **Day:** `{row.get('day_number', 'Day 1')}`
-                        * **Time:** `{str(row['logged_timestamp']).split(' ')[-1]}`
-                        * **Product/Area:** {row['product_worked_on']}
-                        * **Technician:** {row['submitted_by']}
-                        * **Tasks Completed / Notes:**
-                        ```
-                        {row['work_description']}
-                        ```
-                        """)
-                        st.divider()
+            for _, row in site_logs.iterrows():
+                with st.expander(f"📅 **{row.get('day_number', 'Day Log')} - Date: {row['logged_date']}**", expanded=True):
+                    st.markdown(f"""
+                    * **Log ID (PK):** `{row['log_id']}`
+                    * **Time:** `{str(row['logged_timestamp']).split(' ')[-1]}`
+                    * **Product/Area:** {row['product_worked_on']}
+                    * **Technician:** {row['submitted_by']}
+                    
+                    **Completed Tasks:**
+                    ```
+                    {row['tasks_completed']}
+                    ```
+                    
+                    **Planned Tasks for Next Day:**
+                    ```
+                    {row.get('next_day_planned_tasks', 'None recorded')}
+                    ```
+                    """)
 
 # 5. MASTER DATABASE
 elif menu == "Master Database":
@@ -362,5 +404,5 @@ elif menu == "Master Database":
     st.subheader("2. All Order Items")
     st.dataframe(read_sheet("Order_Items"), use_container_width=True)
     
-    st.subheader("3. All Log Entries (Next-Row Sequential Day Format)")
+    st.subheader("3. All Log Entries (Long-Format)")
     st.dataframe(read_sheet("Daily_Logs"), use_container_width=True)
