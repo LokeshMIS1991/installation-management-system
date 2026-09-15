@@ -31,11 +31,14 @@ def append_to_sheet(sheet_name, row_data):
     sheet = get_worksheet(sheet_name)
     sheet.append_row(row_data)
 
-# Helper function to read worksheet data safely (Prevents KeyError)
+# Helper function to read worksheet data safely
 def read_sheet(sheet_name):
-    sheet = get_worksheet(sheet_name)
-    data = sheet.get_all_records()
-    df = pd.DataFrame(data)
+    try:
+        sheet = get_worksheet(sheet_name)
+        data = sheet.get_all_records()
+        df = pd.DataFrame(data)
+    except Exception:
+        df = pd.DataFrame()
     
     # Safe Fallbacks if Google Sheet tab is empty or missing headers
     if df.empty or "installation_id" not in df.columns:
@@ -199,36 +202,56 @@ elif menu == "Log Daily Tasks":
     df_inst = read_sheet("Installations")
     df_logs = read_sheet("Daily_Logs")
 
-    if df_inst.empty:
-        st.warning("No active Installation Project IDs found. Please create an order first.")
-    else:
-        st.subheader("1. Find & Select Installation Primary Key")
-        col_search, col_select = st.columns(2)
+    st.subheader("1. Search Options")
+    search_tab1, search_tab2 = st.tabs(["🔎 Search by Primary Key", "📅 Search by Date"])
+
+    selected_id = None
+
+    with search_tab1:
+        col_pk_input, col_pk_select = st.columns(2)
+        with col_pk_input:
+            pk_query = st.text_input("Enter Primary Key directly:", placeholder="e.g., INST-2026-XXXXX").strip()
         
-        all_ids = df_inst["installation_id"].tolist()
+        with col_pk_select:
+            all_ids = df_inst["installation_id"].tolist() if not df_inst.empty else []
+            id_options = [f"{row['installation_id']} | {row['site_address'][:25]}..." for _, row in df_inst.iterrows()] if not df_inst.empty else ["No existing IDs found"]
+            selected_dropdown = st.selectbox("Or choose existing Installation Key:", id_options)
 
-        with col_search:
-            search_query = st.text_input("🔎 Search / Enter Primary Key directly:", placeholder="e.g., INST-2026-XXXXX").strip()
-
-        with col_select:
-            id_options = [f"{row['installation_id']} | {row['site_address'][:25]}..." for _, row in df_inst.iterrows()]
-            selected_dropdown = st.selectbox("Or choose from Active Projects:", id_options)
-
-        # Priority logic for ID resolution
-        selected_id = None
-        if search_query:
-            if search_query in all_ids:
-                selected_id = search_query
+        if pk_query:
+            if pk_query in all_ids:
+                selected_id = pk_query
             else:
-                matched = [i for i in all_ids if search_query.lower() in i.lower()]
+                matched = [i for i in all_ids if pk_query.lower() in i.lower()]
                 if matched:
                     selected_id = matched[0]
                 else:
-                    st.error(f"No match found for primary key: '{search_query}'")
-
-        if not selected_id:
+                    st.warning(f"No match found for primary key: '{pk_query}'. Using dropdown selection.")
+        
+        if not selected_id and not df_inst.empty:
             selected_id = selected_dropdown.split(" | ")[0]
 
+    with search_tab2:
+        col_d1, col_d2 = st.columns(2)
+        with col_d1:
+            filter_date = st.date_input("Filter Orders by Created Date:", value=datetime.now())
+        
+        with col_d2:
+            if not df_inst.empty and "order_created_date" in df_inst.columns:
+                filtered_df = df_inst[df_inst["order_created_date"].astype(str) == str(filter_date)]
+                if not filtered_df.empty:
+                    date_options = [f"{row['installation_id']} | {row['site_address'][:25]}..." for _, row in filtered_df.iterrows()]
+                    date_selected_dropdown = st.selectbox("Select Project matching date:", date_options)
+                    selected_id = date_selected_dropdown.split(" | ")[0]
+                else:
+                    st.info(f"No installation orders found created on {filter_date}.")
+            else:
+                st.info("No installation records available to filter by date.")
+
+    st.divider()
+
+    if not selected_id or df_inst.empty or selected_id not in df_inst["installation_id"].values:
+        st.info("Please enter or select a valid Primary Key above to load and record task logs.")
+    else:
         inst_info = df_inst[df_inst["installation_id"] == selected_id].iloc[0]
 
         existing_logs = df_logs[df_logs["installation_id"] == selected_id] if not df_logs.empty else pd.DataFrame()
@@ -240,12 +263,10 @@ elif menu == "Log Daily Tasks":
         product_options = [f"{row['sub_category']} ({row['dimensions']})" for _, row in site_items.iterrows()] if not site_items.empty else []
         product_options.append("General Site Work / Preparation")
 
-        st.divider()
-
         # Light Blue Banner displaying active target key
         st.markdown(f"""
             <div style="background-color: #EBF3FE; padding: 16px 20px; border-radius: 8px; margin-bottom: 20px;">
-                <span style="color: #0F4C81; font-weight: 700; font-size: 16px;">Automated Target ID:</span>
+                <span style="color: #0F4C81; font-weight: 700; font-size: 16px;">Automated Visit ID:</span>
                 <span style="color: #336699; font-weight: 600; font-size: 16px; margin-left: 8px; font-family: monospace;">{selected_id}</span>
                 <span style="color: #555; font-size: 14px; margin-left: 15px;">({day_label} | Team: {inst_info['team_details']})</span>
             </div>
@@ -268,15 +289,15 @@ elif menu == "Log Daily Tasks":
             submitted_by = st.text_input("Technician Name *", value=inst_info['team_details'].split('+')[0].strip())
 
         st.divider()
-        st.markdown("### Today's Completed Tasks")
+        st.markdown("### Today's Completed Tasks (5 Default Tasks)")
         
         completed_tasks = []
         for i in range(st.session_state.task_count):
-            task_input = st.text_input(f"Task {i + 1}", key=f"today_task_{i}", placeholder="Describe completed task detail...")
+            task_input = st.text_input(f"Task {i + 1}", key=f"today_task_{i}", placeholder="Describe task performed...")
             if task_input.strip():
                 completed_tasks.append(f"{i + 1}. {task_input.strip()}")
 
-        if st.button("➕ Add Another Task"):
+        if st.button("➕ Add Another Task Field"):
             st.session_state.task_count += 1
             st.rerun()
 
@@ -285,11 +306,11 @@ elif menu == "Log Daily Tasks":
 
         next_tasks = []
         for j in range(st.session_state.next_task_count):
-            next_input = st.text_input(f"Next Day Task {j + 1}", key=f"next_task_{j}", placeholder="Describe planned task detail...")
+            next_input = st.text_input(f"Next Day Task {j + 1}", key=f"next_task_{j}", placeholder="Describe planned task...")
             if next_input.strip():
                 next_tasks.append(f"{j + 1}. {next_input.strip()}")
 
-        if st.button("➕ Add Another Next Day Task"):
+        if st.button("➕ Add Another Next Day Task Field"):
             st.session_state.next_task_count += 1
             st.rerun()
 
@@ -311,7 +332,7 @@ elif menu == "Log Daily Tasks":
                 ]
                 append_to_sheet("Daily_Logs", log_row)
                 
-                st.success(f"Tasks logged successfully for Installation Primary Key **`{selected_id}`** (Log ID: `{log_id}`)!")
+                st.success(f"Tasks logged successfully for Installation Primary Key **`{selected_id}`** (Visit Log Key: `{log_id}`)!")
                 st.session_state.task_count = 5
                 st.session_state.next_task_count = 5
 
