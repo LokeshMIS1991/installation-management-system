@@ -52,12 +52,18 @@ def update_sheet_row(sheet_name, key_column_name, key_value, updated_row_dict):
             return True
     return False
 
-# Helper function to generate unique 6-character Primary Key
-def generate_short_id(city_name=""):
-    prefix = city_name[0].upper() if city_name.strip() else "I"
+# Helper functions to generate structured IDs (e.g., INST-2026-249E6 and LOG-2026-249E6)
+def generate_project_id():
+    year = datetime.now().strftime("%Y")
     chars = string.ascii_uppercase + string.digits
-    random_part = ''.join(random.choices(chars, k=5))
-    return f"{prefix}{random_part}"
+    unique_suffix = ''.join(random.choices(chars, k=5))
+    return f"INST-{year}-{unique_suffix}"
+
+def generate_log_id():
+    year = datetime.now().strftime("%Y")
+    chars = string.ascii_uppercase + string.digits
+    unique_suffix = ''.join(random.choices(chars, k=5))
+    return f"LOG-{year}-{unique_suffix}"
 
 PRODUCT_CATALOG = {
     "Rolling Shutters": ["Motorized Rolling Shutter", "Gear Rolling Shutter", "Manual Rolling Shutter"],
@@ -148,14 +154,13 @@ if menu == "New Installation Order":
             elif not site_address.strip():
                 st.error("Please enter a valid Site Address.")
             else:
-                # Read existing IDs to prevent duplication
                 df_inst = read_sheet("Installations")
                 existing_ids = df_inst["installation_id"].tolist() if not df_inst.empty else []
                 
-                # Generate unique 6-character ID
-                inst_id = generate_short_id(city_name)
+                # Auto-generate unique installation project ID (e.g., INST-2026-249E6)
+                inst_id = generate_project_id()
                 while inst_id in existing_ids:
-                    inst_id = generate_short_id(city_name)
+                    inst_id = generate_project_id()
 
                 city_prefix = city_name[:3].upper() if city_name else "GEN"
 
@@ -174,7 +179,7 @@ if menu == "New Installation Order":
                 item_row = [inst_id, selected_category, final_product_name, dimensions, int(quantity)]
                 append_to_sheet("Order_Items", item_row)
                 
-                st.success(f"Saved to Google Sheets! Generated 6-Character Primary Key: **`{inst_id}`**")
+                st.success(f"Saved to Google Sheets! Generated Installation Project ID: **`{inst_id}`**")
 
 # 2. LOG DAILY TASKS
 elif menu == "Log Daily Tasks":
@@ -193,9 +198,8 @@ elif menu == "Log Daily Tasks":
         if active_inst.empty:
             st.info("No installations currently 'In Progress' or 'Pending'.")
         else:
-            # Display dropdown formatted as: ID | Address
-            id_map = {f"{row['installation_id']} - {row['site_address'][:25]}...": row['installation_id'] for _, row in active_inst.iterrows()}
-            selected_label = st.selectbox("Select Installation Primary Key (6 Chars):", list(id_map.keys()))
+            id_map = {f"{row['installation_id']} | {row['site_address'][:25]}...": row['installation_id'] for _, row in active_inst.iterrows()}
+            selected_label = st.selectbox("Select Installation Project ID:", list(id_map.keys()))
             selected_id = id_map[selected_label]
 
             existing_logs = df_logs[df_logs["installation_id"] == selected_id] if not df_logs.empty else pd.DataFrame()
@@ -210,10 +214,9 @@ elif menu == "Log Daily Tasks":
             product_options = [f"{row['sub_category']} ({row['dimensions']})" for _, row in site_items.iterrows()] if not site_items.empty else []
             product_options.append("General Site Work / Preparation")
 
-            # Real-Time Key Display Header
-            st.success(f"🔑 **Target Installation Key:** `{selected_id}` | 📍 **Site:** {inst_info['site_address']} | 👥 **Team:** {inst_info['team_details']} | 📌 **Progress:** {day_label}")
+            # Active Insertion Banner showing target ID explicitly
+            st.success(f"📍 **INSERTING DATA FOR INSTALLATION ID:** `{selected_id}` | 👥 **Team:** {inst_info['team_details']} | 📌 **Progress:** {day_label}")
 
-            # Display previous day's planned tasks if available
             if not existing_logs.empty:
                 last_log = existing_logs.iloc[-1]
                 prev_planned = last_log.get('next_day_planned_tasks', '')
@@ -222,7 +225,7 @@ elif menu == "Log Daily Tasks":
                         st.info(prev_planned)
 
             st.divider()
-            st.subheader(f"Task Entry for Key: `{selected_id}` ({day_label})")
+            st.subheader(f"Task Entry Form for ID: `{selected_id}` ({day_label})")
             
             col1, col2 = st.columns(2)
             with col1:
@@ -265,7 +268,7 @@ elif menu == "Log Daily Tasks":
                 else:
                     combined_completed_tasks = "\n".join(tasks_list)
                     combined_next_tasks = "\n".join(next_tasks_list) if next_tasks_list else "None planned"
-                    log_id = f"L-{generate_short_id('G')}"
+                    log_id = generate_log_id()
                     
                     log_row = [
                         log_id, 
@@ -280,30 +283,28 @@ elif menu == "Log Daily Tasks":
                     ]
                     append_to_sheet("Daily_Logs", log_row)
                     
-                    st.success(f"{day_label} Tasks logged successfully for Primary Key **`{selected_id}`** (Log Key: `{log_id}`)!")
+                    st.success(f"Data successfully inserted for **Installation ID: `{selected_id}`** (Visit Log Key: `{log_id}`)!")
                     st.session_state.task_count = 5
                     st.session_state.next_task_count = 3
 
 # 3. EDIT TASK LOG (BY PRIMARY KEY)
 elif menu == "Edit Task Log (By Primary Key)":
-    st.header("✏️ Edit Task Log Entry by Log Primary Key (`log_id`)")
+    st.header("✏️ Edit Task Log Entry by Log ID")
 
     df_logs = read_sheet("Daily_Logs")
 
     if df_logs.empty:
         st.warning("No task logs found in the database.")
     else:
-        st.subheader("Select Log Key to Edit")
-        
         col_k1, col_k2 = st.columns(2)
         with col_k1:
             log_ids = df_logs["log_id"].tolist()
-            selected_log_id = st.selectbox("Select Log ID (Primary Key):", log_ids)
+            selected_log_id = st.selectbox("Select Visit Log Key (LOG-YYYY-XXXXX):", log_ids)
             
         log_data = df_logs[df_logs["log_id"] == selected_log_id].iloc[0]
 
         with col_k2:
-            st.info(f"🔑 **Installation ID:** `{log_data['installation_id']}` | **Day:** {log_data.get('day_number', 'N/A')} | **Date:** {log_data['logged_date']}")
+            st.info(f"📍 **Target Installation ID:** `{log_data['installation_id']}` | **Day:** {log_data.get('day_number', 'N/A')} | **Date:** {log_data['logged_date']}")
 
         st.divider()
 
@@ -333,7 +334,7 @@ elif menu == "Edit Task Log (By Primary Key)":
                 
                 success = update_sheet_row("Daily_Logs", "log_id", selected_log_id, updates)
                 if success:
-                    st.success(f"Log ID `{selected_log_id}` updated successfully!")
+                    st.success(f"Log Key `{selected_log_id}` updated for Installation ID **`{log_data['installation_id']}`**!")
                 else:
                     st.error("Failed to update Google Sheet entry. Verify column headers.")
 
@@ -346,18 +347,17 @@ elif menu == "View Logs & Update Status":
     if df_inst.empty:
         st.warning("No Installation IDs recorded.")
     else:
-        inst_map = {f"{row['installation_id']} - {row['site_address'][:25]}...": row['installation_id'] for _, row in df_inst.iterrows()}
-        selected_label = st.selectbox("Select Installation Primary Key (6 Chars):", list(inst_map.keys()))
+        inst_map = {f"{row['installation_id']} | {row['site_address'][:25]}...": row['installation_id'] for _, row in df_inst.iterrows()}
+        selected_label = st.selectbox("Select Installation Project ID:", list(inst_map.keys()))
         selected_id = inst_map[selected_label]
 
         site_info = df_inst[df_inst["installation_id"] == selected_id].iloc[0]
         
-        st.success(f"### Selected Installation Key: `{site_info['installation_id']}`")
+        st.success(f"### Target Installation Project ID: `{site_info['installation_id']}`")
         st.write(f"**Site Address:** {site_info['site_address']} | **Team Details:** {site_info['team_details']}")
         
         st.divider()
 
-        # STATUS UPDATION SECTION
         st.subheader("📌 Update Overall Status")
         col_status, col_btn = st.columns([2, 1])
         
@@ -372,7 +372,7 @@ elif menu == "View Logs & Update Status":
             if st.button("Update Status", type="primary"):
                 updated_inst = update_sheet_row("Installations", "installation_id", selected_id, {"status": new_status})
                 if updated_inst:
-                    st.success(f"Status for `{selected_id}` updated to **{new_status}**!")
+                    st.success(f"Status for Installation Project `{selected_id}` updated to **{new_status}**!")
                     st.rerun()
                 else:
                     st.error("Could not update status in Google Sheets.")
@@ -399,7 +399,7 @@ elif menu == "View Logs & Update Status":
             for _, row in site_logs.iterrows():
                 with st.expander(f"📅 **{row.get('day_number', 'Day Log')} - Date: {row['logged_date']}**", expanded=True):
                     st.markdown(f"""
-                    * **Log Primary Key:** `{row['log_id']}`
+                    * **Visit Log ID:** `{row['log_id']}`
                     * **Timestamp:** `{str(row['logged_timestamp']).split(' ')[-1]}`
                     * **Product Worked On:** {row['product_worked_on']}
                     * **Technician:** {row['submitted_by']}
@@ -419,7 +419,7 @@ elif menu == "View Logs & Update Status":
 elif menu == "Master Database":
     st.header("Master Database View (Google Sheets)")
     
-    st.subheader("1. All Installations (6-Char Primary Keys)")
+    st.subheader("1. All Installations")
     st.dataframe(read_sheet("Installations"), use_container_width=True)
     
     st.subheader("2. All Order Items")
