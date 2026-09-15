@@ -26,24 +26,43 @@ def get_worksheet(sheet_name):
     client = get_gspread_client()
     return client.open("Installation_Schedules").worksheet(sheet_name)
 
-# Helper function to append rows to a specific worksheet
+# Helper function to append rows
 def append_to_sheet(sheet_name, row_data):
     sheet = get_worksheet(sheet_name)
     sheet.append_row(row_data)
 
-# Helper function to read worksheet data into DataFrame
+# Helper function to read worksheet data safely (Prevents KeyError)
 def read_sheet(sheet_name):
     sheet = get_worksheet(sheet_name)
     data = sheet.get_all_records()
-    return pd.DataFrame(data)
+    df = pd.DataFrame(data)
+    
+    # Safe Fallbacks if Google Sheet tab is empty or missing headers
+    if df.empty or "installation_id" not in df.columns:
+        if sheet_name == "Installations":
+            return pd.DataFrame(columns=[
+                "installation_id", "city_prefix", "site_address", "team_details", 
+                "order_created_date", "site_clearance_date", "target_ho_date", "status"
+            ])
+        elif sheet_name == "Order_Items":
+            return pd.DataFrame(columns=[
+                "installation_id", "category", "sub_category", "dimensions", "quantity"
+            ])
+        elif sheet_name == "Daily_Logs":
+            return pd.DataFrame(columns=[
+                "log_id", "installation_id", "day_number", "logged_timestamp", 
+                "logged_date", "product_worked_on", "tasks_completed", 
+                "next_day_planned_tasks", "submitted_by"
+            ])
+    return df
 
-# Helper function to update a specific record in Google Sheets by Primary Key
+# Helper function to update record by Primary Key
 def update_sheet_row(sheet_name, key_column_name, key_value, updated_row_dict):
     sheet = get_worksheet(sheet_name)
     records = sheet.get_all_records()
     headers = sheet.row_values(1)
     
-    for idx, row in enumerate(records, start=2):  # Row 1 is header
+    for idx, row in enumerate(records, start=2):
         if str(row.get(key_column_name)) == str(key_value):
             for col_name, val in updated_row_dict.items():
                 if col_name in headers:
@@ -52,7 +71,7 @@ def update_sheet_row(sheet_name, key_column_name, key_value, updated_row_dict):
             return True
     return False
 
-# Helper functions to generate structured IDs (e.g., INST-2026-249E6 and LOG-2026-249E6)
+# Helper functions for structured IDs
 def generate_project_id():
     year = datetime.now().strftime("%Y")
     chars = string.ascii_uppercase + string.digits
@@ -99,37 +118,36 @@ if "next_task_count" not in st.session_state:
 if menu == "New Installation Order":
     st.header("Create New Installation Order")
 
+    # Generate or retain temporary project key for preview
+    if "temp_inst_id" not in st.session_state:
+        st.session_state.temp_inst_id = generate_project_id()
+
+    # Screenshot-styled Light Blue Banner
+    st.markdown(f"""
+        <div style="background-color: #EBF3FE; padding: 16px 20px; border-radius: 8px; margin-bottom: 20px;">
+            <span style="color: #0F4C81; font-weight: 700; font-size: 16px;">Automated Installation ID:</span>
+            <span style="color: #336699; font-weight: 600; font-size: 16px; margin-left: 8px; font-family: monospace;">{st.session_state.temp_inst_id}</span>
+        </div>
+    """, unsafe_allow_html=True)
+
     col1, col2 = st.columns(2)
     
     with col1:
-        team_details = st.text_input("Team's Details", placeholder="e.g., Rajeer + 2 Helpers")
-        city_name = st.text_input("City Name", "Mumbai").strip()
-        site_address = st.text_area("Site Address", placeholder="Full installation site address...")
+        team_details = st.text_input("Team's Details *", placeholder="e.g., Rajeer + 2 Helpers")
+        city_name = st.text_input("City Name *", "Mumbai").strip()
+        site_address = st.text_area("Site Address *", placeholder="Full installation site address...")
 
     with col2:
         min_past_date = datetime.now() - timedelta(days=7)
-        
-        order_created_date = st.date_input(
-            "Installation Date (Order Created Date)", 
-            value=datetime.now(), 
-            min_value=min_past_date
-        )
-        site_clearance = st.date_input(
-            "Site Clearance Date", 
-            value=datetime.now(), 
-            min_value=min_past_date
-        )
-        target_ho_date = st.date_input(
-            "Target Handover Date", 
-            value=datetime.now() + timedelta(days=15), 
-            min_value=min_past_date
-        )
+        order_created_date = st.date_input("Installation Date (Order Created Date)", value=datetime.now(), min_value=min_past_date)
+        site_clearance = st.date_input("Site Clearance Date", value=datetime.now(), min_value=min_past_date)
+        target_ho_date = st.date_input("Target Handover Date", value=datetime.now() + timedelta(days=15), min_value=min_past_date)
 
     st.divider()
 
     col_cat, col_sub = st.columns(2)
     with col_cat:
-        selected_category = st.selectbox("Select The product", list(PRODUCT_CATALOG.keys()))
+        selected_category = st.selectbox("Select The Product", list(PRODUCT_CATALOG.keys()))
     with col_sub:
         selected_sub_category = st.selectbox("Select Sub-Category", PRODUCT_CATALOG[selected_category])
 
@@ -157,29 +175,23 @@ if menu == "New Installation Order":
                 df_inst = read_sheet("Installations")
                 existing_ids = df_inst["installation_id"].tolist() if not df_inst.empty else []
                 
-                # Auto-generate unique installation project ID (e.g., INST-2026-249E6)
-                inst_id = generate_project_id()
+                inst_id = st.session_state.temp_inst_id
                 while inst_id in existing_ids:
                     inst_id = generate_project_id()
 
                 city_prefix = city_name[:3].upper() if city_name else "GEN"
 
                 inst_row = [
-                    inst_id, 
-                    city_prefix, 
-                    site_address, 
-                    team_details, 
-                    str(order_created_date), 
-                    str(site_clearance), 
-                    str(target_ho_date), 
-                    "In Progress"
+                    inst_id, city_prefix, site_address, team_details, 
+                    str(order_created_date), str(site_clearance), str(target_ho_date), "In Progress"
                 ]
                 append_to_sheet("Installations", inst_row)
                 
                 item_row = [inst_id, selected_category, final_product_name, dimensions, int(quantity)]
                 append_to_sheet("Order_Items", item_row)
                 
-                st.success(f"Saved to Google Sheets! Generated Installation Project ID: **`{inst_id}`**")
+                st.success(f"Saved to Google Sheets! Generated Installation ID: **`{inst_id}`**")
+                st.session_state.temp_inst_id = generate_project_id()
 
 # 2. LOG DAILY TASKS
 elif menu == "Log Daily Tasks":
@@ -209,13 +221,19 @@ elif menu == "Log Daily Tasks":
             inst_info = active_inst[active_inst["installation_id"] == selected_id].iloc[0]
 
             df_items = read_sheet("Order_Items")
-            site_items = df_items[df_items["installation_id"] == selected_id]
+            site_items = df_items[df_items["installation_id"] == selected_id] if not df_items.empty else pd.DataFrame()
             
             product_options = [f"{row['sub_category']} ({row['dimensions']})" for _, row in site_items.iterrows()] if not site_items.empty else []
             product_options.append("General Site Work / Preparation")
 
-            # Active Insertion Banner showing target ID explicitly
-            st.success(f"📍 **INSERTING DATA FOR INSTALLATION ID:** `{selected_id}` | 👥 **Team:** {inst_info['team_details']} | 📌 **Progress:** {day_label}")
+            # Screenshot-styled Light Blue Banner displaying active target key
+            st.markdown(f"""
+                <div style="background-color: #EBF3FE; padding: 16px 20px; border-radius: 8px; margin-bottom: 20px;">
+                    <span style="color: #0F4C81; font-weight: 700; font-size: 16px;">Automated Data Insertion ID:</span>
+                    <span style="color: #336699; font-weight: 600; font-size: 16px; margin-left: 8px; font-family: monospace;">{selected_id}</span>
+                    <span style="color: #555; font-size: 14px; margin-left: 15px;">({day_label} | {inst_info['team_details']})</span>
+                </div>
+            """, unsafe_allow_html=True)
 
             if not existing_logs.empty:
                 last_log = existing_logs.iloc[-1]
@@ -231,7 +249,7 @@ elif menu == "Log Daily Tasks":
             with col1:
                 product_worked_on = st.selectbox("Choose the product worked on", product_options)
             with col2:
-                submitted_by = st.text_input("Technician Name", value=inst_info['team_details'].split('+')[0].strip())
+                submitted_by = st.text_input("Technician Name *", value=inst_info['team_details'].split('+')[0].strip())
 
             st.markdown("#### Today's Completed Tasks")
 
@@ -271,19 +289,12 @@ elif menu == "Log Daily Tasks":
                     log_id = generate_log_id()
                     
                     log_row = [
-                        log_id, 
-                        selected_id, 
-                        day_label,
-                        auto_log_time, 
-                        str(log_date), 
-                        product_worked_on, 
-                        combined_completed_tasks, 
-                        combined_next_tasks, 
-                        submitted_by
+                        log_id, selected_id, day_label, auto_log_time, str(log_date), 
+                        product_worked_on, combined_completed_tasks, combined_next_tasks, submitted_by
                     ]
                     append_to_sheet("Daily_Logs", log_row)
                     
-                    st.success(f"Data successfully inserted for **Installation ID: `{selected_id}`** (Visit Log Key: `{log_id}`)!")
+                    st.success(f"Data successfully inserted for **Installation ID: `{selected_id}`** (Visit Key: `{log_id}`)!")
                     st.session_state.task_count = 5
                     st.session_state.next_task_count = 3
 
@@ -381,7 +392,7 @@ elif menu == "View Logs & Update Status":
         st.subheader("📦 Order Specifications")
         
         df_items = read_sheet("Order_Items")
-        site_items = df_items[df_items["installation_id"] == selected_id]
+        site_items = df_items[df_items["installation_id"] == selected_id] if not df_items.empty else pd.DataFrame()
         if not site_items.empty:
             st.table(site_items[["category", "sub_category", "dimensions", "quantity"]])
         else:
@@ -391,7 +402,7 @@ elif menu == "View Logs & Update Status":
         st.subheader("📅 Activity Timeline")
         
         df_logs = read_sheet("Daily_Logs")
-        site_logs = df_logs[df_logs["installation_id"] == selected_id]
+        site_logs = df_logs[df_logs["installation_id"] == selected_id] if not df_logs.empty else pd.DataFrame()
 
         if site_logs.empty:
             st.info("No activity logs recorded for this Installation ID yet.")
