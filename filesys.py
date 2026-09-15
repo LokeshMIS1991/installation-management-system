@@ -3,6 +3,8 @@ import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, timedelta
+import random
+import string
 
 # Initialize Google Sheets Connection
 def get_gspread_client():
@@ -50,6 +52,13 @@ def update_sheet_row(sheet_name, key_column_name, key_value, updated_row_dict):
             return True
     return False
 
+# Helper function to generate unique 6-character Primary Key
+def generate_short_id(city_name=""):
+    prefix = city_name[0].upper() if city_name.strip() else "I"
+    chars = string.ascii_uppercase + string.digits
+    random_part = ''.join(random.choices(chars, k=5))
+    return f"{prefix}{random_part}"
+
 PRODUCT_CATALOG = {
     "Rolling Shutters": ["Motorized Rolling Shutter", "Gear Rolling Shutter", "Manual Rolling Shutter"],
     "Dock Leveler": ["Hydraulic Doclevller", "Hydraulic Dock Edge", "Manual Dock Edge"],
@@ -90,7 +99,6 @@ if menu == "New Installation Order":
         team_details = st.text_input("Team's Details", placeholder="e.g., Rajeer + 2 Helpers")
         city_name = st.text_input("City Name", "Mumbai").strip()
         site_address = st.text_area("Site Address", placeholder="Full installation site address...")
-        city_prefix = city_name[:3].upper() if city_name else "GEN"
 
     with col2:
         min_past_date = datetime.now() - timedelta(days=7)
@@ -140,9 +148,17 @@ if menu == "New Installation Order":
             elif not site_address.strip():
                 st.error("Please enter a valid Site Address.")
             else:
-                timestamp_str = datetime.now().strftime("%Y%m%d-%H%M%S")
-                inst_id = f"{city_prefix}-{timestamp_str}"
+                # Read existing IDs to prevent duplication
+                df_inst = read_sheet("Installations")
+                existing_ids = df_inst["installation_id"].tolist() if not df_inst.empty else []
                 
+                # Generate unique 6-character ID
+                inst_id = generate_short_id(city_name)
+                while inst_id in existing_ids:
+                    inst_id = generate_short_id(city_name)
+
+                city_prefix = city_name[:3].upper() if city_name else "GEN"
+
                 inst_row = [
                     inst_id, 
                     city_prefix, 
@@ -158,9 +174,9 @@ if menu == "New Installation Order":
                 item_row = [inst_id, selected_category, final_product_name, dimensions, int(quantity)]
                 append_to_sheet("Order_Items", item_row)
                 
-                st.success(f"Saved to Google Sheets! Generated ID: **{inst_id}**")
+                st.success(f"Saved to Google Sheets! Generated 6-Character Primary Key: **`{inst_id}`**")
 
-# 2. LOG DAILY TASKS (LONG-FORMAT ROW ARCHITECTURE)
+# 2. LOG DAILY TASKS
 elif menu == "Log Daily Tasks":
     st.header("📋 Log Daily Tasks")
     
@@ -177,8 +193,10 @@ elif menu == "Log Daily Tasks":
         if active_inst.empty:
             st.info("No installations currently 'In Progress' or 'Pending'.")
         else:
-            inst_ids = active_inst["installation_id"].tolist()
-            selected_id = st.selectbox("Select Installation ID", inst_ids)
+            # Display dropdown formatted as: ID | Address
+            id_map = {f"{row['installation_id']} - {row['site_address'][:25]}...": row['installation_id'] for _, row in active_inst.iterrows()}
+            selected_label = st.selectbox("Select Installation Primary Key (6 Chars):", list(id_map.keys()))
+            selected_id = id_map[selected_label]
 
             existing_logs = df_logs[df_logs["installation_id"] == selected_id] if not df_logs.empty else pd.DataFrame()
             day_number_int = len(existing_logs) + 1
@@ -189,12 +207,13 @@ elif menu == "Log Daily Tasks":
             df_items = read_sheet("Order_Items")
             site_items = df_items[df_items["installation_id"] == selected_id]
             
-            product_options = [f"{row['sub_category']} ({row['dimensions']})" for _, row in site_items.iterrows()]
+            product_options = [f"{row['sub_category']} ({row['dimensions']})" for _, row in site_items.iterrows()] if not site_items.empty else []
             product_options.append("General Site Work / Preparation")
 
-            st.info(f"📍 **Site Address:** {inst_info['site_address']} | 👥 **Team:** {inst_info['team_details']} | 📌 **Logging For:** {day_label}")
+            # Real-Time Key Display Header
+            st.success(f"🔑 **Target Installation Key:** `{selected_id}` | 📍 **Site:** {inst_info['site_address']} | 👥 **Team:** {inst_info['team_details']} | 📌 **Progress:** {day_label}")
 
-            # Check if previous day had planned tasks to display as reference
+            # Display previous day's planned tasks if available
             if not existing_logs.empty:
                 last_log = existing_logs.iloc[-1]
                 prev_planned = last_log.get('next_day_planned_tasks', '')
@@ -203,7 +222,7 @@ elif menu == "Log Daily Tasks":
                         st.info(prev_planned)
 
             st.divider()
-            st.subheader(f"Task Entry for `{selected_id}` ({day_label})")
+            st.subheader(f"Task Entry for Key: `{selected_id}` ({day_label})")
             
             col1, col2 = st.columns(2)
             with col1:
@@ -211,7 +230,7 @@ elif menu == "Log Daily Tasks":
             with col2:
                 submitted_by = st.text_input("Technician Name", value=inst_info['team_details'].split('+')[0].strip())
 
-            st.markdown("#### Today's Tasks Completed")
+            st.markdown("#### Today's Completed Tasks")
 
             tasks_list = []
             for i in range(st.session_state.task_count):
@@ -246,9 +265,8 @@ elif menu == "Log Daily Tasks":
                 else:
                     combined_completed_tasks = "\n".join(tasks_list)
                     combined_next_tasks = "\n".join(next_tasks_list) if next_tasks_list else "None planned"
-                    log_id = f"LOG-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+                    log_id = f"L-{generate_short_id('G')}"
                     
-                    # Row data matches Daily_Logs long-format schema
                     log_row = [
                         log_id, 
                         selected_id, 
@@ -262,20 +280,20 @@ elif menu == "Log Daily Tasks":
                     ]
                     append_to_sheet("Daily_Logs", log_row)
                     
-                    st.success(f"{day_label} Tasks logged successfully to Google Sheets! Log Key: `{log_id}`")
+                    st.success(f"{day_label} Tasks logged successfully for Primary Key **`{selected_id}`** (Log Key: `{log_id}`)!")
                     st.session_state.task_count = 5
                     st.session_state.next_task_count = 3
 
 # 3. EDIT TASK LOG (BY PRIMARY KEY)
 elif menu == "Edit Task Log (By Primary Key)":
-    st.header("✏️ Edit Task Log Entry by Primary Key (`log_id`)")
+    st.header("✏️ Edit Task Log Entry by Log Primary Key (`log_id`)")
 
     df_logs = read_sheet("Daily_Logs")
 
     if df_logs.empty:
         st.warning("No task logs found in the database.")
     else:
-        st.subheader("Select Primary Key")
+        st.subheader("Select Log Key to Edit")
         
         col_k1, col_k2 = st.columns(2)
         with col_k1:
@@ -285,8 +303,7 @@ elif menu == "Edit Task Log (By Primary Key)":
         log_data = df_logs[df_logs["log_id"] == selected_log_id].iloc[0]
 
         with col_k2:
-            st.write(f"**Installation ID:** `{log_data['installation_id']}`")
-            st.write(f"**Day:** {log_data.get('day_number', 'N/A')} | **Logged Date:** {log_data['logged_date']}")
+            st.info(f"🔑 **Installation ID:** `{log_data['installation_id']}` | **Day:** {log_data.get('day_number', 'N/A')} | **Date:** {log_data['logged_date']}")
 
         st.divider()
 
@@ -329,12 +346,13 @@ elif menu == "View Logs & Update Status":
     if df_inst.empty:
         st.warning("No Installation IDs recorded.")
     else:
-        inst_ids = df_inst["installation_id"].tolist()
-        selected_id = st.selectbox("Select Installation ID", inst_ids)
+        inst_map = {f"{row['installation_id']} - {row['site_address'][:25]}...": row['installation_id'] for _, row in df_inst.iterrows()}
+        selected_label = st.selectbox("Select Installation Primary Key (6 Chars):", list(inst_map.keys()))
+        selected_id = inst_map[selected_label]
 
         site_info = df_inst[df_inst["installation_id"] == selected_id].iloc[0]
         
-        st.markdown(f"### Installation ID: `{site_info['installation_id']}`")
+        st.success(f"### Selected Installation Key: `{site_info['installation_id']}`")
         st.write(f"**Site Address:** {site_info['site_address']} | **Team Details:** {site_info['team_details']}")
         
         st.divider()
@@ -354,7 +372,7 @@ elif menu == "View Logs & Update Status":
             if st.button("Update Status", type="primary"):
                 updated_inst = update_sheet_row("Installations", "installation_id", selected_id, {"status": new_status})
                 if updated_inst:
-                    st.success(f"Status updated to **{new_status}**!")
+                    st.success(f"Status for `{selected_id}` updated to **{new_status}**!")
                     st.rerun()
                 else:
                     st.error("Could not update status in Google Sheets.")
@@ -364,7 +382,10 @@ elif menu == "View Logs & Update Status":
         
         df_items = read_sheet("Order_Items")
         site_items = df_items[df_items["installation_id"] == selected_id]
-        st.table(site_items[["category", "sub_category", "dimensions", "quantity"]])
+        if not site_items.empty:
+            st.table(site_items[["category", "sub_category", "dimensions", "quantity"]])
+        else:
+            st.info("No order items recorded for this installation ID.")
 
         st.divider()
         st.subheader("📅 Activity Timeline")
@@ -373,14 +394,14 @@ elif menu == "View Logs & Update Status":
         site_logs = df_logs[df_logs["installation_id"] == selected_id]
 
         if site_logs.empty:
-            st.info("No logs recorded for this Installation ID yet.")
+            st.info("No activity logs recorded for this Installation ID yet.")
         else:
             for _, row in site_logs.iterrows():
                 with st.expander(f"📅 **{row.get('day_number', 'Day Log')} - Date: {row['logged_date']}**", expanded=True):
                     st.markdown(f"""
-                    * **Log ID (PK):** `{row['log_id']}`
-                    * **Time:** `{str(row['logged_timestamp']).split(' ')[-1]}`
-                    * **Product/Area:** {row['product_worked_on']}
+                    * **Log Primary Key:** `{row['log_id']}`
+                    * **Timestamp:** `{str(row['logged_timestamp']).split(' ')[-1]}`
+                    * **Product Worked On:** {row['product_worked_on']}
                     * **Technician:** {row['submitted_by']}
                     
                     **Completed Tasks:**
@@ -398,11 +419,11 @@ elif menu == "View Logs & Update Status":
 elif menu == "Master Database":
     st.header("Master Database View (Google Sheets)")
     
-    st.subheader("1. All Installations")
+    st.subheader("1. All Installations (6-Char Primary Keys)")
     st.dataframe(read_sheet("Installations"), use_container_width=True)
     
     st.subheader("2. All Order Items")
     st.dataframe(read_sheet("Order_Items"), use_container_width=True)
     
-    st.subheader("3. All Log Entries (Long-Format)")
+    st.subheader("3. All Log Entries")
     st.dataframe(read_sheet("Daily_Logs"), use_container_width=True)
