@@ -31,12 +31,18 @@ def append_to_sheet(sheet_name, row_data):
     sheet = get_worksheet(sheet_name)
     sheet.append_row(row_data)
 
-# Helper function to read worksheet data safely
+# Safe data reader with strict String Formatting & Space Cleanup (Fixes Fetching Error)
 def read_sheet(sheet_name):
     try:
         sheet = get_worksheet(sheet_name)
         data = sheet.get_all_records()
         df = pd.DataFrame(data)
+        if not df.empty:
+            # Clean up Column names (remove unwanted spaces)
+            df.columns = [str(col).strip() for col in df.columns]
+            # Clean up all string values (remove trailing/leading whitespace)
+            for col in df.columns:
+                df[col] = df[col].astype(str).str.strip()
     except Exception:
         df = pd.DataFrame()
     
@@ -63,10 +69,11 @@ def read_sheet(sheet_name):
 def update_sheet_row(sheet_name, key_column_name, key_value, updated_row_dict):
     sheet = get_worksheet(sheet_name)
     records = sheet.get_all_records()
-    headers = sheet.row_values(1)
+    headers = [str(h).strip() for h in sheet.row_values(1)]
     
     for idx, row in enumerate(records, start=2):
-        if str(row.get(key_column_name)) == str(key_value):
+        cleaned_row = {str(k).strip(): str(v).strip() for k, v in row.items()}
+        if cleaned_row.get(key_column_name) == str(key_value).strip():
             for col_name, val in updated_row_dict.items():
                 if col_name in headers:
                     col_idx = headers.index(col_name) + 1
@@ -202,18 +209,19 @@ elif menu == "Log Daily Tasks":
     df_inst = read_sheet("Installations")
     df_logs = read_sheet("Daily_Logs")
 
-    st.subheader("1. Search Options")
-    search_tab1, search_tab2 = st.tabs(["🔎 Search by Primary Key", "📅 Search by Date"])
+    st.subheader("Select the Data")
+    search_tab1, search_tab2 = st.tabs(["🔎 Search by Installation Id", "📅 Search by Date"])
 
     selected_id = None
 
     with search_tab1:
         col_pk_input, col_pk_select = st.columns(2)
+        all_ids = df_inst["installation_id"].tolist() if not df_inst.empty else []
+        
         with col_pk_input:
-            pk_query = st.text_input("Enter Primary Key directly:", placeholder="e.g., INST-2026-XXXXX").strip()
+            pk_query = st.text_input("Enter Installation ID directly:", placeholder="e.g., INST-2026-G4HVI").strip()
         
         with col_pk_select:
-            all_ids = df_inst["installation_id"].tolist() if not df_inst.empty else []
             id_options = [f"{row['installation_id']} | {row['site_address'][:25]}..." for _, row in df_inst.iterrows()] if not df_inst.empty else ["No existing IDs found"]
             selected_dropdown = st.selectbox("Or choose existing Installation Key:", id_options)
 
@@ -225,9 +233,9 @@ elif menu == "Log Daily Tasks":
                 if matched:
                     selected_id = matched[0]
                 else:
-                    st.warning(f"No match found for primary key: '{pk_query}'. Using dropdown selection.")
+                    st.warning(f"No match found for Installation ID: '{pk_query}'. Using dropdown selection.")
         
-        if not selected_id and not df_inst.empty:
+        if not selected_id and not df_inst.empty and selected_dropdown != "No existing IDs found":
             selected_id = selected_dropdown.split(" | ")[0]
 
     with search_tab2:
@@ -250,7 +258,7 @@ elif menu == "Log Daily Tasks":
     st.divider()
 
     if not selected_id or df_inst.empty or selected_id not in df_inst["installation_id"].values:
-        st.info("Please enter or select a valid Primary Key above to load and record task logs.")
+        st.info("Please enter or select a valid Installation ID above to load and record task logs.")
     else:
         inst_info = df_inst[df_inst["installation_id"] == selected_id].iloc[0]
 
@@ -332,7 +340,7 @@ elif menu == "Log Daily Tasks":
                 ]
                 append_to_sheet("Daily_Logs", log_row)
                 
-                st.success(f"Tasks logged successfully for Installation Primary Key **`{selected_id}`** (Visit Log Key: `{log_id}`)!")
+                st.success(f"Tasks logged successfully for Installation ID **`{selected_id}`** (Visit Log Key: `{log_id}`)!")
                 st.session_state.task_count = 5
                 st.session_state.next_task_count = 5
 
