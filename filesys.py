@@ -345,7 +345,7 @@ if menu == "New Installation Order":
 STATUS_OPTIONS = ["In Progress", "On Hold", "Pending", "Completed", "Cancelled"]
 
 # 2. LOG DAILY TASKS
-elif menu == "Log Daily Tasks":
+if menu == "Log Daily Tasks":
     st.header("📋 Log Daily Tasks")
 
     df_inst = read_sheet("Installations")
