@@ -18,7 +18,7 @@ st.set_page_config(
 SPREADSHEET_NAME = "Installation_Schedules"
 
 # Render High-Quality Logo in Navigation Bar (Sidebar)
-LOGO_PATH = "Company Logo.jpeg"  # Ensure the image file is in the working directory
+LOGO_PATH = "Company Logo.jpeg"
 
 if os.path.exists(LOGO_PATH):
     st.sidebar.image(LOGO_PATH, use_container_width=True)
@@ -27,21 +27,16 @@ else:
 
 st.sidebar.markdown("---")
 
-# Custom CSS Theme based on Logo Palette
+# Custom CSS Theme
 st.markdown("""
     <style>
-    /* Global Page Styling */
     .stApp {
         background-color: #FAFCFE;
     }
-
-    /* Custom Header Styling */
     h1, h2, h3 {
         color: #0F4C81 !important;
         font-weight: 700 !important;
     }
-
-    /* Primary Buttons Styling (Logo Green Accent) */
     div.stButton > button:first-child {
         background-color: #00A651 !important;
         color: #FFFFFF !important;
@@ -51,53 +46,38 @@ st.markdown("""
         padding: 0.5rem 1rem !important;
         transition: all 0.3s ease !important;
     }
-    
     div.stButton > button:first-child:hover {
         background-color: #008741 !important;
         box-shadow: 0 4px 10px rgba(0, 166, 81, 0.3) !important;
     }
-
-    /* Form Submit & Primary Action Buttons (Deep Blue) */
     button[kind="primary"] {
         background: linear-gradient(135deg, #0F4C81 0%, #1A6BBA 100%) !important;
         color: white !important;
         border: none !important;
     }
-    
     button[kind="primary"]:hover {
         background: linear-gradient(135deg, #0A375E 0%, #0F4C81 100%) !important;
         box-shadow: 0 4px 10px rgba(15, 76, 129, 0.3) !important;
     }
-
-    /* Sidebar Styling */
     section[data-testid="stSidebar"] {
         background-color: #F0F5FA !important;
         border-right: 2px solid #0F4C81 !important;
     }
-
-    /* Sidebar Logo Padding Cleanup */
     section[data-testid="stSidebar"] [data-testid="stImage"] {
         padding-top: 10px;
         padding-bottom: 10px;
     }
-
-    /* Sidebar Radio Highlights */
     div[role="radiogroup"] label[data-baseweb="radio"] div:first-child {
         background-color: #0F4C81 !important;
     }
-
-    /* Input Field Focus Borders */
     .stTextInput>div>div>input:focus, .stSelectbox>div>div>div:focus, .stTextArea>div>div>textarea:focus {
         border-color: #00A651 !important;
         box-shadow: 0 0 0 1px #00A651 !important;
     }
-
-    /* Tab Headers Styling */
     button[data-baseweb="tab"] {
         color: #0F4C81 !important;
         font-weight: 600 !important;
     }
-
     button[aria-selected="true"] {
         color: #00A651 !important;
         border-bottom-color: #00A651 !important;
@@ -105,7 +85,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Google Sheets Connection Management
+# Google Sheets Client
 @st.cache_resource
 def get_gspread_client():
     scope = [
@@ -126,7 +106,6 @@ def get_worksheet(worksheet_name):
     client = get_gspread_client()
     return client.open(SPREADSHEET_NAME).worksheet(worksheet_name)
 
-# Append new row helper
 def append_to_sheet(sheet_name, row_data):
     try:
         sheet = get_worksheet(sheet_name)
@@ -135,7 +114,6 @@ def append_to_sheet(sheet_name, row_data):
     except Exception as e:
         st.error(f"Failed to append row to {sheet_name}: {e}")
 
-# Safe Data Reader using raw values to bypass header mismatch issues
 def read_sheet(sheet_name):
     try:
         sheet = get_worksheet(sheet_name)
@@ -170,11 +148,10 @@ def get_empty_default_df(sheet_name):
         return pd.DataFrame(columns=[
             "log_id", "installation_id", "day_number", "logged_timestamp", 
             "logged_date", "product_worked_on", "tasks_completed", 
-            "next_day_planned_tasks", "submitted_by"
+            "next_day_planned_tasks", "site_remarks", "submitted_by"
         ])
     return pd.DataFrame()
 
-# Primary key cell updater
 def update_sheet_row(sheet_name, key_column_name, key_value, updated_row_dict):
     try:
         sheet = get_worksheet(sheet_name)
@@ -203,6 +180,30 @@ def update_sheet_row(sheet_name, key_column_name, key_value, updated_row_dict):
         st.error(f"Update failed: {e}")
     return False
 
+def delete_sheet_row(sheet_name, key_column_name, key_value):
+    try:
+        sheet = get_worksheet(sheet_name)
+        rows = sheet.get_all_values()
+        if not rows:
+            return False
+            
+        headers = [str(h).strip().lower() for h in rows[0]]
+        key_column_name_lower = str(key_column_name).strip().lower()
+        
+        if key_column_name_lower not in headers:
+            return False
+            
+        key_col_idx = headers.index(key_column_name_lower)
+        
+        for row_idx, row in enumerate(rows[1:], start=2):
+            if len(row) > key_col_idx and str(row[key_col_idx]).strip() == str(key_value).strip():
+                sheet.delete_rows(row_idx)
+                st.cache_data.clear()
+                return True
+    except Exception as e:
+        st.error(f"Delete failed: {e}")
+    return False
+
 def generate_project_id():
     year = datetime.now().strftime("%Y")
     chars = string.ascii_uppercase + string.digits
@@ -228,7 +229,6 @@ PRODUCT_CATALOG = {
 
 STATUS_OPTIONS = ["In Progress", "On Hold", "Pending", "Completed", "Cancelled"]
 
-# Header Banner matching Logo Theme
 st.markdown("""
     <div style="border-left: 6px solid #00A651; padding: 12px 18px; background-color: #F0F5FA; border-radius: 4px; margin-bottom: 25px;">
         <h1 style="margin:0; padding:0; font-size: 28px; color: #0F4C81;">🏢 Sidharth Shutter & Automation</h1>
@@ -273,9 +273,9 @@ if menu == "New Installation Order":
 
     with col2:
         min_past_date = datetime.now() - timedelta(days=7)
-        order_created_date = st.date_input("Installation Date (Order Created Date)", value=datetime.now(), min_value=min_past_date)
-        site_clearance = st.date_input("Site Clearance Date", value=datetime.now(), min_value=min_past_date)
-        target_ho_date = st.date_input("Target Handover Date", value=datetime.now() + timedelta(days=15), min_value=min_past_date)
+        order_created_date = st.date_input("Installation Date (Order Created Date)", value=datetime.now(), min_value=min_past_date, format="YYYY-MM-DD")
+        site_clearance = st.date_input("Site Clearance Date", value=datetime.now(), min_value=min_past_date, format="YYYY-MM-DD")
+        target_ho_date = st.date_input("Target Handover Date", value=datetime.now() + timedelta(days=15), min_value=min_past_date, format="YYYY-MM-DD")
 
     st.divider()
 
@@ -299,22 +299,7 @@ if menu == "New Installation Order":
 
     st.divider()
 
-    st.markdown("""
-        <style>
-        div.stButton > button:has(div:contains("Save Installation Order")) {
-            background-color: #0F4C81 !important;
-            color: #FFFFFF !important;
-            border: none !important;
-            font-weight: 600 !important;
-        }
-        div.stButton > button:has(div:contains("Save Installation Order")):hover {
-            background-color: #0A375E !important;
-            box-shadow: 0 4px 10px rgba(15, 76, 129, 0.3) !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-
-    if st.button("Save Installation Order", use_container_width=True):
+    if st.button("Save Installation Order", use_container_width=True, type="primary"):
         if not team_details.strip():
             st.error("Please enter Team's Details.")
         elif not site_address.strip():
@@ -359,7 +344,6 @@ elif menu == "Log Daily Tasks":
         for _, row in df_inst.iterrows()
     ] if not df_inst.empty and "installation_id" in df_inst.columns else ["No existing IDs found"]
 
-    # Initialize session state keys
     if "selected_inst_id" not in st.session_state:
         st.session_state.selected_inst_id = ""
 
@@ -369,7 +353,6 @@ elif menu == "Log Daily Tasks":
     if "pk_select_val" not in st.session_state:
         st.session_state.pk_select_val = "-- Select Installation ID --"
 
-    # Callbacks to sync inputs
     def sync_from_input():
         input_text = st.session_state.pk_input_val.strip()
         if input_text in all_ids:
@@ -420,7 +403,7 @@ elif menu == "Log Daily Tasks":
     with search_tab2:
         col_d1, col_d2 = st.columns(2)
         with col_d1:
-            filter_date = st.date_input("Filter Orders by Created Date:", value=datetime.now(), key="log_date_filter")
+            filter_date = st.date_input("Filter Orders by Created Date:", value=datetime.now(), key="log_date_filter", format="YYYY-MM-DD")
         
         with col_d2:
             if not df_inst.empty and "order_created_date" in df_inst.columns:
@@ -450,7 +433,6 @@ elif menu == "Log Daily Tasks":
 
     selected_id = st.session_state.selected_inst_id
 
-    # Dynamic Banner Display Logic
     if selected_id and not df_inst.empty and selected_id in df_inst["installation_id"].values:
         inst_info = df_inst[df_inst["installation_id"] == selected_id].iloc[0]
 
@@ -488,7 +470,7 @@ elif menu == "Log Daily Tasks":
 
         col_p1, col_p2, col_p3, col_p4 = st.columns([1, 1, 1, 1])
         with col_p1:
-            log_date = st.date_input("Log Date", value=datetime.now(), min_value=datetime.now() - timedelta(days=14))
+            log_date = st.date_input("Log Date", value=datetime.now(), min_value=datetime.now() - timedelta(days=14), format="YYYY-MM-DD")
         with col_p2:
             product_worked_on = st.selectbox("Product Worked On *", product_options)
         with col_p3:
@@ -540,24 +522,12 @@ elif menu == "Log Daily Tasks":
                 st.rerun()
 
         st.divider()
+        st.markdown("### ⚠️ Site Remarks & Delay Issues (Optional)")
+        site_remarks = st.text_area("Site Remarks / Delay Reasons", placeholder="Record material shortages, client delays, electrical issues, or site hold details...")
 
-        st.markdown("""
-            <style>
-            div.stButton > button:has(div:contains("Submit Daily Task Log")) {
-                background-color: #00A651 !important;
-                color: #FFFFFF !important;
-                border: none !important;
-                font-weight: 700 !important;
-                font-size: 16px !important;
-            }
-            div.stButton > button:has(div:contains("Submit Daily Task Log")):hover {
-                background-color: #008741 !important;
-                box-shadow: 0 4px 12px rgba(0, 166, 81, 0.4) !important;
-            }
-            </style>
-        """, unsafe_allow_html=True)
+        st.divider()
 
-        if st.button("Submit Daily Task Log", use_container_width=True):
+        if st.button("Submit Daily Task Log", use_container_width=True, type="primary"):
             if not completed_tasks:
                 st.error("Please fill in at least one completed task description.")
             elif not submitted_by.strip():
@@ -569,7 +539,7 @@ elif menu == "Log Daily Tasks":
                 
                 log_row = [
                     log_id, selected_id, day_label, auto_log_time, str(log_date), 
-                    product_worked_on, combined_completed, combined_next, submitted_by
+                    product_worked_on, combined_completed, combined_next, site_remarks, submitted_by
                 ]
                 append_to_sheet("Daily_Logs", log_row)
 
@@ -591,14 +561,15 @@ elif menu == "Edit Task Log (By Primary Key)":
 
     df_logs = read_sheet("Daily_Logs")
     df_inst = read_sheet("Installations")
+    df_items = read_sheet("Order_Items")
 
-    # Clean DataFrame column names
     if not df_logs.empty:
         df_logs.columns = df_logs.columns.str.strip().str.lower()
     if not df_inst.empty:
         df_inst.columns = df_inst.columns.str.strip().str.lower()
+    if not df_items.empty:
+        df_items.columns = df_items.columns.str.strip().str.lower()
 
-    # Identify installation_id column safely
     inst_col_logs = next((c for c in df_logs.columns if "installation" in c or "inst" in c), "installation_id") if not df_logs.empty else "installation_id"
     all_inst_ids = df_inst["installation_id"].tolist() if not df_inst.empty and "installation_id" in df_inst.columns else []
 
@@ -607,7 +578,6 @@ elif menu == "Edit Task Log (By Primary Key)":
         for _, row in df_inst.iterrows()
     ] if not df_inst.empty and "installation_id" in df_inst.columns else ["No existing IDs found"]
 
-    # Session state initialization for bi-directional search
     if "edit_inst_id" not in st.session_state:
         st.session_state.edit_inst_id = ""
     if "edit_input_val" not in st.session_state:
@@ -640,7 +610,6 @@ elif menu == "Edit Task Log (By Primary Key)":
             st.session_state.edit_inst_id = ""
             st.session_state.edit_input_val = ""
 
-    # Search Section
     st.subheader("Select the Data")
     edit_tab1, edit_tab2 = st.tabs(["🔎 Search by Installation Id", "📅 Search by Date"])
 
@@ -664,7 +633,7 @@ elif menu == "Edit Task Log (By Primary Key)":
     with edit_tab2:
         col_ed1, col_ed2 = st.columns(2)
         with col_ed1:
-            filter_edit_date = st.date_input("Filter Orders by Created Date:", value=datetime.now(), key="edit_date_filter")
+            filter_edit_date = st.date_input("Filter Orders by Created Date:", value=datetime.now(), key="edit_date_filter", format="YYYY-MM-DD")
         with col_ed2:
             if not df_inst.empty and "order_created_date" in df_inst.columns:
                 filtered_df = df_inst[df_inst["order_created_date"].astype(str) == str(filter_edit_date)]
@@ -692,11 +661,9 @@ elif menu == "Edit Task Log (By Primary Key)":
 
     selected_id = st.session_state.edit_inst_id
 
-    # Display Logs and Dynamically Calculated Day Number
     if selected_id and not df_inst.empty and selected_id in df_inst["installation_id"].values:
         inst_info = df_inst[df_inst["installation_id"] == selected_id].iloc[0]
 
-        # Get logs for this specific installation
         existing_logs = pd.DataFrame()
         if not df_logs.empty and inst_col_logs in df_logs.columns:
             df_logs[inst_col_logs] = df_logs[inst_col_logs].astype(str).str.strip()
@@ -705,7 +672,6 @@ elif menu == "Edit Task Log (By Primary Key)":
         if existing_logs.empty:
             st.warning(f"No task logs found recorded yet for Installation ID: `{selected_id}`.")
         else:
-            # Dropdown to pick which logged day to edit
             log_day_choices = [
                 f"{row.get('day_number', f'Day {idx+1}')} | Logged Date: {row.get('logged_date', row.get('log_date', 'N/A'))}" 
                 for idx, row in existing_logs.reset_index(drop=True).iterrows()
@@ -715,8 +681,18 @@ elif menu == "Edit Task Log (By Primary Key)":
             selected_idx = log_day_choices.index(selected_day_label)
             selected_log_row = existing_logs.iloc[selected_idx]
 
-            # Dynamic Banner Display
             current_day = selected_log_row.get("day_number", f"Day {selected_idx + 1}")
+            current_log_id = selected_log_row.get("log_id", "")
+
+            site_items = df_items[df_items["installation_id"] == selected_id] if not df_items.empty and "installation_id" in df_items.columns else pd.DataFrame()
+            prod_choices = [f"{row.get('sub_category', row.get('category', 'Product'))} ({row.get('dimensions', '')})" for _, row in site_items.iterrows()] if not site_items.empty else []
+            prod_choices.append("General Site Work / Preparation")
+            
+            current_prod_val = str(selected_log_row.get("product_worked_on", ""))
+            if current_prod_val not in prod_choices:
+                prod_choices.insert(0, current_prod_val)
+            prod_default_idx = prod_choices.index(current_prod_val)
+
             st.markdown(f"""
                 <div style="background-color: #EBF3FE; border-left: 5px solid #00A651; padding: 14px 20px; border-radius: 6px; margin-bottom: 20px;">
                     <span style="color: #0F4C81; font-weight: 700; font-size: 15px;">Active Installation ID:</span>
@@ -725,7 +701,6 @@ elif menu == "Edit Task Log (By Primary Key)":
                 </div>
             """, unsafe_allow_html=True)
 
-            # Show yesterday's/previous planned tasks if available
             if selected_idx > 0:
                 prev_log = existing_logs.iloc[selected_idx - 1]
                 prev_planned = prev_log.get('next_day_planned_tasks', prev_log.get('next_day_plann', ''))
@@ -742,10 +717,10 @@ elif menu == "Edit Task Log (By Primary Key)":
                         parsed_date = datetime.strptime(raw_date, "%Y-%m-%d")
                     except ValueError:
                         parsed_date = datetime.now()
-                    new_log_date = st.date_input("Log Date", value=parsed_date)
+                    new_log_date = st.date_input("Log Date", value=parsed_date, format="YYYY-MM-DD")
 
                 with col_p2:
-                    new_product = st.text_input("Product Worked On", value=str(selected_log_row.get("product_worked_on", "")))
+                    new_product = st.selectbox("Product Worked On", options=prod_choices, index=prod_default_idx)
 
                 with col_p3:
                     new_tech = st.text_input("Technician Name", value=str(selected_log_row.get("submitted_by", "")))
@@ -772,7 +747,13 @@ elif menu == "Edit Task Log (By Primary Key)":
                         height=160
                     )
 
-                submit_edit = st.form_submit_button("💾 Save Updated Log", use_container_width=True)
+                new_site_remarks = st.text_area(
+                    "Site Remarks / Delay Reasons", 
+                    value=str(selected_log_row.get("site_remarks", "")), 
+                    height=90
+                )
+
+                submit_edit = st.form_submit_button("💾 Save Updated Log", type="primary", use_container_width=True)
 
                 if submit_edit:
                     if not new_completed.strip():
@@ -783,15 +764,33 @@ elif menu == "Edit Task Log (By Primary Key)":
                             "product_worked_on": new_product,
                             "tasks_completed": new_completed,
                             "next_day_planned_tasks": new_next_planned,
+                            "site_remarks": new_site_remarks,
                             "submitted_by": new_tech
                         }
                         
-                        # Match row via Installation ID + Day Number
-                        update_sheet_row("Daily_Logs", inst_col_logs, selected_id, updated_fields)
+                        target_key = "log_id" if current_log_id else inst_col_logs
+                        target_val = current_log_id if current_log_id else selected_id
+
+                        update_sheet_row("Daily_Logs", target_key, target_val, updated_fields)
                         update_sheet_row("Installations", "installation_id", selected_id, {"status": new_status})
 
                         st.success(f"Successfully updated log for **{current_day}** under Installation ID **`{selected_id}`**!")
                         st.rerun()
+
+            st.divider()
+            with st.expander("🗑️ Danger Zone: Delete Log Entry"):
+                st.warning(f"Deleting this entry will permanently delete {current_day} log from Google Sheets.")
+                if st.button(f"Confirm Delete {current_day}", key="delete_log_btn"):
+                    if current_log_id:
+                        deleted = delete_sheet_row("Daily_Logs", "log_id", current_log_id)
+                    else:
+                        deleted = delete_sheet_row("Daily_Logs", inst_col_logs, selected_id)
+                        
+                    if deleted:
+                        st.success("Log entry deleted successfully!")
+                        st.rerun()
+                    else:
+                        st.error("Failed to delete log entry.")
 
     elif selected_id:
         st.error(f"Installation ID `{selected_id}` not found in master records.")
@@ -857,14 +856,15 @@ elif menu == "View Logs & Update Status":
             for _, row in site_logs.iterrows():
                 with st.expander(f"📅 **{row.get('day_number', 'Day Log')} - Date: {row['logged_date']}**", expanded=True):
                     st.markdown(f"""
-                    * **Visit Log ID:** `{row['log_id']}`
-                    * **Timestamp:** `{str(row['logged_timestamp']).split(' ')[-1]}`
-                    * **Product Worked On:** {row['product_worked_on']}
-                    * **Technician:** {row['submitted_by']}
+                    * **Visit Log ID:** `{row.get('log_id', 'N/A')}`
+                    * **Timestamp:** `{str(row.get('logged_timestamp', '')).split(' ')[-1]}`
+                    * **Product Worked On:** {row.get('product_worked_on', 'N/A')}
+                    * **Technician:** {row.get('submitted_by', 'N/A')}
+                    * **Site Remarks:** {row.get('site_remarks', 'None')}
                     
                     **Completed Tasks:**
                     ```
-                    {row['tasks_completed']}
+                    {row.get('tasks_completed', '')}
                     ```
                     
                     **Planned Tasks for Next Day:**
