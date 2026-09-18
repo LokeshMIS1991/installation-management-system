@@ -421,7 +421,7 @@ elif menu == "Log Daily Tasks":
             if not df_inst.empty and "order_created_date" in df_inst.columns:
                 filtered_df = df_inst[df_inst["order_created_date"].astype(str) == str(filter_date)]
                 if not filtered_df.empty:
-                    # Added Status in the label for Search by Date dropdown
+                    # Status label reflects "On Hold" and other statuses in Date Search dropdown
                     date_options = ["-- Select Installation ID --"] + [
                         f"{row['installation_id']} | {row['site_address'][:20]}... | Status: [{row.get('status', 'In Progress')}]" 
                         for _, row in filtered_df.iterrows()
@@ -474,7 +474,6 @@ elif menu == "Log Daily Tasks":
                 with st.expander(f"📌 Tasks Planned Yesterday ({last_log.get('day_number', 'Previous Log')})", expanded=True):
                     st.info(prev_planned)
 
-        # Added Work Progress / Status Dropdown right next to the log details
         col_p1, col_p2, col_p3, col_p4 = st.columns([1, 1, 1, 1])
         with col_p1:
             log_date = st.date_input("Log Date", value=datetime.now(), min_value=datetime.now() - timedelta(days=14))
@@ -562,7 +561,7 @@ elif menu == "Log Daily Tasks":
                 ]
                 append_to_sheet("Daily_Logs", log_row)
 
-                # Update the main installation status in Google Sheets
+                # Updates the main installation status to "On Hold" (or chosen status) in Google Sheets
                 update_sheet_row("Installations", "installation_id", selected_id, {"status": work_status})
                 
                 st.success(f"Successfully recorded **{day_label}** log & updated status to **{work_status}** for Installation ID **`{selected_id}`**!")
