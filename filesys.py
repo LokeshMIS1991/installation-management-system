@@ -17,6 +17,7 @@ st.set_page_config(
 # Main Google Sheets Workbook Name
 SPREADSHEET_NAME = "Installation_Schedules"
 
+
 # Render High-Quality Logo in Navigation Bar (Sidebar)
 LOGO_PATH = "Company Logo.jpeg"  # Ensure the image file is in the working directory
 
@@ -105,8 +106,10 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# Main Google Sheets Workbook Name or ID
+SPREADSHEET_NAME = "Installation_Schedules"
+
 # Google Sheets Connection Management
-@st.cache_resource
 def get_gspread_client():
     scope = [
         "https://spreadsheets.google.com/feeds",
@@ -124,6 +127,7 @@ def get_gspread_client():
 
 def get_worksheet(worksheet_name):
     client = get_gspread_client()
+    # Opens sheet directly by file name
     return client.open(SPREADSHEET_NAME).worksheet(worksheet_name)
 
 # Append new row helper
@@ -135,7 +139,7 @@ def append_to_sheet(sheet_name, row_data):
     except Exception as e:
         st.error(f"Failed to append row to {sheet_name}: {e}")
 
-# Safe Data Reader using raw values to bypass header mismatch issues
+# Diagnostic Reader: Displays explicit errors on screen if sheet fetch fails
 def read_sheet(sheet_name):
     try:
         sheet = get_worksheet(sheet_name)
@@ -153,7 +157,8 @@ def read_sheet(sheet_name):
             df[col] = df[col].astype(str).str.strip()
             
         return df
-    except Exception:
+    except Exception as e:
+        st.error(f"⚠️ Error reading tab '{sheet_name}': {e}")
         return get_empty_default_df(sheet_name)
 
 def get_empty_default_df(sheet_name):
