@@ -7,16 +7,18 @@ import random
 import string
 
 # ---------------------------------------------------------
-# 1. Page Configuration
+# 1. Configuration & Page Setup
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Task Logger Pro - Sidharth Shutter",
-    page_icon="📋",
+    page_title="Sidharth Shutter - Installation Management",
+    page_icon="🏗️",
     layout="wide"
 )
 
-# Your target Google Sheet ID
+# Spreadsheet Configuration
 SPREADSHEET_ID = "19rQC3aNtosjhSwyctKAk9ojUt0c8gyOPH-Q8trW5q5s"
+SPREADSHEET_NAME = "Installation_Schedules"
+
 CATEGORIES = ['General', 'Work', 'Personal', 'Urgent', 'Meeting', 'Development', 'Design']
 
 # Custom CSS Styling
@@ -37,7 +39,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 2. Google Sheets Authentication (Using Key, Not Name)
+# 2. Resilient Google Sheets Authentication
 # ---------------------------------------------------------
 @st.cache_resource(ttl=300)
 def get_gspread_client():
@@ -56,8 +58,11 @@ def get_gspread_client():
 
 def get_worksheet(worksheet_name):
     client = get_gspread_client()
-    # Fixed line: Opens spreadsheet by exact KEY instead of title "Installation_Schedules"
-    return client.open_by_key(SPREADSHEET_ID).worksheet(worksheet_name)
+    try:
+        # Dual-fallback approach: Try Sheet ID first, fallback to Sheet Name
+        return client.open_by_key(SPREADSHEET_ID).worksheet(worksheet_name)
+    except Exception:
+        return client.open(SPREADSHEET_NAME).worksheet(worksheet_name)
 
 def read_sheet(sheet_name):
     try:
@@ -73,7 +78,7 @@ def read_sheet(sheet_name):
             df[col] = df[col].astype(str).str.strip()
         return df
     except Exception as e:
-        st.error(f"Error reading '{sheet_name}': {e}")
+        st.error(f"Error reading worksheet '{sheet_name}': {e}")
         return pd.DataFrame()
 
 def append_to_sheet(sheet_name, row_data):
@@ -86,7 +91,7 @@ def generate_log_id():
     return f"LOG-{year}-{''.join(random.choices(chars, k=5))}"
 
 # ---------------------------------------------------------
-# 3. Dynamic Session State Management
+# 3. Dynamic Task State Management
 # ---------------------------------------------------------
 if "tasks_list" not in st.session_state:
     st.session_state.tasks_list = [
@@ -109,57 +114,72 @@ def remove_task_row(index):
         st.session_state.tasks_list.pop(index)
 
 # ---------------------------------------------------------
-# 4. Interface Header
+# 4. Main App Interface
 # ---------------------------------------------------------
 header_col1, header_col2 = st.columns([3, 1])
 with header_col1:
-    st.title("📋 Task Logger")
-    st.caption("Sidharth Shutter & Automation — Task Management")
+    st.title("🏭 Sidharth Shutter & Automation")
+    st.caption("Installation Management System & Daily Task Logger")
 
 with header_col2:
     st.info(f"📅 **{datetime.now().strftime('%a, %b %d, %Y')}**")
 
+st.markdown("---")
+
 # ---------------------------------------------------------
-# 5. Project Selection & Task Form
+# 5. Project Selection & Data Binding
 # ---------------------------------------------------------
-st.subheader("1. Select Installation Project")
+st.subheader("1. Select Installation Record")
+
 df_inst = read_sheet("Installations")
 df_logs = read_sheet("Daily_Logs")
 
 selected_id = None
+
 if df_inst.empty:
-    st.warning("⚠️ No installation projects loaded from Google Sheets. Ensure the sheet is shared with your service account.")
+    st.warning("⚠️ No records loaded from the 'Installations' sheet. Verify sheet sharing settings with your service account.")
 else:
-    options = [f"{row.get('installation_id', 'N/A')} | {row.get('site_address', 'No Address')[:35]}" for _, row in df_inst.iterrows()]
-    selected_option = st.selectbox("Choose Installation ID:", options)
+    options = []
+    for _, row in df_inst.iterrows():
+        inst_id = row.get("installation_id", "N/A")
+        address = row.get("site_address", "No Address")
+        city = row.get("city_prefix", "")
+        options.append(f"{inst_id} | {city} - {address[:35]}")
+    
+    selected_option = st.selectbox("Choose Active Installation ID:", options)
     if selected_option:
         selected_id = selected_option.split(" | ")[0]
 
 if selected_id:
+    # Filter logs to calculate exact log sequence
     existing_logs = df_logs[df_logs["installation_id"] == selected_id] if not df_logs.empty else pd.DataFrame()
     day_number_str = f"Day {len(existing_logs) + 1}"
 
     col_m1, col_m2, col_m3 = st.columns(3)
     with col_m1:
-        st.metric(label="Active Project", value=selected_id)
+        st.metric(label="Active Project ID", value=selected_id)
     with col_m2:
         st.metric(label="Log Sequence", value=day_number_str)
     with col_m3:
-        submitted_by = st.text_input("Technician Name", value="Field Tech", key="tech_input")
+        submitted_by = st.text_input("Technician / Manager Name", value="Field Engineer", key="tech_input")
 
     st.markdown("---")
-    st.subheader("2. Dynamic Task Logger")
 
-    # Controls
+    # ---------------------------------------------------------
+    # 6. Task Entry Form
+    # ---------------------------------------------------------
+    st.subheader("2. Task Logger Entry")
+
+    # Form Control Action Buttons
     ctrl1, ctrl2 = st.columns([1, 1])
     with ctrl1:
-        st.button("🗑️ Clear All", on_click=clear_all_tasks)
+        st.button("🗑️ Clear All Rows", on_click=clear_all_tasks)
     with ctrl2:
-        st.button("🔄 Reset to 5 Slots", on_click=reset_tasks_to_5)
+        st.button("🔄 Reset Slots (5)", on_click=reset_tasks_to_5)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Dynamic Table Header
+    # Dynamic Header Row
     if len(st.session_state.tasks_list) > 0:
         h1, h2, h3, h4 = st.columns([1, 6, 3, 1])
         h1.markdown("<p class='table-header'>DONE</p>", unsafe_allow_html=True)
@@ -167,7 +187,7 @@ if selected_id:
         h3.markdown("<p class='table-header'>CATEGORY / TAG</p>", unsafe_allow_html=True)
         h4.markdown("<p class='table-header'>ACTION</p>", unsafe_allow_html=True)
 
-    # Dynamic Rows
+    # Render Task Input Rows
     for idx, task in enumerate(st.session_state.tasks_list):
         c_done, c_text, c_cat, c_del = st.columns([1, 6, 3, 1])
         
@@ -186,18 +206,19 @@ if selected_id:
                 remove_task_row(idx)
                 st.rerun()
 
-    st.button("➕ Add Another Task", on_click=add_task_row)
+    st.button("➕ Add Task Row", on_click=add_task_row, type="secondary")
 
     st.markdown("---")
-    next_day_plan = st.text_area("Next Day Planned Tasks", placeholder="Briefly state what needs to be done tomorrow...")
+    next_day_plan = st.text_area("Next Day Planned Tasks", placeholder="State tasks planned for tomorrow...")
 
-    if st.button("💾 Log Tasks to Google Sheet", type="primary", use_container_width=True):
+    # Submission Action
+    if st.button("💾 Submit & Save Task Log", type="primary", use_container_width=True):
         valid_tasks = [t for t in st.session_state.tasks_list if t["text"].strip()]
 
         if not valid_tasks:
-            st.error("Please enter at least one task description before logging.")
+            st.error("Please fill in at least one task description before saving.")
         elif not submitted_by.strip():
-            st.error("Please specify the Technician Name.")
+            st.error("Please enter the Technician / Manager Name.")
         else:
             formatted_entries = []
             categories_set = set()
@@ -207,7 +228,7 @@ if selected_id:
                 formatted_entries.append(f"{i}. {status} {t['text'].strip()} ({t['category']})")
                 categories_set.add(t["category"])
 
-            tasks_text_summary = "\n".join(formatted_entries)
+            tasks_summary = "\n".join(formatted_entries)
             categories_summary = ", ".join(list(categories_set))
             log_id = generate_log_id()
 
@@ -218,14 +239,33 @@ if selected_id:
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 datetime.now().strftime("%Y-%m-%d"),
                 categories_summary,
-                tasks_text_summary,
+                tasks_summary,
                 next_day_plan,
                 submitted_by
             ]
 
             try:
                 append_to_sheet("Daily_Logs", new_log_row)
-                st.success(f"Log **{log_id}** saved to Google Sheets successfully!")
+                st.success(f"Log **{log_id}** recorded to Google Sheet successfully!")
                 reset_tasks_to_5()
             except Exception as e:
-                st.error(f"Failed to submit task log: {e}")
+                st.error(f"Failed to record daily log: {e}")
+
+# ---------------------------------------------------------
+# 7. Recorded History Section
+# ---------------------------------------------------------
+st.markdown("---")
+st.subheader("🕒 Daily Log Activity")
+
+if not df_logs.empty and selected_id:
+    filtered_logs = df_logs[df_logs["installation_id"] == selected_id]
+    if not filtered_logs.empty:
+        for _, log in filtered_logs.iterrows():
+            with st.expander(f"📄 Log {log.get('log_id', 'N/A')} - {log.get('logged_timestamp', '')}"):
+                st.write(f"**Technician:** {log.get('submitted_by', 'N/A')}")
+                st.write(f"**Categories:** {log.get('product_worked_on', 'N/A')}")
+                st.text(f"Tasks:\n{log.get('tasks_completed', '')}")
+                if log.get('next_day_planned_tasks'):
+                    st.info(f"**Planned Next Steps:** {log['next_day_planned_tasks']}")
+    else:
+        st.caption("No daily logs recorded for this project yet.")
