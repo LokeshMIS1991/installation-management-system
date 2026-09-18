@@ -226,7 +226,7 @@ PRODUCT_CATALOG = {
     "Other": ["Other"]
 }
 
-STATUS_OPTIONS = ["In Progress", "Pending", "Done", "Cancelled"]
+STATUS_OPTIONS = ["In Progress", "On Hold", "Pending", "Completed", "Cancelled"]
 
 # Header Banner matching Logo Theme
 st.markdown("""
@@ -341,21 +341,23 @@ if menu == "New Installation Order":
             st.success(f"Saved to Google Sheets! Generated Installation ID: **`{inst_id}`**")
             st.session_state.temp_inst_id = generate_project_id()
 
-# Defined status options including "On Hold"
-STATUS_OPTIONS = ["In Progress", "On Hold", "Pending", "Completed", "Cancelled"]
-
 # 2. LOG DAILY TASKS
-if menu == "Log Daily Tasks":
+elif menu == "Log Daily Tasks":
     st.header("📋 Log Daily Tasks")
 
     df_inst = read_sheet("Installations")
     df_logs = read_sheet("Daily_Logs")
 
-    all_ids = df_inst["installation_id"].tolist() if not df_inst.empty else []
+    if not df_inst.empty:
+        df_inst.columns = df_inst.columns.str.strip().str.lower()
+    if not df_logs.empty:
+        df_logs.columns = df_logs.columns.str.strip().str.lower()
+
+    all_ids = df_inst["installation_id"].tolist() if not df_inst.empty and "installation_id" in df_inst.columns else []
     id_options = ["-- Select Installation ID --"] + [
         f"{row['installation_id']} | {row['site_address'][:25]}... [{row.get('status', 'In Progress')}]" 
         for _, row in df_inst.iterrows()
-    ] if not df_inst.empty else ["No existing IDs found"]
+    ] if not df_inst.empty and "installation_id" in df_inst.columns else ["No existing IDs found"]
 
     # Initialize session state keys
     if "selected_inst_id" not in st.session_state:
@@ -452,26 +454,34 @@ if menu == "Log Daily Tasks":
     if selected_id and not df_inst.empty and selected_id in df_inst["installation_id"].values:
         inst_info = df_inst[df_inst["installation_id"] == selected_id].iloc[0]
 
-        existing_logs = df_logs[df_logs["installation_id"] == selected_id] if not df_logs.empty else pd.DataFrame()
+        inst_col_logs = next((c for c in df_logs.columns if "installation" in c or "inst" in c), "installation_id") if not df_logs.empty else "installation_id"
+        existing_logs = pd.DataFrame()
+        if not df_logs.empty and inst_col_logs in df_logs.columns:
+            df_logs[inst_col_logs] = df_logs[inst_col_logs].astype(str).str.strip()
+            existing_logs = df_logs[df_logs[inst_col_logs] == selected_id.strip()]
+
         day_number_int = len(existing_logs) + 1
         day_label = f"Day {day_number_int}"
 
         df_items = read_sheet("Order_Items")
-        site_items = df_items[df_items["installation_id"] == selected_id] if not df_items.empty else pd.DataFrame()
-        product_options = [f"{row['sub_category']} ({row['dimensions']})" for _, row in site_items.iterrows()] if not site_items.empty else []
+        if not df_items.empty:
+            df_items.columns = df_items.columns.str.strip().str.lower()
+
+        site_items = df_items[df_items["installation_id"] == selected_id] if not df_items.empty and "installation_id" in df_items.columns else pd.DataFrame()
+        product_options = [f"{row.get('sub_category', row.get('category', 'Product'))} ({row.get('dimensions', '')})" for _, row in site_items.iterrows()] if not site_items.empty else []
         product_options.append("General Site Work / Preparation")
 
         st.markdown(f"""
             <div style="background-color: #EBF3FE; border-left: 5px solid #00A651; padding: 14px 20px; border-radius: 6px; margin-bottom: 20px;">
                 <span style="color: #0F4C81; font-weight: 700; font-size: 15px;">Active Installation ID:</span>
                 <span style="color: #00A651; font-weight: 700; font-size: 16px; margin-left: 8px; font-family: monospace;">{selected_id}</span>
-                <span style="color: #1A6BBA; font-weight: 600; font-size: 14px; margin-left: 15px;">(Auto-Calculated: <b>{day_label}</b> | Team: {inst_info['team_details']})</span>
+                <span style="color: #1A6BBA; font-weight: 600; font-size: 14px; margin-left: 15px;">(Auto-Calculated: <b>{day_label}</b> | Team: {inst_info.get('team_details', 'N/A')})</span>
             </div>
         """, unsafe_allow_html=True)
 
         if not existing_logs.empty:
             last_log = existing_logs.iloc[-1]
-            prev_planned = last_log.get('next_day_planned_tasks', '')
+            prev_planned = last_log.get('next_day_planned_tasks', last_log.get('next_day_plann', ''))
             if prev_planned and str(prev_planned).strip():
                 with st.expander(f"📌 Tasks Planned Yesterday ({last_log.get('day_number', 'Previous Log')})", expanded=True):
                     st.info(prev_planned)
@@ -482,12 +492,11 @@ if menu == "Log Daily Tasks":
         with col_p2:
             product_worked_on = st.selectbox("Product Worked On *", product_options)
         with col_p3:
-            default_tech = inst_info['team_details'].split('+')[0].strip() if '+' in inst_info['team_details'] else inst_info['team_details']
+            default_tech = inst_info['team_details'].split('+')[0].strip() if '+' in str(inst_info.get('team_details', '')) else str(inst_info.get('team_details', ''))
             submitted_by = st.text_input("Technician Name *", value=default_tech)
         with col_p4:
             curr_status = inst_info.get('status', 'In Progress')
             status_index = STATUS_OPTIONS.index(curr_status) if curr_status in STATUS_OPTIONS else 0
-            # "On Hold" is now selectable from STATUS_OPTIONS
             work_status = st.selectbox("Work Progress Status *", STATUS_OPTIONS, index=status_index, key="work_progress_status")
 
         auto_log_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -590,7 +599,7 @@ elif menu == "Edit Task Log (By Primary Key)":
         df_inst.columns = df_inst.columns.str.strip().str.lower()
 
     # Identify installation_id column safely
-    inst_col_logs = next((c for c in df_logs.columns if "installation" in c or "inst" in c), None) if not df_logs.empty else None
+    inst_col_logs = next((c for c in df_logs.columns if "installation" in c or "inst" in c), "installation_id") if not df_logs.empty else "installation_id"
     all_inst_ids = df_inst["installation_id"].tolist() if not df_inst.empty and "installation_id" in df_inst.columns else []
 
     inst_options = ["-- Select Installation ID --"] + [
@@ -689,8 +698,9 @@ elif menu == "Edit Task Log (By Primary Key)":
 
         # Get logs for this specific installation
         existing_logs = pd.DataFrame()
-        if not df_logs.empty and inst_col_logs:
-            existing_logs = df_logs[df_logs[inst_col_logs].astype(str).str.contains(selected_id, case=False, na=False)]
+        if not df_logs.empty and inst_col_logs in df_logs.columns:
+            df_logs[inst_col_logs] = df_logs[inst_col_logs].astype(str).str.strip()
+            existing_logs = df_logs[df_logs[inst_col_logs] == selected_id.strip()]
 
         if existing_logs.empty:
             st.warning(f"No task logs found recorded yet for Installation ID: `{selected_id}`.")
@@ -785,7 +795,6 @@ elif menu == "Edit Task Log (By Primary Key)":
 
     elif selected_id:
         st.error(f"Installation ID `{selected_id}` not found in master records.")
-
 
 # 4. VIEW LOGS & UPDATE STATUS
 elif menu == "View Logs & Update Status":
