@@ -358,12 +358,13 @@ elif menu == "Log Daily Tasks":
         all_ids = df_inst["installation_id"].tolist() if not df_inst.empty else []
         
         with col_pk_input:
-            pk_query = st.text_input("Enter Installation ID directly:", placeholder="e.g., INST-2026-G4HVI").strip()
+            pk_query = st.text_input("Enter Installation ID directly:", placeholder="e.g., INST-2026-G4HVI", key="log_pk_input").strip()
         
         with col_pk_select:
-            id_options = [f"{row['installation_id']} | {row['site_address'][:25]}..." for _, row in df_inst.iterrows()] if not df_inst.empty else ["No existing IDs found"]
-            selected_dropdown = st.selectbox("Or choose existing Installation Key:", id_options)
+            id_options = ["-- Select Installation ID --"] + [f"{row['installation_id']} | {row['site_address'][:25]}..." for _, row in df_inst.iterrows()] if not df_inst.empty else ["No existing IDs found"]
+            selected_dropdown = st.selectbox("Or choose existing Installation Key:", id_options, key="log_pk_select")
 
+        # Priority 1: User typed a direct input query
         if pk_query:
             if pk_query in all_ids:
                 selected_id = pk_query
@@ -372,23 +373,25 @@ elif menu == "Log Daily Tasks":
                 if matched:
                     selected_id = matched[0]
                 else:
-                    st.warning(f"No match found for Installation ID: '{pk_query}'. Using dropdown selection.")
-        
-        if not selected_id and not df_inst.empty and selected_dropdown != "No existing IDs found":
+                    st.warning(f"No match found for Installation ID: '{pk_query}'.")
+
+        # Priority 2: User selected from the dropdown (and didn't choose the placeholder)
+        elif selected_dropdown and selected_dropdown not in ["-- Select Installation ID --", "No existing IDs found"]:
             selected_id = selected_dropdown.split(" | ")[0]
 
     with search_tab2:
         col_d1, col_d2 = st.columns(2)
         with col_d1:
-            filter_date = st.date_input("Filter Orders by Created Date:", value=datetime.now())
+            filter_date = st.date_input("Filter Orders by Created Date:", value=datetime.now(), key="log_date_filter")
         
         with col_d2:
             if not df_inst.empty and "order_created_date" in df_inst.columns:
                 filtered_df = df_inst[df_inst["order_created_date"].astype(str) == str(filter_date)]
                 if not filtered_df.empty:
-                    date_options = [f"{row['installation_id']} | {row['site_address'][:25]}..." for _, row in filtered_df.iterrows()]
-                    date_selected_dropdown = st.selectbox("Select Project matching date:", date_options)
-                    selected_id = date_selected_dropdown.split(" | ")[0]
+                    date_options = ["-- Select Installation ID --"] + [f"{row['installation_id']} | {row['site_address'][:25]}..." for _, row in filtered_df.iterrows()]
+                    date_selected_dropdown = st.selectbox("Select Project matching date:", date_options, key="log_date_select")
+                    if date_selected_dropdown != "-- Select Installation ID --":
+                        selected_id = date_selected_dropdown.split(" | ")[0]
                 else:
                     st.info(f"No installation orders found created on {filter_date}.")
             else:
@@ -513,7 +516,7 @@ elif menu == "Log Daily Tasks":
     else:
         st.markdown("""
             <div style="background-color: #FEF2F2; border-left: 5px solid #EF4444; padding: 14px 20px; border-radius: 6px; margin-bottom: 20px;">
-                <span style="color: #991B1B; font-weight: 700; font-size: 15px;">No ID is selected.</span>
+                <span style="color: #991B1B; font-weight: 700; font-size: 15px;">No Installation ID selected. Please select or enter a valid ID above.</span>
             </div>
         """, unsafe_allow_html=True)
 
