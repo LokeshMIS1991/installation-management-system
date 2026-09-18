@@ -6,7 +6,7 @@ from datetime import datetime
 import random
 import string
 
-# ---------------------------------------------------------
+# ----------------------------------- ----------------------
 # 1. Configuration & Page Setup
 # ---------------------------------------------------------
 st.set_page_config(
