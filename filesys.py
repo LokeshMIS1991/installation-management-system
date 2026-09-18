@@ -14,6 +14,9 @@ st.set_page_config(
     layout="wide"
 )
 
+# Main Google Sheets Workbook Name
+SPREADSHEET_NAME = "Installation_Schedules"
+
 # Render High-Quality Logo in Navigation Bar (Sidebar)
 LOGO_PATH = "Company Logo.jpeg"  # Ensure the image file is in the working directory
 
@@ -102,7 +105,8 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Initialize Google Sheets Connection
+# Google Sheets Connection Management
+@st.cache_resource
 def get_gspread_client():
     scope = [
         "https://spreadsheets.google.com/feeds",
@@ -118,60 +122,85 @@ def get_gspread_client():
     
     return gspread.authorize(creds)
 
-def get_worksheet(sheet_name):
+def get_worksheet(worksheet_name):
     client = get_gspread_client()
-    return client.open("Installation_Schedules").worksheet(sheet_name)
+    return client.open(SPREADSHEET_NAME).worksheet(worksheet_name)
 
-# Helper function to append rows
+# Append new row helper
 def append_to_sheet(sheet_name, row_data):
-    sheet = get_worksheet(sheet_name)
-    sheet.append_row(row_data)
+    try:
+        sheet = get_worksheet(sheet_name)
+        sheet.append_row(row_data)
+        st.cache_data.clear()
+    except Exception as e:
+        st.error(f"Failed to append row to {sheet_name}: {e}")
 
-# Safe data reader with strict String Formatting & Space Cleanup
+# Safe Data Reader using raw values to bypass header mismatch issues
 def read_sheet(sheet_name):
     try:
         sheet = get_worksheet(sheet_name)
-        data = sheet.get_all_records()
-        df = pd.DataFrame(data)
-        if not df.empty:
-            df.columns = [str(col).strip() for col in df.columns]
-            for col in df.columns:
-                df[col] = df[col].astype(str).str.strip()
+        rows = sheet.get_all_values()
+        
+        if not rows or len(rows) < 2:
+            return get_empty_default_df(sheet_name)
+            
+        headers = [str(h).strip().lower() for h in rows[0]]
+        data = rows[1:]
+        
+        df = pd.DataFrame(data, columns=headers)
+        
+        for col in df.columns:
+            df[col] = df[col].astype(str).str.strip()
+            
+        return df
     except Exception:
-        df = pd.DataFrame()
-    
-    if df.empty or "installation_id" not in df.columns:
-        if sheet_name == "Installations":
-            return pd.DataFrame(columns=[
-                "installation_id", "city_prefix", "site_address", "team_details", 
-                "order_created_date", "site_clearance_date", "target_ho_date", "status"
-            ])
-        elif sheet_name == "Order_Items":
-            return pd.DataFrame(columns=[
-                "installation_id", "category", "sub_category", "dimensions", "quantity"
-            ])
-        elif sheet_name == "Daily_Logs":
-            return pd.DataFrame(columns=[
-                "log_id", "installation_id", "day_number", "logged_timestamp", 
-                "logged_date", "product_worked_on", "tasks_completed", 
-                "next_day_planned_tasks", "submitted_by"
-            ])
-    return df
+        return get_empty_default_df(sheet_name)
 
-# Helper function to update record by Primary Key
+def get_empty_default_df(sheet_name):
+    if sheet_name == "Installations":
+        return pd.DataFrame(columns=[
+            "installation_id", "city_prefix", "site_address", "team_details", 
+            "order_created_date", "site_clearance_date", "target_ho_date", "status"
+        ])
+    elif sheet_name == "Order_Items":
+        return pd.DataFrame(columns=[
+            "installation_id", "category", "sub_category", "dimensions", "quantity"
+        ])
+    elif sheet_name == "Daily_Logs":
+        return pd.DataFrame(columns=[
+            "log_id", "installation_id", "day_number", "logged_timestamp", 
+            "logged_date", "product_worked_on", "tasks_completed", 
+            "next_day_planned_tasks", "submitted_by"
+        ])
+    return pd.DataFrame()
+
+# Primary key cell updater
 def update_sheet_row(sheet_name, key_column_name, key_value, updated_row_dict):
-    sheet = get_worksheet(sheet_name)
-    records = sheet.get_all_records()
-    headers = [str(h).strip() for h in sheet.row_values(1)]
-    
-    for idx, row in enumerate(records, start=2):
-        cleaned_row = {str(k).strip(): str(v).strip() for k, v in row.items()}
-        if cleaned_row.get(key_column_name) == str(key_value).strip():
-            for col_name, val in updated_row_dict.items():
-                if col_name in headers:
-                    col_idx = headers.index(col_name) + 1
-                    sheet.update_cell(idx, col_idx, str(val))
-            return True
+    try:
+        sheet = get_worksheet(sheet_name)
+        rows = sheet.get_all_values()
+        if not rows:
+            return False
+            
+        headers = [str(h).strip().lower() for h in rows[0]]
+        key_column_name_lower = str(key_column_name).strip().lower()
+        
+        if key_column_name_lower not in headers:
+            return False
+            
+        key_col_idx = headers.index(key_column_name_lower)
+        
+        for row_idx, row in enumerate(rows[1:], start=2):
+            if len(row) > key_col_idx and str(row[key_col_idx]).strip() == str(key_value).strip():
+                for col_name, val in updated_row_dict.items():
+                    col_name_lower = str(col_name).strip().lower()
+                    if col_name_lower in headers:
+                        target_col_idx = headers.index(col_name_lower) + 1
+                        sheet.update_cell(row_idx, target_col_idx, str(val))
+                st.cache_data.clear()
+                return True
+    except Exception as e:
+        st.error(f"Update failed: {e}")
     return False
 
 def generate_project_id():
@@ -270,7 +299,6 @@ if menu == "New Installation Order":
 
     st.divider()
 
-    # Styling targeting specifically the Save Order button (Deep Blue)
     st.markdown("""
         <style>
         div.stButton > button:has(div:contains("Save Installation Order")) {
@@ -373,18 +401,15 @@ elif menu == "Log Daily Tasks":
     else:
         inst_info = df_inst[df_inst["installation_id"] == selected_id].iloc[0]
 
-        # Automatic Day Calculation & Yesterday's Tasks Lookup
         existing_logs = df_logs[df_logs["installation_id"] == selected_id] if not df_logs.empty else pd.DataFrame()
         day_number_int = len(existing_logs) + 1
         day_label = f"Day {day_number_int}"
 
-        # Automatic Product Fetching for the Selected Installation ID
         df_items = read_sheet("Order_Items")
         site_items = df_items[df_items["installation_id"] == selected_id] if not df_items.empty else pd.DataFrame()
         product_options = [f"{row['sub_category']} ({row['dimensions']})" for _, row in site_items.iterrows()] if not site_items.empty else []
         product_options.append("General Site Work / Preparation")
 
-        # Active Project Summary Card
         st.markdown(f"""
             <div style="background-color: #EBF3FE; border-left: 5px solid #00A651; padding: 14px 20px; border-radius: 6px; margin-bottom: 20px;">
                 <span style="color: #0F4C81; font-weight: 700; font-size: 15px;">Active Installation ID:</span>
@@ -393,7 +418,6 @@ elif menu == "Log Daily Tasks":
             </div>
         """, unsafe_allow_html=True)
 
-        # Highlight Yesterday's Planned Tasks
         if not existing_logs.empty:
             last_log = existing_logs.iloc[-1]
             prev_planned = last_log.get('next_day_planned_tasks', '')
@@ -407,7 +431,6 @@ elif menu == "Log Daily Tasks":
         with col_p2:
             product_worked_on = st.selectbox("Product Worked On *", product_options)
         with col_p3:
-            # Auto-filled Technician Name
             default_tech = inst_info['team_details'].split('+')[0].strip() if '+' in inst_info['team_details'] else inst_info['team_details']
             submitted_by = st.text_input("Technician Name *", value=default_tech)
 
@@ -415,7 +438,6 @@ elif menu == "Log Daily Tasks":
 
         st.divider()
 
-        # Dynamic Completed Tasks Section
         st.markdown("### 📝 Today's Completed Tasks")
         completed_tasks = []
         for i in range(st.session_state.task_count):
@@ -435,7 +457,6 @@ elif menu == "Log Daily Tasks":
 
         st.divider()
 
-        # Dynamic Next Day Tasks Section
         st.markdown("### 🔮 Planned Tasks for Next Day")
         next_tasks = []
         for j in range(st.session_state.next_task_count):
@@ -455,7 +476,6 @@ elif menu == "Log Daily Tasks":
 
         st.divider()
 
-        # Specific styling targeting Save Log button (Green accent)
         st.markdown("""
             <style>
             div.stButton > button:has(div:contains("Submit Daily Task Log")) {
