@@ -6,6 +6,93 @@ from datetime import datetime, timedelta
 import random
 import string
 
+# Page Configuration
+st.set_page_config(page_title="Sidharth Shutter & Automation", layout="wide")
+
+# Custom CSS Theme based on Logo Palette
+st.markdown("""
+    <style>
+    /* Primary Theme Colors:
+       - Deep Navy/Royal Blue: #0F4C81
+       - Bright Accent Blue: #1A6BBA
+       - Vibrant Green Accent: #00A651
+       - Soft Light Background: #F4F8FB
+    */
+    
+    /* Global Page Styling */
+    .stApp {
+        background-color: #FAFCFE;
+    }
+
+    /* Custom Header Styling */
+    h1, h2, h3 {
+        color: #0F4C81 !important;
+        font-weight: 700 !important;
+    }
+
+    /* Primary Buttons Styling (Logo Green Accent) */
+    div.stButton > button:first-child {
+        background-color: #00A651 !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        border-radius: 6px !important;
+        font-weight: 600 !important;
+        padding: 0.5rem 1rem !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    div.stButton > button:first-child:hover {
+        background-color: #008741 !important;
+        box-shadow: 0 4px 10px rgba(0, 166, 81, 0.3) !important;
+    }
+
+    /* Form Submit & Primary Action Buttons (Deep Blue) */
+    button[kind="primary"] {
+        background: linear-gradient(135deg, #0F4C81 0%, #1A6BBA 100%) !important;
+        color: white !important;
+        border: none !important;
+    }
+    
+    button[kind="primary"]:hover {
+        background: linear-gradient(135deg, #0A375E 0%, #0F4C81 100%) !important;
+        box-shadow: 0 4px 10px rgba(15, 76, 129, 0.3) !important;
+    }
+
+    /* Sidebar Styling */
+    section[data-testid="stSidebar"] {
+        background-color: #F0F5FA !important;
+        border-right: 2px solid #0F4C81 !important;
+    }
+
+    /* Sidebar Radio Highlights */
+    div[role="radiogroup"] label[data-baseweb="radio"] div:first-child {
+        background-color: #0F4C81 !important;
+    }
+
+    /* Input Field Focus Borders */
+    .stTextInput>div>div>input:focus, .stSelectbox>div>div>div:focus, .stTextArea>div>div>textarea:focus {
+        border-color: #00A651 !important;
+        box-shadow: 0 0 0 1px #00A651 !important;
+    }
+
+    /* Tab Headers Styling */
+    button[data-baseweb="tab"] {
+        color: #0F4C81 !important;
+        font-weight: 600 !important;
+    }
+
+    button[aria-selected="true"] {
+        color: #00A651 !important;
+        border-bottom-color: #00A651 !important;
+    }
+
+    /* Information / Success Banners */
+    .stAlert {
+        border-radius: 8px !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 # Initialize Google Sheets Connection
 def get_gspread_client():
     scope = [
@@ -31,22 +118,19 @@ def append_to_sheet(sheet_name, row_data):
     sheet = get_worksheet(sheet_name)
     sheet.append_row(row_data)
 
-# Safe data reader with strict String Formatting & Space Cleanup (Fixes Fetching Error)
+# Safe data reader with strict String Formatting & Space Cleanup
 def read_sheet(sheet_name):
     try:
         sheet = get_worksheet(sheet_name)
         data = sheet.get_all_records()
         df = pd.DataFrame(data)
         if not df.empty:
-            # Clean up Column names (remove unwanted spaces)
             df.columns = [str(col).strip() for col in df.columns]
-            # Clean up all string values (remove trailing/leading whitespace)
             for col in df.columns:
                 df[col] = df[col].astype(str).str.strip()
     except Exception:
         df = pd.DataFrame()
     
-    # Safe Fallbacks if Google Sheet tab is empty or missing headers
     if df.empty or "installation_id" not in df.columns:
         if sheet_name == "Installations":
             return pd.DataFrame(columns=[
@@ -81,7 +165,6 @@ def update_sheet_row(sheet_name, key_column_name, key_value, updated_row_dict):
             return True
     return False
 
-# Helper functions for structured IDs
 def generate_project_id():
     year = datetime.now().strftime("%Y")
     chars = string.ascii_uppercase + string.digits
@@ -107,8 +190,13 @@ PRODUCT_CATALOG = {
 
 STATUS_OPTIONS = ["In Progress", "Pending", "Done", "Cancelled"]
 
-st.set_page_config(page_title="Installation Management System", layout="wide")
-st.title("🛠️ Installation Management System")
+# Header Banner matching Logo Theme
+st.markdown("""
+    <div style="border-left: 6px solid #00A651; padding: 12px 18px; background-color: #F0F5FA; border-radius: 4px; margin-bottom: 25px;">
+        <h1 style="margin:0; padding:0; font-size: 28px; color: #0F4C81;">🏢 Sidharth Shutter & Automation</h1>
+        <p style="margin:2px 0 0 0; color: #1A6BBA; font-weight: 600; font-size: 14px;">Installation Management System</p>
+    </div>
+""", unsafe_allow_html=True)
 
 menu = st.sidebar.radio("Navigation", [
     "New Installation Order", 
@@ -131,11 +219,10 @@ if menu == "New Installation Order":
     if "temp_inst_id" not in st.session_state:
         st.session_state.temp_inst_id = generate_project_id()
 
-    # Light Blue Banner
     st.markdown(f"""
-        <div style="background-color: #EBF3FE; padding: 16px 20px; border-radius: 8px; margin-bottom: 20px;">
-            <span style="color: #0F4C81; font-weight: 700; font-size: 16px;">Automated Visit ID:</span>
-            <span style="color: #336699; font-weight: 600; font-size: 16px; margin-left: 8px; font-family: monospace;">{st.session_state.temp_inst_id}</span>
+        <div style="background-color: #EBF3FE; border: 1px solid #1A6BBA; padding: 14px 20px; border-radius: 8px; margin-bottom: 20px;">
+            <span style="color: #0F4C81; font-weight: 700; font-size: 15px;">Automated Visit ID:</span>
+            <span style="color: #00A651; font-weight: 700; font-size: 16px; margin-left: 8px; font-family: monospace;">{st.session_state.temp_inst_id}</span>
         </div>
     """, unsafe_allow_html=True)
 
@@ -271,12 +358,11 @@ elif menu == "Log Daily Tasks":
         product_options = [f"{row['sub_category']} ({row['dimensions']})" for _, row in site_items.iterrows()] if not site_items.empty else []
         product_options.append("General Site Work / Preparation")
 
-        # Light Blue Banner displaying active target key
         st.markdown(f"""
-            <div style="background-color: #EBF3FE; padding: 16px 20px; border-radius: 8px; margin-bottom: 20px;">
-                <span style="color: #0F4C81; font-weight: 700; font-size: 16px;">Automated Visit ID:</span>
-                <span style="color: #336699; font-weight: 600; font-size: 16px; margin-left: 8px; font-family: monospace;">{selected_id}</span>
-                <span style="color: #555; font-size: 14px; margin-left: 15px;">({day_label} | Team: {inst_info['team_details']})</span>
+            <div style="background-color: #EBF3FE; border-left: 5px solid #00A651; padding: 14px 20px; border-radius: 6px; margin-bottom: 20px;">
+                <span style="color: #0F4C81; font-weight: 700; font-size: 15px;">Active Installation ID:</span>
+                <span style="color: #00A651; font-weight: 700; font-size: 16px; margin-left: 8px; font-family: monospace;">{selected_id}</span>
+                <span style="color: #1A6BBA; font-weight: 600; font-size: 14px; margin-left: 15px;">({day_label} | Team: {inst_info['team_details']})</span>
             </div>
         """, unsafe_allow_html=True)
 
