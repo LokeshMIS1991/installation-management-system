@@ -14,13 +14,11 @@ st.set_page_config(
     layout="wide"
 )
 
-# Main Google Sheets Workbook Name
-SPREADSHEET_NAME = "Installation_Schedules"
+# Replace this with your Google Sheet ID (found in the URL: docs.google.com/spreadsheets/d/YOUR_SHEET_ID_HERE/edit)
+SPREADSHEET_ID = "YOUR_GOOGLE_SHEET_ID_HERE"
 
-
-# Render High-Quality Logo in Navigation Bar (Sidebar)
-LOGO_PATH = "Company Logo.jpeg"  # Ensure the image file is in the working directory
-
+# Render High-Quality Logo in Navigation Bar
+LOGO_PATH = "Company Logo.jpeg"
 if os.path.exists(LOGO_PATH):
     st.sidebar.image(LOGO_PATH, use_container_width=True)
 else:
@@ -28,21 +26,11 @@ else:
 
 st.sidebar.markdown("---")
 
-# Custom CSS Theme based on Logo Palette
+# Custom CSS Theme
 st.markdown("""
     <style>
-    /* Global Page Styling */
-    .stApp {
-        background-color: #FAFCFE;
-    }
-
-    /* Custom Header Styling */
-    h1, h2, h3 {
-        color: #0F4C81 !important;
-        font-weight: 700 !important;
-    }
-
-    /* Primary Buttons Styling (Logo Green Accent) */
+    .stApp { background-color: #FAFCFE; }
+    h1, h2, h3 { color: #0F4C81 !important; font-weight: 700 !important; }
     div.stButton > button:first-child {
         background-color: #00A651 !important;
         color: #FFFFFF !important;
@@ -50,64 +38,18 @@ st.markdown("""
         border-radius: 6px !important;
         font-weight: 600 !important;
         padding: 0.5rem 1rem !important;
-        transition: all 0.3s ease !important;
     }
-    
-    div.stButton > button:first-child:hover {
-        background-color: #008741 !important;
-        box-shadow: 0 4px 10px rgba(0, 166, 81, 0.3) !important;
-    }
-
-    /* Form Submit & Primary Action Buttons (Deep Blue) */
+    div.stButton > button:first-child:hover { background-color: #008741 !important; }
     button[kind="primary"] {
         background: linear-gradient(135deg, #0F4C81 0%, #1A6BBA 100%) !important;
         color: white !important;
-        border: none !important;
     }
-    
-    button[kind="primary"]:hover {
-        background: linear-gradient(135deg, #0A375E 0%, #0F4C81 100%) !important;
-        box-shadow: 0 4px 10px rgba(15, 76, 129, 0.3) !important;
-    }
-
-    /* Sidebar Styling */
     section[data-testid="stSidebar"] {
         background-color: #F0F5FA !important;
         border-right: 2px solid #0F4C81 !important;
     }
-
-    /* Sidebar Logo Padding Cleanup */
-    section[data-testid="stSidebar"] [data-testid="stImage"] {
-        padding-top: 10px;
-        padding-bottom: 10px;
-    }
-
-    /* Sidebar Radio Highlights */
-    div[role="radiogroup"] label[data-baseweb="radio"] div:first-child {
-        background-color: #0F4C81 !important;
-    }
-
-    /* Input Field Focus Borders */
-    .stTextInput>div>div>input:focus, .stSelectbox>div>div>div:focus, .stTextArea>div>div>textarea:focus {
-        border-color: #00A651 !important;
-        box-shadow: 0 0 0 1px #00A651 !important;
-    }
-
-    /* Tab Headers Styling */
-    button[data-baseweb="tab"] {
-        color: #0F4C81 !important;
-        font-weight: 600 !important;
-    }
-
-    button[aria-selected="true"] {
-        color: #00A651 !important;
-        border-bottom-color: #00A651 !important;
-    }
     </style>
 """, unsafe_allow_html=True)
-
-# Main Google Sheets Workbook Name or ID
-SPREADSHEET_NAME = "Installation_Schedules"
 
 # Google Sheets Connection Management
 def get_gspread_client():
@@ -127,19 +69,11 @@ def get_gspread_client():
 
 def get_worksheet(worksheet_name):
     client = get_gspread_client()
-    # Opens sheet directly by file name
-    return client.open(SPREADSHEET_NAME).worksheet(worksheet_name)
+    if SPREADSHEET_ID == "YOUR_GOOGLE_SHEET_ID_HERE":
+        # Fallback to file title search if ID is not yet provided
+        return client.open("Installation_Schedules").worksheet(worksheet_name)
+    return client.open_by_key(SPREADSHEET_ID).worksheet(worksheet_name)
 
-# Append new row helper
-def append_to_sheet(sheet_name, row_data):
-    try:
-        sheet = get_worksheet(sheet_name)
-        sheet.append_row(row_data)
-        st.cache_data.clear()
-    except Exception as e:
-        st.error(f"Failed to append row to {sheet_name}: {e}")
-
-# Diagnostic Reader: Displays explicit errors on screen if sheet fetch fails
 def read_sheet(sheet_name):
     try:
         sheet = get_worksheet(sheet_name)
@@ -150,7 +84,6 @@ def read_sheet(sheet_name):
             
         headers = [str(h).strip().lower() for h in rows[0]]
         data = rows[1:]
-        
         df = pd.DataFrame(data, columns=headers)
         
         for col in df.columns:
@@ -158,7 +91,7 @@ def read_sheet(sheet_name):
             
         return df
     except Exception as e:
-        st.error(f"⚠️ Error reading tab '{sheet_name}': {e}")
+        st.error(f"⚠️ Error loading tab '{sheet_name}': {e}")
         return get_empty_default_df(sheet_name)
 
 def get_empty_default_df(sheet_name):
@@ -168,9 +101,7 @@ def get_empty_default_df(sheet_name):
             "order_created_date", "site_clearance_date", "target_ho_date", "status"
         ])
     elif sheet_name == "Order_Items":
-        return pd.DataFrame(columns=[
-            "installation_id", "category", "sub_category", "dimensions", "quantity"
-        ])
+        return pd.DataFrame(columns=["installation_id", "category", "sub_category", "dimensions", "quantity"])
     elif sheet_name == "Daily_Logs":
         return pd.DataFrame(columns=[
             "log_id", "installation_id", "day_number", "logged_timestamp", 
@@ -179,7 +110,14 @@ def get_empty_default_df(sheet_name):
         ])
     return pd.DataFrame()
 
-# Primary key cell updater
+def append_to_sheet(sheet_name, row_data):
+    try:
+        sheet = get_worksheet(sheet_name)
+        sheet.append_row(row_data)
+        st.cache_data.clear()
+    except Exception as e:
+        st.error(f"Failed to append row to {sheet_name}: {e}")
+
 def update_sheet_row(sheet_name, key_column_name, key_value, updated_row_dict):
     try:
         sheet = get_worksheet(sheet_name)
@@ -211,14 +149,12 @@ def update_sheet_row(sheet_name, key_column_name, key_value, updated_row_dict):
 def generate_project_id():
     year = datetime.now().strftime("%Y")
     chars = string.ascii_uppercase + string.digits
-    unique_suffix = ''.join(random.choices(chars, k=5))
-    return f"INST-{year}-{unique_suffix}"
+    return f"INST-{year}-{''.join(random.choices(chars, k=5))}"
 
 def generate_log_id():
     year = datetime.now().strftime("%Y")
     chars = string.ascii_uppercase + string.digits
-    unique_suffix = ''.join(random.choices(chars, k=5))
-    return f"LOG-{year}-{unique_suffix}"
+    return f"LOG-{year}-{''.join(random.choices(chars, k=5))}"
 
 PRODUCT_CATALOG = {
     "Rolling Shutters": ["Motorized Rolling Shutter", "Gear Rolling Shutter", "Manual Rolling Shutter"],
@@ -233,7 +169,6 @@ PRODUCT_CATALOG = {
 
 STATUS_OPTIONS = ["In Progress", "Pending", "Done", "Cancelled"]
 
-# Header Banner matching Logo Theme
 st.markdown("""
     <div style="border-left: 6px solid #00A651; padding: 12px 18px; background-color: #F0F5FA; border-radius: 4px; margin-bottom: 25px;">
         <h1 style="margin:0; padding:0; font-size: 28px; color: #0F4C81;">🏢 Sidharth Shutter & Automation</h1>
@@ -249,12 +184,6 @@ menu = st.sidebar.radio("Navigation", [
     "Master Database"
 ])
 
-if "task_count" not in st.session_state:
-    st.session_state.task_count = 5
-
-if "next_task_count" not in st.session_state:
-    st.session_state.next_task_count = 5
-
 # 1. NEW INSTALLATION ORDER
 if menu == "New Installation Order":
     st.header("Create New Installation Order")
@@ -262,15 +191,9 @@ if menu == "New Installation Order":
     if "temp_inst_id" not in st.session_state:
         st.session_state.temp_inst_id = generate_project_id()
 
-    st.markdown(f"""
-        <div style="background-color: #EBF3FE; border: 1px solid #1A6BBA; padding: 14px 20px; border-radius: 8px; margin-bottom: 20px;">
-            <span style="color: #0F4C81; font-weight: 700; font-size: 15px;">Automated Visit ID:</span>
-            <span style="color: #00A651; font-weight: 700; font-size: 16px; margin-left: 8px; font-family: monospace;">{st.session_state.temp_inst_id}</span>
-        </div>
-    """, unsafe_allow_html=True)
+    st.markdown(f"**Automated Visit ID:** `{st.session_state.temp_inst_id}`")
 
     col1, col2 = st.columns(2)
-    
     with col1:
         team_details = st.text_input("Team's Details *", placeholder="e.g., Rajeer + 2 Helpers")
         city_name = st.text_input("City Name *", "Mumbai").strip()
@@ -304,21 +227,6 @@ if menu == "New Installation Order":
 
     st.divider()
 
-    st.markdown("""
-        <style>
-        div.stButton > button:has(div:contains("Save Installation Order")) {
-            background-color: #0F4C81 !important;
-            color: #FFFFFF !important;
-            border: none !important;
-            font-weight: 600 !important;
-        }
-        div.stButton > button:has(div:contains("Save Installation Order")):hover {
-            background-color: #0A375E !important;
-            box-shadow: 0 4px 10px rgba(15, 76, 129, 0.3) !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-
     if st.button("Save Installation Order", use_container_width=True):
         if not team_details.strip():
             st.error("Please enter Team's Details.")
@@ -346,176 +254,113 @@ if menu == "New Installation Order":
             st.success(f"Saved to Google Sheets! Generated Installation ID: **`{inst_id}`**")
             st.session_state.temp_inst_id = generate_project_id()
 
-# 2. LOG DAILY TASKS
+# 2. LOG DAILY TASKS (WITH 5 MANUAL TASK SECTIONS)
 elif menu == "Log Daily Tasks":
     st.header("📋 Log Daily Tasks")
 
     df_inst = read_sheet("Installations")
     df_logs = read_sheet("Daily_Logs")
 
-    st.subheader("Select the Data")
-    search_tab1, search_tab2 = st.tabs(["🔎 Search by Installation Id", "📅 Search by Date"])
-
+    st.subheader("Select Installation Order")
+    
     selected_id = None
-
-    with search_tab1:
-        col_pk_input, col_pk_select = st.columns(2)
-        all_ids = df_inst["installation_id"].tolist() if not df_inst.empty else []
-        
-        with col_pk_input:
-            pk_query = st.text_input("Enter Installation ID directly:", placeholder="e.g., INST-2026-G4HVI").strip()
-        
-        with col_pk_select:
-            id_options = [f"{row['installation_id']} | {row['site_address'][:25]}..." for _, row in df_inst.iterrows()] if not df_inst.empty else ["No existing IDs found"]
-            selected_dropdown = st.selectbox("Or choose existing Installation Key:", id_options)
-
-        if pk_query:
-            if pk_query in all_ids:
-                selected_id = pk_query
-            else:
-                matched = [i for i in all_ids if pk_query.lower() in i.lower()]
-                if matched:
-                    selected_id = matched[0]
-                else:
-                    st.warning(f"No match found for Installation ID: '{pk_query}'. Using dropdown selection.")
-        
-        if not selected_id and not df_inst.empty and selected_dropdown != "No existing IDs found":
-            selected_id = selected_dropdown.split(" | ")[0]
-
-    with search_tab2:
-        col_d1, col_d2 = st.columns(2)
-        with col_d1:
-            filter_date = st.date_input("Filter Orders by Created Date:", value=datetime.now())
-        
-        with col_d2:
-            if not df_inst.empty and "order_created_date" in df_inst.columns:
-                filtered_df = df_inst[df_inst["order_created_date"].astype(str) == str(filter_date)]
-                if not filtered_df.empty:
-                    date_options = [f"{row['installation_id']} | {row['site_address'][:25]}..." for _, row in filtered_df.iterrows()]
-                    date_selected_dropdown = st.selectbox("Select Project matching date:", date_options)
-                    selected_id = date_selected_dropdown.split(" | ")[0]
-                else:
-                    st.info(f"No installation orders found created on {filter_date}.")
-            else:
-                st.info("No installation records available to filter by date.")
+    if df_inst.empty:
+        st.warning("No installation records found in the Google Sheet database.")
+    else:
+        # Combined, single clean selection tool
+        options_list = [f"{row['installation_id']} | {row['site_address'][:30]}..." for _, row in df_inst.iterrows()]
+        selected_option = st.selectbox("Choose Installation Project ID:", options_list)
+        if selected_option:
+            selected_id = selected_option.split(" | ")[0]
 
     st.divider()
 
-    if not selected_id or df_inst.empty or selected_id not in df_inst["installation_id"].values:
-        st.info("Please enter or select a valid Installation ID above to load and record task logs.")
-    else:
+    if selected_id:
         inst_info = df_inst[df_inst["installation_id"] == selected_id].iloc[0]
 
         existing_logs = df_logs[df_logs["installation_id"] == selected_id] if not df_logs.empty else pd.DataFrame()
         day_number_int = len(existing_logs) + 1
         day_label = f"Day {day_number_int}"
 
-        df_items = read_sheet("Order_Items")
-        site_items = df_items[df_items["installation_id"] == selected_id] if not df_items.empty else pd.DataFrame()
-        product_options = [f"{row['sub_category']} ({row['dimensions']})" for _, row in site_items.iterrows()] if not site_items.empty else []
-        product_options.append("General Site Work / Preparation")
+        st.markdown(f"**Active Installation ID:** `{selected_id}` | **Day:** `{day_label}` | **Team:** `{inst_info['team_details']}`")
 
-        st.markdown(f"""
-            <div style="background-color: #EBF3FE; border-left: 5px solid #00A651; padding: 14px 20px; border-radius: 6px; margin-bottom: 20px;">
-                <span style="color: #0F4C81; font-weight: 700; font-size: 15px;">Active Installation ID:</span>
-                <span style="color: #00A651; font-weight: 700; font-size: 16px; margin-left: 8px; font-family: monospace;">{selected_id}</span>
-                <span style="color: #1A6BBA; font-weight: 600; font-size: 14px; margin-left: 15px;">(Auto-Calculated: <b>{day_label}</b> | Team: {inst_info['team_details']})</span>
-            </div>
-        """, unsafe_allow_html=True)
-
-        if not existing_logs.empty:
-            last_log = existing_logs.iloc[-1]
-            prev_planned = last_log.get('next_day_planned_tasks', '')
-            if prev_planned and str(prev_planned).strip():
-                with st.expander(f"📌 Tasks Planned Yesterday ({last_log.get('day_number', 'Previous Log')})", expanded=True):
-                    st.info(prev_planned)
-
-        col_p1, col_p2, col_p3 = st.columns([1, 1, 1])
+        col_p1, col_p2 = st.columns(2)
         with col_p1:
-            log_date = st.date_input("Log Date", value=datetime.now(), min_value=datetime.now() - timedelta(days=14))
+            log_date = st.date_input("Log Date", value=datetime.now())
         with col_p2:
-            product_worked_on = st.selectbox("Product Worked On *", product_options)
-        with col_p3:
             default_tech = inst_info['team_details'].split('+')[0].strip() if '+' in inst_info['team_details'] else inst_info['team_details']
             submitted_by = st.text_input("Technician Name *", value=default_tech)
 
-        auto_log_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        st.divider()
+        st.subheader("🛠️ 5-Section Tasks & Remarks Form")
+
+        task_sections_data = []
+
+        # 5 Dynamic Manual Sections
+        for sec in range(1, 6):
+            with st.expander(f"📦 Task Section {sec}", expanded=(sec == 1)):
+                sec_title = st.text_input(f"Section {sec} - Product / Task Name", key=f"sec_title_{sec}", placeholder=e.g., f"e.g., Gate {sec} or Rolling Shutter")
+                
+                st.markdown("**Sub-Tasks & Remarks (Type Manually):**")
+                col_st1, col_st2 = st.columns(2)
+                
+                with col_st1:
+                    sub1_name = st.text_input(f"Sub-Task 1 Name", key=f"sub1_name_{sec}", value="1. Reached")
+                    sub1_rem = st.text_input(f"Sub-Task 1 Remark", key=f"sub1_rem_{sec}", placeholder="Enter remark...")
+                    
+                    sub2_name = st.text_input(f"Sub-Task 2 Name", key=f"sub2_name_{sec}", value="2. Open / Unpacked")
+                    sub2_rem = st.text_input(f"Sub-Task 2 Remark", key=f"sub2_rem_{sec}", placeholder="Enter remark...")
+
+                with col_st2:
+                    sub3_name = st.text_input(f"Sub-Task 3 Name", key=f"sub3_name_{sec}", value="3. Count")
+                    sub3_rem = st.text_input(f"Sub-Task 3 Remark", key=f"sub3_rem_{sec}", placeholder="Enter remark...")
+                    
+                    sub4_name = st.text_input(f"Sub-Task 4 Name", key=f"sub4_name_{sec}", value="4. Track / Progress")
+                    sub4_rem = st.text_input(f"Sub-Task 4 Remark", key=f"sub4_rem_{sec}", placeholder="Enter remark...")
+
+                if sec_title.strip():
+                    task_sections_data.append({
+                        "title": sec_title.strip(),
+                        "sub1": f"{sub1_name}: {sub1_rem}" if sub1_rem.strip() else "",
+                        "sub2": f"{sub2_name}: {sub2_rem}" if sub2_rem.strip() else "",
+                        "sub3": f"{sub3_name}: {sub3_rem}" if sub3_rem.strip() else "",
+                        "sub4": f"{sub4_name}: {sub4_rem}" if sub4_rem.strip() else ""
+                    })
 
         st.divider()
-
-        st.markdown("### 📝 Today's Completed Tasks")
-        completed_tasks = []
-        for i in range(st.session_state.task_count):
-            task_input = st.text_input(f"Completed Task {i + 1}", key=f"today_task_{i}", placeholder="Describe work completed today...").strip()
-            if task_input:
-                completed_tasks.append(f"{i + 1}. {task_input}")
-
-        col_tc1, col_tc2, _ = st.columns([1, 1, 3])
-        with col_tc1:
-            if st.button("➕ Add Task"):
-                st.session_state.task_count += 1
-                st.rerun()
-        with col_tc2:
-            if st.session_state.task_count > 1 and st.button("➖ Remove Task"):
-                st.session_state.task_count -= 1
-                st.rerun()
-
-        st.divider()
-
-        st.markdown("### 🔮 Planned Tasks for Next Day")
-        next_tasks = []
-        for j in range(st.session_state.next_task_count):
-            next_input = st.text_input(f"Next Day Task {j + 1}", key=f"next_task_{j}", placeholder="Describe task planned for tomorrow...").strip()
-            if next_input:
-                next_tasks.append(f"{j + 1}. {next_input}")
-
-        col_nt1, col_nt2, _ = st.columns([1, 1, 3])
-        with col_nt1:
-            if st.button("➕ Add Next Task"):
-                st.session_state.next_task_count += 1
-                st.rerun()
-        with col_nt2:
-            if st.session_state.next_task_count > 1 and st.button("➖ Remove Next Task"):
-                st.session_state.next_task_count -= 1
-                st.rerun()
-
-        st.divider()
-
-        st.markdown("""
-            <style>
-            div.stButton > button:has(div:contains("Submit Daily Task Log")) {
-                background-color: #00A651 !important;
-                color: #FFFFFF !important;
-                border: none !important;
-                font-weight: 700 !important;
-                font-size: 16px !important;
-            }
-            div.stButton > button:has(div:contains("Submit Daily Task Log")):hover {
-                background-color: #008741 !important;
-                box-shadow: 0 4px 12px rgba(0, 166, 81, 0.4) !important;
-            }
-            </style>
-        """, unsafe_allow_html=True)
+        st.subheader("🔮 Next Day Planned Tasks")
+        next_day_plan = st.text_area("Planned Tasks for Next Day", placeholder="Describe tomorrow's tasks...")
 
         if st.button("Submit Daily Task Log", use_container_width=True):
-            if not completed_tasks:
-                st.error("Please fill in at least one completed task description.")
+            if not task_sections_data:
+                st.error("Please fill in at least Section 1 Product/Task Name and a remark.")
             elif not submitted_by.strip():
                 st.error("Please specify the Technician Name.")
             else:
-                combined_completed = "\n".join(completed_tasks)
-                combined_next = "\n".join(next_tasks) if next_tasks else "None planned"
+                # Format into structured pattern for Google Sheets
+                formatted_entries = []
+                summary_products = []
+                for idx, sec_item in enumerate(task_sections_data, 1):
+                    summary_products.append(sec_item["title"])
+                    block = f"[{idx}. {sec_item['title']}]\n"
+                    if sec_item["sub1"]: block += f"  • {sec_item['sub1']}\n"
+                    if sec_item["sub2"]: block += f"  • {sec_item['sub2']}\n"
+                    if sec_item["sub3"]: block += f"  • {sec_item['sub3']}\n"
+                    if sec_item["sub4"]: block += f"  • {sec_item['sub4']}\n"
+                    formatted_entries.append(block)
+
+                combined_tasks_str = "\n".join(formatted_entries)
+                products_str = ", ".join(summary_products)
                 log_id = generate_log_id()
-                
+                auto_log_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
                 log_row = [
                     log_id, selected_id, day_label, auto_log_time, str(log_date), 
-                    product_worked_on, combined_completed, combined_next, submitted_by
+                    products_str, combined_tasks_str, next_day_plan, submitted_by
                 ]
-                append_to_sheet("Daily_Logs", log_row)
                 
-                st.success(f"Successfully recorded **{day_label}** log for Installation ID **`{selected_id}`** (Log ID: `{log_id}`)!")
-                st.session_state.task_count = 5
-                st.session_state.next_task_count = 5
+                append_to_sheet("Daily_Logs", log_row)
+                st.success(f"Log recorded successfully for Installation ID **`{selected_id}`** (Log ID: `{log_id}`)!")
 
 # 3. EDIT TASK LOG (BY PRIMARY KEY)
 elif menu == "Edit Task Log (By Primary Key)":
@@ -526,34 +371,18 @@ elif menu == "Edit Task Log (By Primary Key)":
     if df_logs.empty:
         st.warning("No task logs found in the database.")
     else:
-        col_k1, col_k2 = st.columns(2)
-        with col_k1:
-            log_ids = df_logs["log_id"].tolist()
-            selected_log_id = st.selectbox("Select Visit Log Key (LOG-YYYY-XXXXX):", log_ids)
-            
+        log_ids = df_logs["log_id"].tolist()
+        selected_log_id = st.selectbox("Select Visit Log Key (LOG-YYYY-XXXXX):", log_ids)
+        
         log_data = df_logs[df_logs["log_id"] == selected_log_id].iloc[0]
 
-        with col_k2:
-            st.info(f"📍 **Target Installation ID:** `{log_data['installation_id']}` | **Day:** {log_data.get('day_number', 'N/A')} | **Date:** {log_data['logged_date']}")
-
-        st.divider()
-
         with st.form("edit_log_form"):
-            col_e1, col_e2 = st.columns(2)
-            with col_e1:
-                updated_product = st.text_input("Product Worked On", value=log_data['product_worked_on'])
-            with col_e2:
-                updated_tech = st.text_input("Technician Name", value=log_data['submitted_by'])
+            updated_product = st.text_input("Product Worked On", value=log_data['product_worked_on'])
+            updated_tech = st.text_input("Technician Name", value=log_data['submitted_by'])
+            updated_completed = st.text_area("Tasks & Remarks", value=log_data['tasks_completed'], height=200)
+            updated_next = st.text_area("Planned Next Day Tasks", value=log_data.get('next_day_planned_tasks', ''), height=100)
 
-            st.markdown("#### 1. Edit Completed Tasks")
-            updated_completed = st.text_area("Completed Tasks", value=log_data['tasks_completed'], height=150)
-            
-            st.markdown("#### 2. Edit Planned Next Day Tasks")
-            updated_next = st.text_area("Planned Next Day Tasks", value=log_data.get('next_day_planned_tasks', ''), height=150)
-
-            save_edit = st.form_submit_button("Update Log Entry in Google Sheets")
-
-            if save_edit:
+            if st.form_submit_button("Update Log Entry in Google Sheets"):
                 updates = {
                     "product_worked_on": updated_product,
                     "submitted_by": updated_tech,
@@ -562,11 +391,10 @@ elif menu == "Edit Task Log (By Primary Key)":
                     "logged_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S") + " (Edited)"
                 }
                 
-                success = update_sheet_row("Daily_Logs", "log_id", selected_log_id, updates)
-                if success:
-                    st.success(f"Log Key `{selected_log_id}` updated for Installation ID **`{log_data['installation_id']}`**!")
+                if update_sheet_row("Daily_Logs", "log_id", selected_log_id, updates):
+                    st.success(f"Log Key `{selected_log_id}` updated!")
                 else:
-                    st.error("Failed to update Google Sheet entry. Verify column headers.")
+                    st.error("Failed to update Google Sheet entry.")
 
 # 4. VIEW LOGS & UPDATE STATUS
 elif menu == "View Logs & Update Status":
@@ -577,45 +405,20 @@ elif menu == "View Logs & Update Status":
     if df_inst.empty:
         st.warning("No Installation IDs recorded.")
     else:
-        inst_map = {f"{row['installation_id']} | {row['site_address'][:25]}...": row['installation_id'] for _, row in df_inst.iterrows()}
+        inst_map = {f"{row['installation_id']} | {row['site_address'][:30]}...": row['installation_id'] for _, row in df_inst.iterrows()}
         selected_label = st.selectbox("Select Installation Project ID:", list(inst_map.keys()))
         selected_id = inst_map[selected_label]
 
         site_info = df_inst[df_inst["installation_id"] == selected_id].iloc[0]
-        
-        st.success(f"### Target Installation Project ID: `{site_info['installation_id']}`")
-        st.write(f"**Site Address:** {site_info['site_address']} | **Team Details:** {site_info['team_details']}")
-        
-        st.divider()
-
-        st.subheader("📌 Update Overall Status")
-        col_status, col_btn = st.columns([2, 1])
+        st.success(f"Target Installation Project ID: `{site_info['installation_id']}`")
         
         current_status = site_info['status'] if site_info['status'] in STATUS_OPTIONS else "In Progress"
+        new_status = st.selectbox("Change Overall Status:", STATUS_OPTIONS, index=STATUS_OPTIONS.index(current_status))
         
-        with col_status:
-            new_status = st.selectbox("Change Overall Status:", STATUS_OPTIONS, index=STATUS_OPTIONS.index(current_status))
-            
-        with col_btn:
-            st.write(" ")
-            st.write(" ")
-            if st.button("Update Status", type="primary"):
-                updated_inst = update_sheet_row("Installations", "installation_id", selected_id, {"status": new_status})
-                if updated_inst:
-                    st.success(f"Status for Installation Project `{selected_id}` updated to **{new_status}**!")
-                    st.rerun()
-                else:
-                    st.error("Could not update status in Google Sheets.")
-
-        st.divider()
-        st.subheader("📦 Order Specifications")
-        
-        df_items = read_sheet("Order_Items")
-        site_items = df_items[df_items["installation_id"] == selected_id] if not df_items.empty else pd.DataFrame()
-        if not site_items.empty:
-            st.table(site_items[["category", "sub_category", "dimensions", "quantity"]])
-        else:
-            st.info("No order items recorded for this installation ID.")
+        if st.button("Update Status", type="primary"):
+            if update_sheet_row("Installations", "installation_id", selected_id, {"status": new_status}):
+                st.success(f"Status for Project `{selected_id}` updated to **{new_status}**!")
+                st.rerun()
 
         st.divider()
         st.subheader("📅 Activity Timeline")
@@ -628,22 +431,8 @@ elif menu == "View Logs & Update Status":
         else:
             for _, row in site_logs.iterrows():
                 with st.expander(f"📅 **{row.get('day_number', 'Day Log')} - Date: {row['logged_date']}**", expanded=True):
-                    st.markdown(f"""
-                    * **Visit Log ID:** `{row['log_id']}`
-                    * **Timestamp:** `{str(row['logged_timestamp']).split(' ')[-1]}`
-                    * **Product Worked On:** {row['product_worked_on']}
-                    * **Technician:** {row['submitted_by']}
-                    
-                    **Completed Tasks:**
-                    ```
-                    {row['tasks_completed']}
-                    ```
-                    
-                    **Planned Tasks for Next Day:**
-                    ```
-                    {row.get('next_day_planned_tasks', 'None recorded')}
-                    ```
-                    """)
+                    st.markdown(f"**Log ID:** `{row['log_id']}` | **Technician:** {row['submitted_by']}")
+                    st.text(row['tasks_completed'])
 
 # 5. MASTER DATABASE
 elif menu == "Master Database":
