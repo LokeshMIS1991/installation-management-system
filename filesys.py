@@ -341,6 +341,9 @@ if menu == "New Installation Order":
             st.success(f"Saved to Google Sheets! Generated Installation ID: **`{inst_id}`**")
             st.session_state.temp_inst_id = generate_project_id()
 
+# Defined status options including "On Hold"
+STATUS_OPTIONS = ["In Progress", "On Hold", "Pending", "Completed", "Cancelled"]
+
 # 2. LOG DAILY TASKS
 elif menu == "Log Daily Tasks":
     st.header("📋 Log Daily Tasks")
@@ -421,7 +424,6 @@ elif menu == "Log Daily Tasks":
             if not df_inst.empty and "order_created_date" in df_inst.columns:
                 filtered_df = df_inst[df_inst["order_created_date"].astype(str) == str(filter_date)]
                 if not filtered_df.empty:
-                    # Status label reflects "On Hold" and other statuses in Date Search dropdown
                     date_options = ["-- Select Installation ID --"] + [
                         f"{row['installation_id']} | {row['site_address'][:20]}... | Status: [{row.get('status', 'In Progress')}]" 
                         for _, row in filtered_df.iterrows()
@@ -485,6 +487,7 @@ elif menu == "Log Daily Tasks":
         with col_p4:
             curr_status = inst_info.get('status', 'In Progress')
             status_index = STATUS_OPTIONS.index(curr_status) if curr_status in STATUS_OPTIONS else 0
+            # "On Hold" is now selectable from STATUS_OPTIONS
             work_status = st.selectbox("Work Progress Status *", STATUS_OPTIONS, index=status_index, key="work_progress_status")
 
         auto_log_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -561,7 +564,6 @@ elif menu == "Log Daily Tasks":
                 ]
                 append_to_sheet("Daily_Logs", log_row)
 
-                # Updates the main installation status to "On Hold" (or chosen status) in Google Sheets
                 update_sheet_row("Installations", "installation_id", selected_id, {"status": work_status})
                 
                 st.success(f"Successfully recorded **{day_label}** log & updated status to **{work_status}** for Installation ID **`{selected_id}`**!")
@@ -573,7 +575,6 @@ elif menu == "Log Daily Tasks":
                 <span style="color: #991B1B; font-weight: 700; font-size: 15px;">No Installation ID selected. Please select or enter a valid ID above.</span>
             </div>
         """, unsafe_allow_html=True)
-
 
 # 3. EDIT TASK LOG (BY PRIMARY KEY)
 elif menu == "Edit Task Log (By Primary Key)":
