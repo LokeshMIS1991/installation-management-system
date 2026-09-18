@@ -270,57 +270,48 @@ if menu == "New Installation Order":
 
     st.divider()
 
-    # Custom styling exclusively targeting the Save Order button (Blue)
+    # Styling targeting specifically the Save Order button (Deep Blue)
     st.markdown("""
         <style>
-        div.stButton > button[data-testid="baseButton-secondary"]:has(div:contains("Save Installation Order")) {
+        div.stButton > button:has(div:contains("Save Installation Order")) {
             background-color: #0F4C81 !important;
             color: #FFFFFF !important;
             border: none !important;
             font-weight: 600 !important;
         }
-        div.stButton > button[data-testid="baseButton-secondary"]:has(div:contains("Save Installation Order")):hover {
+        div.stButton > button:has(div:contains("Save Installation Order")):hover {
             background-color: #0A375E !important;
             box-shadow: 0 4px 10px rgba(15, 76, 129, 0.3) !important;
         }
         </style>
     """, unsafe_allow_html=True)
 
-    col_btn1, col_btn2 = st.columns([1, 1])
+    if st.button("Save Installation Order", use_container_width=True):
+        if not team_details.strip():
+            st.error("Please enter Team's Details.")
+        elif not site_address.strip():
+            st.error("Please enter a valid Site Address.")
+        else:
+            df_inst = read_sheet("Installations")
+            existing_ids = df_inst["installation_id"].tolist() if not df_inst.empty else []
+            
+            inst_id = st.session_state.temp_inst_id
+            while inst_id in existing_ids:
+                inst_id = generate_project_id()
 
-    with col_btn1:
-        if st.button("Save Installation Order", use_container_width=True):
-            if not team_details.strip():
-                st.error("Please enter Team's Details.")
-            elif not site_address.strip():
-                st.error("Please enter a valid Site Address.")
-            else:
-                df_inst = read_sheet("Installations")
-                existing_ids = df_inst["installation_id"].tolist() if not df_inst.empty else []
-                
-                inst_id = st.session_state.temp_inst_id
-                while inst_id in existing_ids:
-                    inst_id = generate_project_id()
+            city_prefix = city_name[:3].upper() if city_name else "GEN"
 
-                city_prefix = city_name[:3].upper() if city_name else "GEN"
-
-                inst_row = [
-                    inst_id, city_prefix, site_address, team_details, 
-                    str(order_created_date), str(site_clearance), str(target_ho_date), "In Progress"
-                ]
-                append_to_sheet("Installations", inst_row)
-                
-                item_row = [inst_id, selected_category, final_product_name, dimensions, int(quantity)]
-                append_to_sheet("Order_Items", item_row)
-                
-                st.success(f"Saved to Google Sheets! Generated Installation ID: **`{inst_id}`**")
-                st.session_state.temp_inst_id = generate_project_id()
-
-    with col_btn2:
-        if st.button("Go to Log Daily Tasks ➔", use_container_width=True):
-            # Update sidebar navigation radio state to switch page
-            st.session_state["nav_menu"] = "Log Daily Tasks"
-            st.rerun()
+            inst_row = [
+                inst_id, city_prefix, site_address, team_details, 
+                str(order_created_date), str(site_clearance), str(target_ho_date), "In Progress"
+            ]
+            append_to_sheet("Installations", inst_row)
+            
+            item_row = [inst_id, selected_category, final_product_name, dimensions, int(quantity)]
+            append_to_sheet("Order_Items", item_row)
+            
+            st.success(f"Saved to Google Sheets! Generated Installation ID: **`{inst_id}`**")
+            st.session_state.temp_inst_id = generate_project_id()
 
 # 2. LOG DAILY TASKS
 elif menu == "Log Daily Tasks":
