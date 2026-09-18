@@ -583,12 +583,19 @@ elif menu == "Edit Task Log (By Primary Key)":
     df_logs = read_sheet("Daily_Logs")
     df_inst = read_sheet("Installations")
 
-    if df_logs.empty:
-        st.info("No task logs available to edit.")
+    # Clean DataFrame column names to prevent key errors
+    if not df_logs.empty:
+        df_logs.columns = df_logs.columns.str.strip().str.lower()
+
+    # Identify the correct log id column name flexibly
+    log_id_col = next((col for col in df_logs.columns if col in ["log_id", "log id", "logid"]), None) if not df_logs.empty else None
+
+    if df_logs.empty or not log_id_col:
+        st.info("No valid task logs available to edit. Please verify that your sheet contains a 'log_id' column.")
     else:
-        # Generate Log Options for Dropdown
+        # Generate Log Options for Dropdown safely
         log_options = ["-- Select Log ID --"] + [
-            f"{row['log_id']} | Inst ID: {row['installation_id']} | Date: {row['log_date']} ({row['day_number']})"
+            f"{row[log_id_col]} | Inst ID: {row.get('installation_id', 'N/A')} | Date: {row.get('log_date', 'N/A')} ({row.get('day_number', '')})"
             for _, row in df_logs.iterrows()
         ]
 
@@ -600,7 +607,7 @@ elif menu == "Edit Task Log (By Primary Key)":
         if "edit_select_val" not in st.session_state:
             st.session_state.edit_select_val = "-- Select Log ID --"
 
-        all_log_ids = df_logs["log_id"].astype(str).tolist()
+        all_log_ids = df_logs[log_id_col].astype(str).tolist()
 
         # Dynamic Callbacks for bi-directional search sync
         def sync_edit_input():
@@ -648,12 +655,12 @@ elif menu == "Edit Task Log (By Primary Key)":
 
         # Display and Edit Logic
         if selected_log_id and selected_log_id in all_log_ids:
-            log_data = df_logs[df_logs["log_id"].astype(str) == selected_log_id].iloc[0]
-            inst_id = log_data["installation_id"]
+            log_data = df_logs[df_logs[log_id_col].astype(str) == selected_log_id].iloc[0]
+            inst_id = log_data.get("installation_id", "")
 
             # Fetch linked installation status
             curr_inst_status = "In Progress"
-            if not df_inst.empty and inst_id in df_inst["installation_id"].values:
+            if not df_inst.empty and "installation_id" in df_inst.columns and inst_id in df_inst["installation_id"].values:
                 curr_inst_status = df_inst[df_inst["installation_id"] == inst_id].iloc[0].get("status", "In Progress")
 
             st.markdown(f"""
@@ -668,9 +675,8 @@ elif menu == "Edit Task Log (By Primary Key)":
                 col_e1, col_e2, col_e3 = st.columns(3)
                 
                 with col_e1:
-                    # Log Date
                     try:
-                        parsed_date = datetime.strptime(str(log_data["log_date"]), "%Y-%m-%d")
+                        parsed_date = datetime.strptime(str(log_data.get("log_date", "")), "%Y-%m-%d")
                     except ValueError:
                         parsed_date = datetime.now()
                     new_log_date = st.date_input("Log Date", value=parsed_date)
@@ -700,7 +706,6 @@ elif menu == "Edit Task Log (By Primary Key)":
 
                 st.divider()
 
-                # Status update option within edit form
                 status_idx = STATUS_OPTIONS.index(curr_inst_status) if curr_inst_status in STATUS_OPTIONS else 0
                 updated_status = st.selectbox("Update Installation Status", STATUS_OPTIONS, index=status_idx)
 
@@ -720,8 +725,7 @@ elif menu == "Edit Task Log (By Primary Key)":
                             "submitted_by": new_technician
                         }
 
-                        # Apply updates to sheet
-                        update_sheet_row("Daily_Logs", "log_id", selected_log_id, updated_log_fields)
+                        update_sheet_row("Daily_Logs", log_id_col, selected_log_id, updated_log_fields)
                         update_sheet_row("Installations", "installation_id", inst_id, {"status": updated_status})
 
                         st.success(f"Log ID `{selected_log_id}` and Installation `{inst_id}` status successfully updated!")
@@ -729,6 +733,8 @@ elif menu == "Edit Task Log (By Primary Key)":
 
         elif selected_log_id:
             st.warning(f"No log record found matching Log ID: '{selected_log_id}'")
+
+
 # 4. VIEW LOGS & UPDATE STATUS
 elif menu == "View Logs & Update Status":
     st.header("🔍 View Logs & Update Installation Status")
