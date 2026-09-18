@@ -576,57 +576,159 @@ if menu == "Log Daily Tasks":
             </div>
         """, unsafe_allow_html=True)
 
-# 3. EDIT TASK LOG (BY PRIMARY KEY)
+# 3. EDIT TASK LOG
 elif menu == "Edit Task Log (By Primary Key)":
-    st.header("✏️ Edit Task Log Entry by Log ID")
+    st.header("✏️ Edit Task Log")
 
     df_logs = read_sheet("Daily_Logs")
+    df_inst = read_sheet("Installations")
 
     if df_logs.empty:
-        st.warning("No task logs found in the database.")
+        st.info("No task logs available to edit.")
     else:
-        col_k1, col_k2 = st.columns(2)
-        with col_k1:
-            log_ids = df_logs["log_id"].tolist()
-            selected_log_id = st.selectbox("Select Visit Log Key (LOG-YYYY-XXXXX):", log_ids)
-            
-        log_data = df_logs[df_logs["log_id"] == selected_log_id].iloc[0]
+        # Generate Log Options for Dropdown
+        log_options = ["-- Select Log ID --"] + [
+            f"{row['log_id']} | Inst ID: {row['installation_id']} | Date: {row['log_date']} ({row['day_number']})"
+            for _, row in df_logs.iterrows()
+        ]
 
-        with col_k2:
-            st.info(f"📍 **Target Installation ID:** `{log_data['installation_id']}` | **Day:** {log_data.get('day_number', 'N/A')} | **Date:** {log_data['logged_date']}")
+        # Session state initialization for synchronization
+        if "edit_log_id" not in st.session_state:
+            st.session_state.edit_log_id = ""
+        if "edit_input_val" not in st.session_state:
+            st.session_state.edit_input_val = ""
+        if "edit_select_val" not in st.session_state:
+            st.session_state.edit_select_val = "-- Select Log ID --"
+
+        all_log_ids = df_logs["log_id"].astype(str).tolist()
+
+        # Dynamic Callbacks for bi-directional search sync
+        def sync_edit_input():
+            val = st.session_state.edit_input_val.strip()
+            if val in all_log_ids:
+                st.session_state.edit_log_id = val
+                match = next((opt for opt in log_options if opt.startswith(f"{val} |")), "-- Select Log ID --")
+                st.session_state.edit_select_val = match
+            else:
+                st.session_state.edit_log_id = val
+
+        def sync_edit_select():
+            sel = st.session_state.edit_select_val
+            if sel != "-- Select Log ID --":
+                extracted_log_id = sel.split(" | ")[0]
+                st.session_state.edit_log_id = extracted_log_id
+                st.session_state.edit_input_val = extracted_log_id
+            else:
+                st.session_state.edit_log_id = ""
+                st.session_state.edit_input_val = ""
+
+        # Search Controls
+        st.subheader("Locate Task Log")
+        col_log_in, col_log_sel = st.columns(2)
+        
+        with col_log_in:
+            st.text_input(
+                "Enter Log ID directly:",
+                placeholder="e.g., LOG-2026-001",
+                key="edit_input_val",
+                on_change=sync_edit_input
+            )
+        
+        with col_log_sel:
+            st.selectbox(
+                "Or Select Log Key:",
+                options=log_options,
+                key="edit_select_val",
+                on_change=sync_edit_select
+            )
 
         st.divider()
 
-        with st.form("edit_log_form"):
-            col_e1, col_e2 = st.columns(2)
-            with col_e1:
-                updated_product = st.text_input("Product Worked On", value=log_data['product_worked_on'])
-            with col_e2:
-                updated_tech = st.text_input("Technician Name", value=log_data['submitted_by'])
+        selected_log_id = st.session_state.edit_log_id
 
-            st.markdown("#### 1. Edit Completed Tasks")
-            updated_completed = st.text_area("Completed Tasks", value=log_data['tasks_completed'], height=150)
-            
-            st.markdown("#### 2. Edit Planned Next Day Tasks")
-            updated_next = st.text_area("Planned Next Day Tasks", value=log_data.get('next_day_planned_tasks', ''), height=150)
+        # Display and Edit Logic
+        if selected_log_id and selected_log_id in all_log_ids:
+            log_data = df_logs[df_logs["log_id"].astype(str) == selected_log_id].iloc[0]
+            inst_id = log_data["installation_id"]
 
-            save_edit = st.form_submit_button("Update Log Entry in Google Sheets")
+            # Fetch linked installation status
+            curr_inst_status = "In Progress"
+            if not df_inst.empty and inst_id in df_inst["installation_id"].values:
+                curr_inst_status = df_inst[df_inst["installation_id"] == inst_id].iloc[0].get("status", "In Progress")
 
-            if save_edit:
-                updates = {
-                    "product_worked_on": updated_product,
-                    "submitted_by": updated_tech,
-                    "tasks_completed": updated_completed,
-                    "next_day_planned_tasks": updated_next,
-                    "logged_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S") + " (Edited)"
-                }
+            st.markdown(f"""
+                <div style="background-color: #F0FDF4; border-left: 5px solid #16A34A; padding: 14px 20px; border-radius: 6px; margin-bottom: 20px;">
+                    <span style="color: #166534; font-weight: 700; font-size: 15px;">Editing Log ID:</span>
+                    <span style="color: #15803D; font-weight: 700; font-size: 16px; margin-left: 8px; font-family: monospace;">{selected_log_id}</span>
+                    <span style="color: #166534; font-weight: 600; font-size: 14px; margin-left: 15px;">(Installation ID: <b>{inst_id}</b> | {log_data.get('day_number', 'Log Details')})</span>
+                </div>
+            """, unsafe_allow_html=True)
+
+            with st.form(key="edit_log_form"):
+                col_e1, col_e2, col_e3 = st.columns(3)
                 
-                success = update_sheet_row("Daily_Logs", "log_id", selected_log_id, updates)
-                if success:
-                    st.success(f"Log Key `{selected_log_id}` updated for Installation ID **`{log_data['installation_id']}`**!")
-                else:
-                    st.error("Failed to update Google Sheet entry. Verify column headers.")
+                with col_e1:
+                    # Log Date
+                    try:
+                        parsed_date = datetime.strptime(str(log_data["log_date"]), "%Y-%m-%d")
+                    except ValueError:
+                        parsed_date = datetime.now()
+                    new_log_date = st.date_input("Log Date", value=parsed_date)
 
+                with col_e2:
+                    new_product = st.text_input("Product Worked On", value=str(log_data.get("product_worked_on", "")))
+
+                with col_e3:
+                    new_technician = st.text_input("Technician Name", value=str(log_data.get("submitted_by", "")))
+
+                st.divider()
+
+                col_e4, col_e5 = st.columns(2)
+                with col_e4:
+                    new_completed_tasks = st.text_area(
+                        "Completed Tasks (Today)", 
+                        value=str(log_data.get("completed_tasks", "")), 
+                        height=160
+                    )
+                
+                with col_e5:
+                    new_next_tasks = st.text_area(
+                        "Planned Tasks (Next Day)", 
+                        value=str(log_data.get("next_day_planned_tasks", "")), 
+                        height=160
+                    )
+
+                st.divider()
+
+                # Status update option within edit form
+                status_idx = STATUS_OPTIONS.index(curr_inst_status) if curr_inst_status in STATUS_OPTIONS else 0
+                updated_status = st.selectbox("Update Installation Status", STATUS_OPTIONS, index=status_idx)
+
+                submit_edit = st.form_submit_button("💾 Save Changes", use_container_width=True)
+
+                if submit_edit:
+                    if not new_completed_tasks.strip():
+                        st.error("Completed tasks cannot be left empty.")
+                    elif not new_technician.strip():
+                        st.error("Technician Name cannot be empty.")
+                    else:
+                        updated_log_fields = {
+                            "log_date": str(new_log_date),
+                            "product_worked_on": new_product,
+                            "completed_tasks": new_completed_tasks,
+                            "next_day_planned_tasks": new_next_tasks,
+                            "submitted_by": new_technician
+                        }
+
+                        # Apply updates to sheet
+                        update_sheet_row("Daily_Logs", "log_id", selected_log_id, updated_log_fields)
+                        update_sheet_row("Installations", "installation_id", inst_id, {"status": updated_status})
+
+                        st.success(f"Log ID `{selected_log_id}` and Installation `{inst_id}` status successfully updated!")
+                        st.rerun()
+
+        elif selected_log_id:
+            st.warning(f"No log record found matching Log ID: '{selected_log_id}'")
 # 4. VIEW LOGS & UPDATE STATUS
 elif menu == "View Logs & Update Status":
     st.header("🔍 View Logs & Update Installation Status")
