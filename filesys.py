@@ -349,9 +349,12 @@ elif menu == "Log Daily Tasks":
     df_logs = read_sheet("Daily_Logs")
 
     all_ids = df_inst["installation_id"].tolist() if not df_inst.empty else []
-    id_options = ["-- Select Installation ID --"] + [f"{row['installation_id']} | {row['site_address'][:25]}..." for _, row in df_inst.iterrows()] if not df_inst.empty else ["No existing IDs found"]
+    id_options = ["-- Select Installation ID --"] + [
+        f"{row['installation_id']} | {row['site_address'][:25]}... [{row.get('status', 'In Progress')}]" 
+        for _, row in df_inst.iterrows()
+    ] if not df_inst.empty else ["No existing IDs found"]
 
-    # Initialize session state keys for bidirectional sync
+    # Initialize session state keys
     if "selected_inst_id" not in st.session_state:
         st.session_state.selected_inst_id = ""
 
@@ -361,16 +364,14 @@ elif menu == "Log Daily Tasks":
     if "pk_select_val" not in st.session_state:
         st.session_state.pk_select_val = "-- Select Installation ID --"
 
-    # Callbacks to sync both inputs automatically
+    # Callbacks to sync inputs
     def sync_from_input():
         input_text = st.session_state.pk_input_val.strip()
         if input_text in all_ids:
             st.session_state.selected_inst_id = input_text
-            # Find matching dropdown label
             matching_label = next((opt for opt in id_options if opt.startswith(f"{input_text} |")), "-- Select Installation ID --")
             st.session_state.pk_select_val = matching_label
         else:
-            # Check for partial match
             matched = [i for i in all_ids if input_text.lower() in i.lower()]
             if matched:
                 st.session_state.selected_inst_id = matched[0]
@@ -404,7 +405,6 @@ elif menu == "Log Daily Tasks":
             )
         
         with col_pk_select:
-            # Renamed field to "Installation Id"
             st.selectbox(
                 "Installation Id", 
                 options=id_options, 
@@ -421,7 +421,11 @@ elif menu == "Log Daily Tasks":
             if not df_inst.empty and "order_created_date" in df_inst.columns:
                 filtered_df = df_inst[df_inst["order_created_date"].astype(str) == str(filter_date)]
                 if not filtered_df.empty:
-                    date_options = ["-- Select Installation ID --"] + [f"{row['installation_id']} | {row['site_address'][:25]}..." for _, row in filtered_df.iterrows()]
+                    # Added Status in the label for Search by Date dropdown
+                    date_options = ["-- Select Installation ID --"] + [
+                        f"{row['installation_id']} | {row['site_address'][:20]}... | Status: [{row.get('status', 'In Progress')}]" 
+                        for _, row in filtered_df.iterrows()
+                    ]
                     
                     def sync_from_date_select():
                         sel = st.session_state.log_date_select
@@ -470,7 +474,8 @@ elif menu == "Log Daily Tasks":
                 with st.expander(f"📌 Tasks Planned Yesterday ({last_log.get('day_number', 'Previous Log')})", expanded=True):
                     st.info(prev_planned)
 
-        col_p1, col_p2, col_p3 = st.columns([1, 1, 1])
+        # Added Work Progress / Status Dropdown right next to the log details
+        col_p1, col_p2, col_p3, col_p4 = st.columns([1, 1, 1, 1])
         with col_p1:
             log_date = st.date_input("Log Date", value=datetime.now(), min_value=datetime.now() - timedelta(days=14))
         with col_p2:
@@ -478,6 +483,10 @@ elif menu == "Log Daily Tasks":
         with col_p3:
             default_tech = inst_info['team_details'].split('+')[0].strip() if '+' in inst_info['team_details'] else inst_info['team_details']
             submitted_by = st.text_input("Technician Name *", value=default_tech)
+        with col_p4:
+            curr_status = inst_info.get('status', 'In Progress')
+            status_index = STATUS_OPTIONS.index(curr_status) if curr_status in STATUS_OPTIONS else 0
+            work_status = st.selectbox("Work Progress Status *", STATUS_OPTIONS, index=status_index, key="work_progress_status")
 
         auto_log_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -552,8 +561,11 @@ elif menu == "Log Daily Tasks":
                     product_worked_on, combined_completed, combined_next, submitted_by
                 ]
                 append_to_sheet("Daily_Logs", log_row)
+
+                # Update the main installation status in Google Sheets
+                update_sheet_row("Installations", "installation_id", selected_id, {"status": work_status})
                 
-                st.success(f"Successfully recorded **{day_label}** log for Installation ID **`{selected_id}`** (Log ID: `{log_id}`)!")
+                st.success(f"Successfully recorded **{day_label}** log & updated status to **{work_status}** for Installation ID **`{selected_id}`**!")
                 st.session_state.task_count = 5
                 st.session_state.next_task_count = 5
     else:
@@ -562,6 +574,8 @@ elif menu == "Log Daily Tasks":
                 <span style="color: #991B1B; font-weight: 700; font-size: 15px;">No Installation ID selected. Please select or enter a valid ID above.</span>
             </div>
         """, unsafe_allow_html=True)
+
+
 # 3. EDIT TASK LOG (BY PRIMARY KEY)
 elif menu == "Edit Task Log (By Primary Key)":
     st.header("✏️ Edit Task Log Entry by Log ID")
