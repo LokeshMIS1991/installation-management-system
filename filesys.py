@@ -373,84 +373,122 @@ elif menu == "Log Daily Tasks":
     else:
         inst_info = df_inst[df_inst["installation_id"] == selected_id].iloc[0]
 
+        # Automatic Day Calculation & Yesterday's Tasks Lookup
         existing_logs = df_logs[df_logs["installation_id"] == selected_id] if not df_logs.empty else pd.DataFrame()
         day_number_int = len(existing_logs) + 1
         day_label = f"Day {day_number_int}"
 
+        # Automatic Product Fetching for the Selected Installation ID
         df_items = read_sheet("Order_Items")
         site_items = df_items[df_items["installation_id"] == selected_id] if not df_items.empty else pd.DataFrame()
         product_options = [f"{row['sub_category']} ({row['dimensions']})" for _, row in site_items.iterrows()] if not site_items.empty else []
         product_options.append("General Site Work / Preparation")
 
+        # Active Project Summary Card
         st.markdown(f"""
             <div style="background-color: #EBF3FE; border-left: 5px solid #00A651; padding: 14px 20px; border-radius: 6px; margin-bottom: 20px;">
                 <span style="color: #0F4C81; font-weight: 700; font-size: 15px;">Active Installation ID:</span>
                 <span style="color: #00A651; font-weight: 700; font-size: 16px; margin-left: 8px; font-family: monospace;">{selected_id}</span>
-                <span style="color: #1A6BBA; font-weight: 600; font-size: 14px; margin-left: 15px;">({day_label} | Team: {inst_info['team_details']})</span>
+                <span style="color: #1A6BBA; font-weight: 600; font-size: 14px; margin-left: 15px;">(Auto-Calculated: <b>{day_label}</b> | Team: {inst_info['team_details']})</span>
             </div>
         """, unsafe_allow_html=True)
 
+        # Highlight Yesterday's Planned Tasks
         if not existing_logs.empty:
             last_log = existing_logs.iloc[-1]
             prev_planned = last_log.get('next_day_planned_tasks', '')
             if prev_planned and str(prev_planned).strip():
-                with st.expander(f"📌 Tasks Planned Yesterday ({last_log.get('day_number', 'Previous Day')})", expanded=True):
+                with st.expander(f"📌 Tasks Planned Yesterday ({last_log.get('day_number', 'Previous Log')})", expanded=True):
                     st.info(prev_planned)
 
-        log_date = st.date_input("Select Log Date", value=datetime.now(), min_value=datetime.now() - timedelta(days=14))
+        col_p1, col_p2, col_p3 = st.columns([1, 1, 1])
+        with col_p1:
+            log_date = st.date_input("Log Date", value=datetime.now(), min_value=datetime.now() - timedelta(days=14))
+        with col_p2:
+            product_worked_on = st.selectbox("Product Worked On *", product_options)
+        with col_p3:
+            # Auto-filled Technician Name
+            default_tech = inst_info['team_details'].split('+')[0].strip() if '+' in inst_info['team_details'] else inst_info['team_details']
+            submitted_by = st.text_input("Technician Name *", value=default_tech)
+
         auto_log_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        col_p1, col_p2 = st.columns(2)
-        with col_p1:
-            product_worked_on = st.selectbox("Choose the product worked on", product_options)
-        with col_p2:
-            submitted_by = st.text_input("Technician Name *", value=inst_info['team_details'].split('+')[0].strip())
-
         st.divider()
-        st.markdown("### Today's Completed Tasks (5 Default Tasks)")
-        
+
+        # Dynamic Completed Tasks Section
+        st.markdown("### 📝 Today's Completed Tasks")
         completed_tasks = []
         for i in range(st.session_state.task_count):
-            task_input = st.text_input(f"Task {i + 1}", key=f"today_task_{i}", placeholder="Describe task performed...")
-            if task_input.strip():
-                completed_tasks.append(f"{i + 1}. {task_input.strip()}")
+            task_input = st.text_input(f"Completed Task {i + 1}", key=f"today_task_{i}", placeholder="Describe work completed today...").strip()
+            if task_input:
+                completed_tasks.append(f"{i + 1}. {task_input}")
 
-        if st.button("➕ Add Another Task Field"):
-            st.session_state.task_count += 1
-            st.rerun()
+        col_tc1, col_tc2, _ = st.columns([1, 1, 3])
+        with col_tc1:
+            if st.button("➕ Add Task"):
+                st.session_state.task_count += 1
+                st.rerun()
+        with col_tc2:
+            if st.session_state.task_count > 1 and st.button("➖ Remove Task"):
+                st.session_state.task_count -= 1
+                st.rerun()
 
         st.divider()
-        st.markdown("### Planned Tasks for Next Day")
 
+        # Dynamic Next Day Tasks Section
+        st.markdown("### 🔮 Planned Tasks for Next Day")
         next_tasks = []
         for j in range(st.session_state.next_task_count):
-            next_input = st.text_input(f"Next Day Task {j + 1}", key=f"next_task_{j}", placeholder="Describe planned task...")
-            if next_input.strip():
-                next_tasks.append(f"{j + 1}. {next_input.strip()}")
+            next_input = st.text_input(f"Next Day Task {j + 1}", key=f"next_task_{j}", placeholder="Describe task planned for tomorrow...").strip()
+            if next_input:
+                next_tasks.append(f"{j + 1}. {next_input}")
 
-        if st.button("➕ Add Another Next Day Task Field"):
-            st.session_state.next_task_count += 1
-            st.rerun()
+        col_nt1, col_nt2, _ = st.columns([1, 1, 3])
+        with col_nt1:
+            if st.button("➕ Add Next Task"):
+                st.session_state.next_task_count += 1
+                st.rerun()
+        with col_nt2:
+            if st.session_state.next_task_count > 1 and st.button("➖ Remove Next Task"):
+                st.session_state.next_task_count -= 1
+                st.rerun()
 
         st.divider()
 
-        if st.button("Submit Daily Task Log", type="primary"):
+        # Specific styling targeting Save Log button (Green accent)
+        st.markdown("""
+            <style>
+            div.stButton > button:has(div:contains("Submit Daily Task Log")) {
+                background-color: #00A651 !important;
+                color: #FFFFFF !important;
+                border: none !important;
+                font-weight: 700 !important;
+                font-size: 16px !important;
+            }
+            div.stButton > button:has(div:contains("Submit Daily Task Log")):hover {
+                background-color: #008741 !important;
+                box-shadow: 0 4px 12px rgba(0, 166, 81, 0.4) !important;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+
+        if st.button("Submit Daily Task Log", use_container_width=True):
             if not completed_tasks:
-                st.error("Please enter at least one completed task description.")
+                st.error("Please fill in at least one completed task description.")
             elif not submitted_by.strip():
-                st.error("Please enter Technician Name.")
+                st.error("Please specify the Technician Name.")
             else:
-                combined_completed_tasks = "\n".join(completed_tasks)
-                combined_next_tasks = "\n".join(next_tasks) if next_tasks else "None planned"
+                combined_completed = "\n".join(completed_tasks)
+                combined_next = "\n".join(next_tasks) if next_tasks else "None planned"
                 log_id = generate_log_id()
                 
                 log_row = [
                     log_id, selected_id, day_label, auto_log_time, str(log_date), 
-                    product_worked_on, combined_completed_tasks, combined_next_tasks, submitted_by
+                    product_worked_on, combined_completed, combined_next, submitted_by
                 ]
                 append_to_sheet("Daily_Logs", log_row)
                 
-                st.success(f"Tasks logged successfully for Installation ID **`{selected_id}`** (Visit Log Key: `{log_id}`)!")
+                st.success(f"Successfully recorded **{day_label}** log for Installation ID **`{selected_id}`** (Log ID: `{log_id}`)!")
                 st.session_state.task_count = 5
                 st.session_state.next_task_count = 5
 
