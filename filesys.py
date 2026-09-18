@@ -2,53 +2,68 @@ import streamlit as st
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime, timedelta
+from datetime import datetime
 import random
 import string
-import os
 
-# Page Configuration
+# ---------------------------------------------------------
+# 1. Page Configuration
+# ---------------------------------------------------------
 st.set_page_config(
-    page_title="Task Logger Pro - Sidharth Shutter", 
-    page_icon="🏢",
-    layout="wide"
+    page_title="Task Logger Pro",
+    page_icon="📋",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# Applied Google Sheet ID
 SPREADSHEET_ID = "19rQC3aNtosjhSwyctKAk9ojUt0c8gyOPH-Q8trW5q5s"
+CATEGORIES = ['General', 'Work', 'Personal', 'Urgent', 'Meeting', 'Development', 'Design']
 
-# CSS Styling matching the HTML interface
+# Custom CSS to mimic the HTML Task Logger Interface closely
 st.markdown("""
     <style>
-    .stApp { background-color: #F8FAFC; }
-    .main-header {
-        background-color: white;
-        padding: 1rem 1.5rem;
-        border-bottom: 1px solid #E2E8F0;
-        border-radius: 12px;
-        margin-bottom: 1.5rem;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-    div[data-testid="stForm"] {
-        background-color: #FFFFFF;
-        border: 1px solid #E2E8F0;
-        border-radius: 16px;
-        padding: 1.5rem;
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
-    }
-    .task-row-container {
+    /* Background and Layout Styles */
+    .main {
         background-color: #F8FAFC;
+    }
+    .stAppHeader {
+        display: none;
+    }
+    
+    /* Custom Card Styling */
+    .task-card {
+        background-color: #FFFFFF;
+        border-radius: 16px;
         border: 1px solid #E2E8F0;
-        border-radius: 10px;
-        padding: 0.5rem;
-        margin-bottom: 0.5rem;
+        padding: 24px;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+        margin-bottom: 24px;
+    }
+    
+    /* Table Header styling */
+    .table-header {
+        font-size: 11px;
+        font-weight: 700;
+        color: #94A3B8;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 8px;
+    }
+    
+    /* Inputs Styling */
+    div[data-baseweb="input"] {
+        border-radius: 8px !important;
+    }
+    div[data-baseweb="select"] {
+        border-radius: 8px !important;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# Google Sheets Connection Management
+# ---------------------------------------------------------
+# 2. Google Sheets Authentication & Helper Functions
+# ---------------------------------------------------------
+@st.cache_resource(ttl=300)
 def get_gspread_client():
     scope = [
         "https://spreadsheets.google.com/feeds",
@@ -61,7 +76,6 @@ def get_gspread_client():
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     else:
         creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
-    
     return gspread.authorize(creds)
 
 def get_worksheet(worksheet_name):
@@ -72,176 +86,225 @@ def read_sheet(sheet_name):
     try:
         sheet = get_worksheet(sheet_name)
         rows = sheet.get_all_values()
-        
         if not rows or len(rows) < 2:
-            return get_empty_default_df(sheet_name)
-            
+            return pd.DataFrame()
+        
         headers = [str(h).strip().lower() for h in rows[0]]
         data = rows[1:]
         df = pd.DataFrame(data, columns=headers)
-        
         for col in df.columns:
             df[col] = df[col].astype(str).str.strip()
-            
         return df
     except Exception as e:
-        st.error(f"⚠️ Google Sheets Connection Error on tab '{sheet_name}': {e}")
-        return get_empty_default_df(sheet_name)
-
-def get_empty_default_df(sheet_name):
-    if sheet_name == "Installations":
-        return pd.DataFrame(columns=[
-            "installation_id", "city_prefix", "site_address", "team_details", 
-            "order_created_date", "site_clearance_date", "target_ho_date", "status"
-        ])
-    elif sheet_name == "Order_Items":
-        return pd.DataFrame(columns=["installation_id", "category", "sub_category", "dimensions", "quantity"])
-    elif sheet_name == "Daily_Logs":
-        return pd.DataFrame(columns=[
-            "log_id", "installation_id", "day_number", "logged_timestamp", 
-            "logged_date", "product_worked_on", "tasks_completed", 
-            "next_day_planned_tasks", "submitted_by"
-        ])
-    return pd.DataFrame()
+        st.error(f"Error reading '{sheet_name}': {e}")
+        return pd.DataFrame()
 
 def append_to_sheet(sheet_name, row_data):
-    try:
-        sheet = get_worksheet(sheet_name)
-        sheet.append_row(row_data)
-        st.cache_data.clear()
-    except Exception as e:
-        st.error(f"Failed to append row to {sheet_name}: {e}")
+    sheet = get_worksheet(sheet_name)
+    sheet.append_row(row_data)
 
 def generate_log_id():
     year = datetime.now().strftime("%Y")
     chars = string.ascii_uppercase + string.digits
     return f"LOG-{year}-{''.join(random.choices(chars, k=5))}"
 
-CATEGORIES = ['General', 'Work', 'Personal', 'Urgent', 'Meeting', 'Development', 'Design']
+# ---------------------------------------------------------
+# 3. Dynamic Session State Management
+# ---------------------------------------------------------
+if "tasks_list" not in st.session_state:
+    st.session_state.tasks_list = [
+        {"done": False, "text": "", "category": "General"} for _ in range(5)
+    ]
 
-# Header Bar
-st.markdown("""
-    <div class="main-header">
-        <div>
-            <h2 style="margin:0; color:#0F172A;">📋 Task Logger Pro</h2>
-            <p style="margin:0; font-size:13px; color:#64748B;">Quickly draft & log daily activities directly to Google Sheets</p>
-        </div>
-    </div>
-""", unsafe_allow_html=True)
+# Helper handlers to alter task state dynamically
+def add_task_row():
+    st.session_state.tasks_list.append({"done": False, "text": "", "category": "General"})
 
-# Navigation Menu
-menu = st.sidebar.radio("Navigation", ["Log Daily Tasks", "View Saved Logs & Master Data"])
+def reset_tasks_to_5():
+    st.session_state.tasks_list = [
+        {"done": False, "text": "", "category": "General"} for _ in range(5)
+    ]
 
-if menu == "Log Daily Tasks":
-    df_inst = read_sheet("Installations")
-    df_logs = read_sheet("Daily_Logs")
+def clear_all_tasks():
+    st.session_state.tasks_list = []
 
-    st.subheader("1. Select Installation Project")
+def remove_task_row(index):
+    if 0 <= index < len(st.session_state.tasks_list):
+        st.session_state.tasks_list.pop(index)
+
+# ---------------------------------------------------------
+# 4. Header Bar
+# ---------------------------------------------------------
+header_col1, header_col2 = st.columns([3, 1])
+with header_col1:
+    st.title("📋 Task Logger")
+    st.caption("Quickly draft & log daily activities")
+
+with header_col2:
+    current_date = datetime.now().strftime("%a, %b %d, %Y")
+    st.info(f"📅 **{current_date}**")
+
+# ---------------------------------------------------------
+# 5. Installation Project Selection
+# ---------------------------------------------------------
+st.subheader("1. Select Installation Project")
+df_inst = read_sheet("Installations")
+df_logs = read_sheet("Daily_Logs")
+
+selected_id = None
+if df_inst.empty:
+    st.warning("⚠️ No records found in the 'Installations' sheet. Please verify access rights.")
+else:
+    # Build readable options list dropdown
+    options = []
+    for _, row in df_inst.iterrows():
+        inst_id = row.get("installation_id", "N/A")
+        address = row.get("site_address", "No Address")
+        options.append(f"{inst_id} | {address[:35]}")
     
-    selected_id = None
-    if df_inst.empty:
-        st.warning("No installation project records found in Google Sheets.")
-    else:
-        options_list = [f"{row['installation_id']} | {row['site_address'][:30]}..." for _, row in df_inst.iterrows()]
-        selected_option = st.selectbox("Choose Installation ID:", options_list)
-        if selected_option:
-            selected_id = selected_option.split(" | ")[0]
+    selected_option = st.selectbox("Choose Installation ID", options)
+    if selected_option:
+        selected_id = selected_option.split(" | ")[0]
 
-    if selected_id:
-        inst_info = df_inst[df_inst["installation_id"] == selected_id].iloc[0]
-        existing_logs = df_logs[df_logs["installation_id"] == selected_id] if not df_logs.empty else pd.DataFrame()
-        day_label = f"Day {len(existing_logs) + 1}"
+if selected_id:
+    # Calculate automatic day label based on history
+    existing_logs = df_logs[df_logs["installation_id"] == selected_id] if not df_logs.empty else pd.DataFrame()
+    day_number_str = f"Day {len(existing_logs) + 1}"
 
-        st.info(f"**Project ID:** `{selected_id}` | **Day:** `{day_label}` | **Team:** `{inst_info['team_details']}`")
+    col_meta1, col_meta2, col_meta3 = st.columns(3)
+    with col_meta1:
+        st.metric(label="Selected Project", value=selected_id)
+    with col_meta2:
+        st.metric(label="Log Sequence", value=day_number_str)
+    with col_meta3:
+        submitted_by = st.text_input("Technician Name", value="Field Tech", key="tech_name_input")
 
-        col_tech, col_date = st.columns(2)
-        with col_tech:
-            submitted_by = st.text_input("Technician Name *", value=inst_info['team_details'].split('+')[0].strip())
-        with col_date:
-            log_date = st.date_input("Log Date", value=datetime.now())
+    st.markdown("---")
 
-        st.divider()
+    # ---------------------------------------------------------
+    # 6. Task Entry Interface (Matching HTML Form Layout)
+    # ---------------------------------------------------------
+    st.subheader("2. Task Entry")
 
-        # Initialize Dynamic Task Session State
-        if "num_tasks" not in st.session_state:
-            st.session_state.num_tasks = 5
+    # Top Control Buttons
+    ctrl_col1, ctrl_col2 = st.columns([1, 1])
+    with ctrl_col1:
+        st.button("🗑️ Clear All", on_click=clear_all_tasks)
+    with ctrl_col2:
+        st.button("🔄 Reset to 5", on_click=reset_tasks_to_5)
 
-        col_head1, col_head2 = st.columns([3, 1])
-        with col_head1:
-            st.subheader("2. Dynamic Task Logger")
-        with col_head2:
-            c_btn1, c_btn2 = st.columns(2)
-            with c_btn1:
-                if st.button("➕ Add Row"):
-                    st.session_state.num_tasks += 1
-                    st.rerun()
-            with c_btn2:
-                if st.button("🔄 Reset 5"):
-                    st.session_state.num_tasks = 5
-                    st.rerun()
+    st.markdown("<br>", unsafe_allow_html=True)
 
-        # Render Task Input Rows
-        task_entries = []
+    # Column Headers
+    if len(st.session_state.tasks_list) > 0:
+        h1, h2, h3, h4 = st.columns([1, 6, 3, 1])
+        h1.markdown("<p class='table-header'>DONE</p>", unsafe_allow_html=True)
+        h2.markdown("<p class='table-header'>TASK DESCRIPTION</p>", unsafe_allow_html=True)
+        h3.markdown("<p class='table-header'>CATEGORY / TAG</p>", unsafe_allow_html=True)
+        h4.markdown("<p class='table-header'>ACTION</p>", unsafe_allow_html=True)
+
+    # Render Task Rows
+    for idx, task in enumerate(st.session_state.tasks_list):
+        c_done, c_text, c_cat, c_del = st.columns([1, 6, 3, 1])
         
-        # Grid Header
-        hdr1, hdr2, hdr3 = st.columns([1, 6, 4])
-        hdr1.caption("**DONE**")
-        hdr2.caption("**TASK DESCRIPTION**")
-        hdr3.caption("**CATEGORY / TAG**")
-
-        for i in range(st.session_state.num_tasks):
-            col_done, col_desc, col_cat = st.columns([1, 6, 4])
+        with c_done:
+            task["done"] = st.checkbox("", value=task["done"], key=f"chk_{idx}")
+        
+        with c_text:
+            task["text"] = st.text_input(
+                "", 
+                value=task["text"], 
+                placeholder="Enter task description...", 
+                key=f"txt_{idx}",
+                label_visibility="collapsed"
+            )
             
-            with col_done:
-                is_done = st.checkbox("", key=f"done_{i}")
-            with col_desc:
-                task_desc = st.text_input("", placeholder=f"Enter task description {i+1}...", key=f"desc_{i}", label_visibility="collapsed")
-            with col_cat:
-                category = st.selectbox("", CATEGORIES, key=f"cat_{i}", label_visibility="collapsed")
+        with c_cat:
+            cat_index = CATEGORIES.index(task["category"]) if task["category"] in CATEGORIES else 0
+            task["category"] = st.selectbox(
+                "", 
+                CATEGORIES, 
+                index=cat_index, 
+                key=f"cat_{idx}",
+                label_visibility="collapsed"
+            )
+            
+        with c_del:
+            if st.button("❌", key=f"del_{idx}"):
+                remove_task_row(idx)
+                st.rerun()
 
-            if task_desc.strip():
-                task_entries.append({
-                    "done": is_done,
-                    "desc": task_desc.strip(),
-                    "category": category
-                })
+    # Dynamic Row Action
+    st.button("➕ Add Another Task", on_click=add_task_row, type="secondary")
 
-        st.divider()
-        next_day_plan = st.text_area("Next Day Planned Tasks", placeholder="Describe tomorrow's plan...")
-
-        if st.button("💾 Log Tasks to Google Sheet", type="primary", use_container_width=True):
-            if not task_entries:
-                st.error("Please enter at least one task description before logging.")
-            elif not submitted_by.strip():
-                st.error("Please specify the Technician Name.")
-            else:
-                # Format tasks into log structure
-                formatted_tasks = []
-                categories_used = set()
-                
-                for idx, t in enumerate(task_entries, 1):
-                    status_icon = "✅ [DONE]" if t["done"] else "⏳ [PENDING]"
-                    formatted_tasks.append(f"{idx}. {status_icon} {t['desc']} ({t['category']})")
-                    categories_used.add(t['category'])
-
-                combined_tasks_str = "\n".join(formatted_tasks)
-                product_summary = ", ".join(list(categories_used))
-                log_id = generate_log_id()
-                auto_log_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-                log_row = [
-                    log_id, selected_id, day_label, auto_log_time, str(log_date), 
-                    product_summary, combined_tasks_str, next_day_plan, submitted_by
-                ]
-
-                append_to_sheet("Daily_Logs", log_row)
-                st.success(f"Successfully recorded {len(task_entries)} tasks under Log ID `{log_id}`!")
-
-elif menu == "View Saved Logs & Master Data":
-    st.header("📂 Saved Task Logs")
-    df_logs = read_sheet("Daily_Logs")
+    st.markdown("---")
     
-    if df_logs.empty:
-        st.info("No task logs recorded yet.")
+    # Plans for Next Day
+    next_day_plan = st.text_area("Next Day Planned Tasks", placeholder="Briefly state what needs to be done tomorrow...")
+
+    # Log Tasks Button
+    if st.button("💾 Log Tasks", type="primary", use_container_width=True):
+        # Validate task descriptions
+        valid_tasks = [t for t in st.session_state.tasks_list if t["text"].strip()]
+
+        if not valid_tasks:
+            st.error("Please enter at least one task description before logging.")
+        elif not submitted_by.strip():
+            st.error("Please provide the Technician Name.")
+        else:
+            # Format combined logged tasks text
+            formatted_entries = []
+            categories_set = set()
+
+            for i, t in enumerate(valid_tasks, 1):
+                status = "[DONE]" if t["done"] else "[PENDING]"
+                formatted_entries.append(f"{i}. {status} {t['text'].strip()} ({t['category']})")
+                categories_set.add(t["category"])
+
+            tasks_text_summary = "\n".join(formatted_entries)
+            categories_summary = ", ".join(list(categories_set))
+            
+            log_id = generate_log_id()
+            timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            log_date_str = datetime.now().strftime("%Y-%m-%d")
+
+            # Match exact Google Sheet row structure
+            new_log_row = [
+                log_id,
+                selected_id,
+                day_number_str,
+                timestamp_str,
+                log_date_str,
+                categories_summary,
+                tasks_text_summary,
+                next_day_plan,
+                submitted_by
+            ]
+
+            try:
+                append_to_sheet("Daily_Logs", new_log_row)
+                st.success(f"Log **{log_id}** saved successfully with {len(valid_tasks)} task entries!")
+                reset_tasks_to_5()
+            except Exception as e:
+                st.error(f"Failed to submit task log: {e}")
+
+# ---------------------------------------------------------
+# 7. Saved Logs History Section
+# ---------------------------------------------------------
+st.markdown("---")
+st.subheader("🕒 Saved Task Logs History")
+
+if not df_logs.empty and selected_id:
+    filtered_logs = df_logs[df_logs["installation_id"] == selected_id]
+    if not filtered_logs.empty:
+        for _, log in filtered_logs.iterrows():
+            with st.expander(f"📄 Log {log.get('log_id', 'N/A')} - {log.get('logged_timestamp', '')}"):
+                st.write(f"**Submitted By:** {log.get('submitted_by', 'N/A')}")
+                st.write(f"**Categories Covered:** {log.get('product_worked_on', 'N/A')}")
+                st.text(f"Tasks:\n{log.get('tasks_completed', '')}")
+                if log.get('next_day_planned_tasks'):
+                    st.info(f"**Next Day Plan:** {log['next_day_planned_tasks']}")
     else:
-        st.dataframe(df_logs, use_container_width=True)
+        st.caption("No task logs recorded for this installation project yet.")
+else:
+    st.caption("Select an Installation ID above to inspect history.")
