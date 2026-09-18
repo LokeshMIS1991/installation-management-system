@@ -348,36 +348,69 @@ elif menu == "Log Daily Tasks":
     df_inst = read_sheet("Installations")
     df_logs = read_sheet("Daily_Logs")
 
+    all_ids = df_inst["installation_id"].tolist() if not df_inst.empty else []
+    id_options = ["-- Select Installation ID --"] + [f"{row['installation_id']} | {row['site_address'][:25]}..." for _, row in df_inst.iterrows()] if not df_inst.empty else ["No existing IDs found"]
+
+    # Initialize session state keys for bidirectional sync
+    if "selected_inst_id" not in st.session_state:
+        st.session_state.selected_inst_id = ""
+
+    if "pk_input_val" not in st.session_state:
+        st.session_state.pk_input_val = ""
+
+    if "pk_select_val" not in st.session_state:
+        st.session_state.pk_select_val = "-- Select Installation ID --"
+
+    # Callbacks to sync both inputs automatically
+    def sync_from_input():
+        input_text = st.session_state.pk_input_val.strip()
+        if input_text in all_ids:
+            st.session_state.selected_inst_id = input_text
+            # Find matching dropdown label
+            matching_label = next((opt for opt in id_options if opt.startswith(f"{input_text} |")), "-- Select Installation ID --")
+            st.session_state.pk_select_val = matching_label
+        else:
+            # Check for partial match
+            matched = [i for i in all_ids if input_text.lower() in i.lower()]
+            if matched:
+                st.session_state.selected_inst_id = matched[0]
+                matching_label = next((opt for opt in id_options if opt.startswith(f"{matched[0]} |")), "-- Select Installation ID --")
+                st.session_state.pk_select_val = matching_label
+            else:
+                st.session_state.selected_inst_id = input_text
+
+    def sync_from_select():
+        selected = st.session_state.pk_select_val
+        if selected and selected not in ["-- Select Installation ID --", "No existing IDs found"]:
+            extracted_id = selected.split(" | ")[0]
+            st.session_state.selected_inst_id = extracted_id
+            st.session_state.pk_input_val = extracted_id
+        else:
+            st.session_state.selected_inst_id = ""
+            st.session_state.pk_input_val = ""
+
     st.subheader("Select the Data")
     search_tab1, search_tab2 = st.tabs(["🔎 Search by Installation Id", "📅 Search by Date"])
 
-    selected_id = None
-
     with search_tab1:
         col_pk_input, col_pk_select = st.columns(2)
-        all_ids = df_inst["installation_id"].tolist() if not df_inst.empty else []
         
         with col_pk_input:
-            pk_query = st.text_input("Enter Installation ID directly:", placeholder="e.g., INST-2026-G4HVI", key="log_pk_input").strip()
+            st.text_input(
+                "Enter Installation ID directly:", 
+                placeholder="e.g., INST-2026-G4HVI", 
+                key="pk_input_val",
+                on_change=sync_from_input
+            )
         
         with col_pk_select:
-            id_options = ["-- Select Installation ID --"] + [f"{row['installation_id']} | {row['site_address'][:25]}..." for _, row in df_inst.iterrows()] if not df_inst.empty else ["No existing IDs found"]
-            selected_dropdown = st.selectbox("Or choose existing Installation Key:", id_options, key="log_pk_select")
-
-        # Priority 1: User typed a direct input query
-        if pk_query:
-            if pk_query in all_ids:
-                selected_id = pk_query
-            else:
-                matched = [i for i in all_ids if pk_query.lower() in i.lower()]
-                if matched:
-                    selected_id = matched[0]
-                else:
-                    st.warning(f"No match found for Installation ID: '{pk_query}'.")
-
-        # Priority 2: User selected from the dropdown (and didn't choose the placeholder)
-        elif selected_dropdown and selected_dropdown not in ["-- Select Installation ID --", "No existing IDs found"]:
-            selected_id = selected_dropdown.split(" | ")[0]
+            # Renamed field to "Installation Id"
+            st.selectbox(
+                "Installation Id", 
+                options=id_options, 
+                key="pk_select_val",
+                on_change=sync_from_select
+            )
 
     with search_tab2:
         col_d1, col_d2 = st.columns(2)
@@ -389,15 +422,25 @@ elif menu == "Log Daily Tasks":
                 filtered_df = df_inst[df_inst["order_created_date"].astype(str) == str(filter_date)]
                 if not filtered_df.empty:
                     date_options = ["-- Select Installation ID --"] + [f"{row['installation_id']} | {row['site_address'][:25]}..." for _, row in filtered_df.iterrows()]
-                    date_selected_dropdown = st.selectbox("Select Project matching date:", date_options, key="log_date_select")
-                    if date_selected_dropdown != "-- Select Installation ID --":
-                        selected_id = date_selected_dropdown.split(" | ")[0]
+                    
+                    def sync_from_date_select():
+                        sel = st.session_state.log_date_select
+                        if sel != "-- Select Installation ID --":
+                            ext_id = sel.split(" | ")[0]
+                            st.session_state.selected_inst_id = ext_id
+                            st.session_state.pk_input_val = ext_id
+                            matching_label = next((opt for opt in id_options if opt.startswith(f"{ext_id} |")), "-- Select Installation ID --")
+                            st.session_state.pk_select_val = matching_label
+
+                    st.selectbox("Select Project matching date:", date_options, key="log_date_select", on_change=sync_from_date_select)
                 else:
                     st.info(f"No installation orders found created on {filter_date}.")
             else:
                 st.info("No installation records available to filter by date.")
 
     st.divider()
+
+    selected_id = st.session_state.selected_inst_id
 
     # Dynamic Banner Display Logic
     if selected_id and not df_inst.empty and selected_id in df_inst["installation_id"].values:
@@ -519,7 +562,6 @@ elif menu == "Log Daily Tasks":
                 <span style="color: #991B1B; font-weight: 700; font-size: 15px;">No Installation ID selected. Please select or enter a valid ID above.</span>
             </div>
         """, unsafe_allow_html=True)
-
 # 3. EDIT TASK LOG (BY PRIMARY KEY)
 elif menu == "Edit Task Log (By Primary Key)":
     st.header("✏️ Edit Task Log Entry by Log ID")
