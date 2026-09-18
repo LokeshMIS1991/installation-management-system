@@ -557,18 +557,15 @@ elif menu == "Log Daily Tasks":
 
 # 3. EDIT TASK LOG
 elif menu == "Edit Task Log (By Primary Key)":
-    st.header("✏️ Edit Task Log")
+    st.header("✏️ Edit & Append Task Log")
 
     df_logs = read_sheet("Daily_Logs")
     df_inst = read_sheet("Installations")
-    df_items = read_sheet("Order_Items")
 
     if not df_logs.empty:
         df_logs.columns = df_logs.columns.str.strip().str.lower()
     if not df_inst.empty:
         df_inst.columns = df_inst.columns.str.strip().str.lower()
-    if not df_items.empty:
-        df_items.columns = df_items.columns.str.strip().str.lower()
 
     inst_col_logs = next((c for c in df_logs.columns if "installation" in c or "inst" in c), "installation_id") if not df_logs.empty else "installation_id"
     all_inst_ids = df_inst["installation_id"].tolist() if not df_inst.empty and "installation_id" in df_inst.columns else []
@@ -673,25 +670,16 @@ elif menu == "Edit Task Log (By Primary Key)":
             st.warning(f"No task logs found recorded yet for Installation ID: `{selected_id}`.")
         else:
             log_day_choices = [
-                f"{row.get('day_number', f'Day {idx+1}')} | Logged Date: {row.get('logged_date', row.get('log_date', 'N/A'))}" 
+                f"{row.get('day_number', f'Day {idx+1}')} | Date: {row.get('logged_date', row.get('log_date', 'N/A'))} ({row.get('log_id', '')})" 
                 for idx, row in existing_logs.reset_index(drop=True).iterrows()
             ]
             
-            selected_day_label = st.selectbox("Select Day / Log to Edit:", log_day_choices)
+            selected_day_label = st.selectbox("Select Log Entry to Update:", log_day_choices)
             selected_idx = log_day_choices.index(selected_day_label)
             selected_log_row = existing_logs.iloc[selected_idx]
 
             current_day = selected_log_row.get("day_number", f"Day {selected_idx + 1}")
             current_log_id = selected_log_row.get("log_id", "")
-
-            site_items = df_items[df_items["installation_id"] == selected_id] if not df_items.empty and "installation_id" in df_items.columns else pd.DataFrame()
-            prod_choices = [f"{row.get('sub_category', row.get('category', 'Product'))} ({row.get('dimensions', '')})" for _, row in site_items.iterrows()] if not site_items.empty else []
-            prod_choices.append("General Site Work / Preparation")
-            
-            current_prod_val = str(selected_log_row.get("product_worked_on", ""))
-            if current_prod_val not in prod_choices:
-                prod_choices.insert(0, current_prod_val)
-            prod_default_idx = prod_choices.index(current_prod_val)
 
             st.markdown(f"""
                 <div style="background-color: #EBF3FE; border-left: 5px solid #00A651; padding: 14px 20px; border-radius: 6px; margin-bottom: 20px;">
@@ -701,12 +689,16 @@ elif menu == "Edit Task Log (By Primary Key)":
                 </div>
             """, unsafe_allow_html=True)
 
-            if selected_idx > 0:
-                prev_log = existing_logs.iloc[selected_idx - 1]
-                prev_planned = prev_log.get('next_day_planned_tasks', prev_log.get('next_day_plann', ''))
-                if prev_planned and str(prev_planned).strip():
-                    with st.expander(f"📌 Tasks Planned on Previous Day ({prev_log.get('day_number', f'Day {selected_idx}')})", expanded=True):
-                        st.info(prev_planned)
+            # View previous activity logs summary
+            with st.expander("📋 View All Previously Recorded Work Summaries for this Site", expanded=True):
+                for idx, log in existing_logs.iterrows():
+                    log_time = log.get('logged_date', log.get('log_date', 'N/A'))
+                    tech = log.get('submitted_by', 'N/A')
+                    tasks = log.get('tasks_completed', log.get('completed_tasks', 'No tasks logged.'))
+                    
+                    st.markdown(f"**{log.get('day_number', f'Log #{idx+1}')}** — *{log_time}* (By: **{tech}**)")
+                    st.text(tasks)
+                    st.markdown("---")
 
             with st.form(key="edit_task_log_form"):
                 col_p1, col_p2, col_p3, col_p4 = st.columns(4)
@@ -720,7 +712,9 @@ elif menu == "Edit Task Log (By Primary Key)":
                     new_log_date = st.date_input("Log Date", value=parsed_date, format="YYYY-MM-DD")
 
                 with col_p2:
-                    new_product = st.selectbox("Product Worked On", options=prod_choices, index=prod_default_idx)
+                    # Manual text entry (replaces dropdown)
+                    raw_product = str(selected_log_row.get("product_worked_on", ""))
+                    new_product = st.text_input("Product Worked On", value=raw_product, placeholder="e.g. Rolling Shutter / General Site Work")
 
                 with col_p3:
                     new_tech = st.text_input("Technician Name", value=str(selected_log_row.get("submitted_by", "")))
@@ -732,23 +726,18 @@ elif menu == "Edit Task Log (By Primary Key)":
 
                 st.divider()
 
-                col_t1, col_t2 = st.columns(2)
-                with col_t1:
-                    new_completed = st.text_area(
-                        "Completed Tasks (Today)", 
-                        value=str(selected_log_row.get("tasks_completed", selected_log_row.get("completed_tasks", ""))), 
-                        height=160
-                    )
+                # Manual dynamic tasks update area
+                existing_tasks_text = str(selected_log_row.get("tasks_completed", selected_log_row.get("completed_tasks", "")))
                 
-                with col_t2:
-                    new_next_planned = st.text_area(
-                        "Planned Tasks (Next Day)", 
-                        value=str(selected_log_row.get("next_day_planned_tasks", selected_log_row.get("next_day_plann", ""))), 
-                        height=160
-                    )
+                new_completed = st.text_area(
+                    "Work Progress & Tasks Executed", 
+                    value=existing_tasks_text, 
+                    height=200,
+                    help="Append new incremental work directly at the end of this list."
+                )
 
                 new_site_remarks = st.text_area(
-                    "Site Remarks / Delay Reasons", 
+                    "Site Remarks / Delay Reasons (Optional)", 
                     value=str(selected_log_row.get("site_remarks", "")), 
                     height=90
                 )
@@ -763,7 +752,6 @@ elif menu == "Edit Task Log (By Primary Key)":
                             "logged_date": str(new_log_date),
                             "product_worked_on": new_product,
                             "tasks_completed": new_completed,
-                            "next_day_planned_tasks": new_next_planned,
                             "site_remarks": new_site_remarks,
                             "submitted_by": new_tech
                         }
@@ -779,7 +767,7 @@ elif menu == "Edit Task Log (By Primary Key)":
 
             st.divider()
             with st.expander("🗑️ Danger Zone: Delete Log Entry"):
-                st.warning(f"Deleting this entry will permanently delete {current_day} log from Google Sheets.")
+                st.warning(f"Deleting this entry will permanently remove the {current_day} log from Google Sheets.")
                 if st.button(f"Confirm Delete {current_day}", key="delete_log_btn"):
                     if current_log_id:
                         deleted = delete_sheet_row("Daily_Logs", "log_id", current_log_id)
