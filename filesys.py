@@ -22,7 +22,7 @@ SPREADSHEET_NAME = "Installation_Schedules"
 CATEGORIES = ['General', 'Work', 'Personal', 'Urgent', 'Meeting', 'Development', 'Design']
 STATUS_OPTIONS = ['Pending', 'In Progress', 'Completed', 'On Hold']
 
-# Custom Styling
+# Custom UI Styling
 st.markdown("""
     <style>
     .stApp {
@@ -90,6 +90,7 @@ def read_sheet(sheet_name):
         if not rows or len(rows) < 2:
             return pd.DataFrame()
         
+        # Normalize headers to lowercase stripped strings
         headers = [str(h).strip().lower() for h in rows[0]]
         data = rows[1:]
         df = pd.DataFrame(data, columns=headers)
@@ -222,7 +223,7 @@ elif page == "Page 2: Daily Task Logger":
 
     selected_id = None
 
-    # Project Selection
+    # Project Selector Section
     with st.container():
         st.subheader("Select Active Installation")
         if df_inst.empty:
@@ -240,7 +241,7 @@ elif page == "Page 2: Daily Task Logger":
                 selected_id = selected_option.split(" | ")[0]
 
     # ---------------------------------------------------------
-    # Active Installation Display Banner
+    # Active Installation Banner (Dynamic Display logic)
     # ---------------------------------------------------------
     if selected_id:
         team_name = "N/A"
@@ -258,6 +259,7 @@ elif page == "Page 2: Daily Task Logger":
 
         day_number_str = f"Day {day_count}"
 
+        # Styled Banner for Active Selection
         st.markdown(
             f"""
             <div style="
@@ -279,11 +281,12 @@ elif page == "Page 2: Daily Task Logger":
         else:
             site_items = pd.DataFrame()
 
+        # Display Order Items details if available
         if not site_items.empty:
             with st.expander("📦 View Site Items / Equipment List", expanded=False):
                 st.dataframe(site_items, use_container_width=True)
 
-        # Task Entry Form Container
+        # Card Container Layout for Task Entry
         st.markdown('<div class="task-card">', unsafe_allow_html=True)
         
         ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([2, 1, 1])
@@ -398,6 +401,7 @@ elif page == "Page 2: Daily Task Logger":
             else:
                 st.caption("No daily logs recorded for this project yet.")
     else:
+        # Styled Banner for Empty Selection
         st.markdown(
             """
             <div style="
