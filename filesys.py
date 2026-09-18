@@ -262,16 +262,34 @@ if menu == "New Installation Order":
         if custom_name.strip():
             final_product_name = custom_name.strip()
 
-    with st.form("new_order_form"):
-        col_dim, col_qty = st.columns(2)
-        with col_dim:
-            dimensions = st.text_input("Dimensions (WxH)", placeholder="e.g., 5330X6000")
-        with col_qty:
-            quantity = st.number_input("Quantity", min_value=1, value=1, step=1)
+    col_dim, col_qty = st.columns(2)
+    with col_dim:
+        dimensions = st.text_input("Dimensions (WxH)", placeholder="e.g., 5330X6000")
+    with col_qty:
+        quantity = st.number_input("Quantity", min_value=1, value=1, step=1)
 
-        submitted = st.form_submit_button("Save Installation Order")
+    st.divider()
 
-        if submitted:
+    # Custom styling exclusively targeting the Save Order button (Blue)
+    st.markdown("""
+        <style>
+        div.stButton > button[data-testid="baseButton-secondary"]:has(div:contains("Save Installation Order")) {
+            background-color: #0F4C81 !important;
+            color: #FFFFFF !important;
+            border: none !important;
+            font-weight: 600 !important;
+        }
+        div.stButton > button[data-testid="baseButton-secondary"]:has(div:contains("Save Installation Order")):hover {
+            background-color: #0A375E !important;
+            box-shadow: 0 4px 10px rgba(15, 76, 129, 0.3) !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    col_btn1, col_btn2 = st.columns([1, 1])
+
+    with col_btn1:
+        if st.button("Save Installation Order", use_container_width=True):
             if not team_details.strip():
                 st.error("Please enter Team's Details.")
             elif not site_address.strip():
@@ -297,6 +315,12 @@ if menu == "New Installation Order":
                 
                 st.success(f"Saved to Google Sheets! Generated Installation ID: **`{inst_id}`**")
                 st.session_state.temp_inst_id = generate_project_id()
+
+    with col_btn2:
+        if st.button("Go to Log Daily Tasks ➔", use_container_width=True):
+            # Update sidebar navigation radio state to switch page
+            st.session_state["nav_menu"] = "Log Daily Tasks"
+            st.rerun()
 
 # 2. LOG DAILY TASKS
 elif menu == "Log Daily Tasks":
