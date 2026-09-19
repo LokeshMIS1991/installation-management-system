@@ -14,10 +14,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Main Google Sheets Workbook Name
 SPREADSHEET_NAME = "Installation_Schedules"
-
-# Render High-Quality Logo in Navigation Bar (Sidebar)
 LOGO_PATH = "Company Logo.jpeg"
 
 if os.path.exists(LOGO_PATH):
@@ -85,7 +82,14 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Google Sheets Client Connection & Initialization
+TASK_CATEGORIES = [
+    "General", 
+    "Assembly / Mechanical", 
+    "Wiring / Electrical", 
+    "Testing & Commissioning", 
+    "Civil / Prep"
+]
+
 @st.cache_resource
 def get_gspread_client():
     scope = [
@@ -193,30 +197,6 @@ def update_sheet_row(sheet_name, key_column_name, key_value, updated_row_dict):
         st.error(f"Update failed: {e}")
     return False
 
-def delete_sheet_row(sheet_name, key_column_name, key_value):
-    try:
-        sheet = get_worksheet(sheet_name)
-        rows = sheet.get_all_values()
-        if not rows:
-            return False
-            
-        headers = [str(h).strip().lower() for h in rows[0]]
-        key_column_name_lower = str(key_column_name).strip().lower()
-        
-        if key_column_name_lower not in headers:
-            return False
-            
-        key_col_idx = headers.index(key_column_name_lower)
-        
-        for row_idx, row in enumerate(rows[1:], start=2):
-            if len(row) > key_col_idx and str(row[key_col_idx]).strip() == str(key_value).strip():
-                sheet.delete_rows(row_idx)
-                st.cache_data.clear()
-                return True
-    except Exception as e:
-        st.error(f"Delete failed: {e}")
-    return False
-
 def generate_project_id():
     year = datetime.now().strftime("%Y")
     chars = string.ascii_uppercase + string.digits
@@ -228,6 +208,17 @@ def generate_log_id():
     chars = string.ascii_uppercase + string.digits
     unique_suffix = ''.join(random.choices(chars, k=5))
     return f"LOG-{year}-{unique_suffix}"
+
+def format_tasks_to_string(tasks_list):
+    """Formats structured task item list into printable multiline string."""
+    formatted_lines = []
+    for idx, t in enumerate(tasks_list, start=1):
+        desc = t.get("description", "").strip()
+        if desc:
+            status_symbol = "✓" if t.get("done", True) else " "
+            cat = t.get("category", "General")
+            formatted_lines.append(f"{idx}. [{status_symbol}] [{cat}] {desc}")
+    return "\n".join(formatted_lines)
 
 PRODUCT_CATALOG = {
     "Rolling Shutters": ["Motorized Rolling Shutter", "Gear Rolling Shutter", "Manual Rolling Shutter"],
@@ -254,16 +245,62 @@ menu = st.sidebar.radio("Navigation", [
     "Handover Date Dashboard",
     "New Installation Order", 
     "Log Daily Tasks",
-    "Edit Task Log (By Primary Key)",
     "View Logs & Update Status", 
     "Master Database"
 ])
 
-if "task_count" not in st.session_state:
-    st.session_state.task_count = 5
+# Component to render Itemized Task Grid
+def render_task_grid(session_key):
+    if session_key not in st.session_state:
+        st.session_state[session_key] = [
+            {"done": True, "description": "", "category": "General"},
+            {"done": True, "description": "", "category": "General"},
+            {"done": True, "description": "", "category": "General"},
+            {"done": True, "description": "", "category": "General"}
+        ]
 
-if "next_task_count" not in st.session_state:
-    st.session_state.next_task_count = 5
+    tasks = st.session_state[session_key]
+
+    c_head1, c_head2, c_head3, c_head4 = st.columns([0.6, 3.5, 2.2, 0.8])
+    with c_head1:
+        st.markdown("**DONE**")
+    with c_head2:
+        st.markdown("**TASK DESCRIPTION**")
+    with c_head3:
+        st.markdown("**CATEGORY / TAG**")
+    with c_head4:
+        st.markdown("**ACTION**")
+
+    indices_to_remove = []
+
+    for idx, item in enumerate(tasks):
+        col1, col2, col3, col4 = st.columns([0.6, 3.5, 2.2, 0.8])
+        
+        with col1:
+            item["done"] = st.checkbox("", value=item.get("done", True), key=f"{session_key}_done_{idx}")
+        with col2:
+            item["description"] = st.text_input("", value=item.get("description", ""), placeholder="Enter task description...", key=f"{session_key}_desc_{idx}", label_visibility="collapsed")
+        with col3:
+            curr_cat = item.get("category", "General")
+            cat_idx = TASK_CATEGORIES.index(curr_cat) if curr_cat in TASK_CATEGORIES else 0
+            item["category"] = st.selectbox("", TASK_CATEGORIES, index=cat_idx, key=f"{session_key}_cat_{idx}", label_visibility="collapsed")
+        with col4:
+            if st.button("🗑️", key=f"{session_key}_del_{idx}"):
+                indices_to_remove.append(idx)
+
+    if indices_to_remove:
+        for i in sorted(indices_to_remove, reverse=True):
+            st.session_state[session_key].pop(i)
+        st.rerun()
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    col_add, col_metric = st.columns([3, 2])
+    with col_add:
+        if st.button("➕ Add Another Task", key=f"{session_key}_add_btn"):
+            st.session_state[session_key].append({"done": True, "description": "", "category": "General"})
+            st.rerun()
+    with col_metric:
+        st.markdown(f"<div style='text-align: right; padding-top: 8px; color: #64748B; font-weight: 600;'>Total: <b>{len(tasks)}</b> tasks</div>", unsafe_allow_html=True)
 
 # ------------------------------------------
 # 1. ACTIVE TASKS DASHBOARD
@@ -297,10 +334,8 @@ if menu == "Active Tasks Dashboard":
 
             for _, project in active_inst.iterrows():
                 inst_id = str(project.get("installation_id") or "N/A")
-                
                 raw_addr = project.get("site_address")
                 site_addr = str(raw_addr) if pd.notna(raw_addr) and str(raw_addr).strip() != "" else "N/A"
-                
                 team = str(project.get("team_details") or "Unassigned")
                 p_status = str(project.get("status") or "In Progress")
 
@@ -400,10 +435,8 @@ elif menu == "Handover Date Dashboard":
                 else:
                     for _, row in dataframe.iterrows():
                         inst_id = str(row.get("installation_id") or "N/A")
-                        
                         raw_site = row.get("site_address")
                         site = str(raw_site) if pd.notna(raw_site) and str(raw_site).strip() != "" else "N/A"
-                        
                         team = str(row.get("team_details") or "Unassigned")
                         h_date = str(row.get(handover_col) or "Not Set")
                         status = str(row.get("status") or "In Progress")
@@ -507,7 +540,7 @@ elif menu == "New Installation Order":
             st.session_state.temp_inst_id = generate_project_id()
 
 # ------------------------------------------
-# 4. LOG DAILY TASKS
+# 4. LOG DAILY TASKS (Itemized Grid UI)
 # ------------------------------------------
 elif menu == "Log Daily Tasks":
     st.header("📋 Log Daily Tasks")
@@ -528,10 +561,8 @@ elif menu == "Log Daily Tasks":
 
     if "selected_inst_id" not in st.session_state:
         st.session_state.selected_inst_id = ""
-
     if "pk_input_val" not in st.session_state:
         st.session_state.pk_input_val = ""
-
     if "pk_select_val" not in st.session_state:
         st.session_state.pk_select_val = "-- Select Installation ID --"
 
@@ -565,28 +596,15 @@ elif menu == "Log Daily Tasks":
 
     with search_tab1:
         col_pk_input, col_pk_select = st.columns(2)
-        
         with col_pk_input:
-            st.text_input(
-                "Enter Installation ID directly:", 
-                placeholder="e.g., INST-2026-G4HVI", 
-                key="pk_input_val",
-                on_change=sync_from_input
-            )
-        
+            st.text_input("Enter Installation ID directly:", placeholder="e.g., INST-2026-G4HVI", key="pk_input_val", on_change=sync_from_input)
         with col_pk_select:
-            st.selectbox(
-                "Installation Id", 
-                options=id_options, 
-                key="pk_select_val",
-                on_change=sync_from_select
-            )
+            st.selectbox("Installation Id", options=id_options, key="pk_select_val", on_change=sync_from_select)
 
     with search_tab2:
         col_d1, col_d2 = st.columns(2)
         with col_d1:
             filter_date = st.date_input("Filter Orders by Created Date:", value=datetime.now(), key="log_date_filter", format="YYYY-MM-DD")
-        
         with col_d2:
             if not df_inst.empty and "order_created_date" in df_inst.columns:
                 filtered_df = df_inst[df_inst["order_created_date"].astype(str) == str(filter_date)]
@@ -595,7 +613,6 @@ elif menu == "Log Daily Tasks":
                         f"{row['installation_id']} | {row['site_address'][:20]}... | Status: [{row.get('status', 'In Progress')}]" 
                         for _, row in filtered_df.iterrows()
                     ]
-                    
                     def sync_from_date_select():
                         sel = st.session_state.log_date_select
                         if sel != "-- Select Installation ID --":
@@ -643,13 +660,6 @@ elif menu == "Log Daily Tasks":
             </div>
         """, unsafe_allow_html=True)
 
-        if not existing_logs.empty:
-            last_log = existing_logs.iloc[-1]
-            prev_planned = last_log.get('next_day_planned_tasks', last_log.get('next_day_plann', ''))
-            if prev_planned and str(prev_planned).strip():
-                with st.expander(f"📌 Tasks Planned Yesterday ({last_log.get('day_number', 'Previous Log')})", expanded=True):
-                    st.info(prev_planned)
-
         col_p1, col_p2, col_p3, col_p4 = st.columns([1, 1, 1, 1])
         with col_p1:
             log_date = st.date_input("Log Date", value=datetime.now(), min_value=datetime.now() - timedelta(days=14), format="YYYY-MM-DD")
@@ -661,75 +671,48 @@ elif menu == "Log Daily Tasks":
         with col_p4:
             curr_status = inst_info.get('status', 'In Progress')
             status_index = STATUS_OPTIONS.index(curr_status) if curr_status in STATUS_OPTIONS else 0
-            work_status = st.selectbox("Work Progress Status *", STATUS_OPTIONS, index=status_index, key="work_progress_status")
+            work_status = st.selectbox("Work Progress Status *", STATUS_OPTIONS, index=status_index)
 
         auto_log_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         st.divider()
 
-        st.markdown("### 📝 Today's Completed Tasks")
-        completed_tasks = []
-        for i in range(st.session_state.task_count):
-            task_input = st.text_input(f"Completed Task {i + 1}", key=f"today_task_{i}", placeholder="Describe work completed today...").strip()
-            if task_input:
-                completed_tasks.append(f"{i + 1}. {task_input}")
-
-        col_tc1, col_tc2, _ = st.columns([1, 1, 3])
-        with col_tc1:
-            if st.button("➕ Add Task"):
-                st.session_state.task_count += 1
-                st.rerun()
-        with col_tc2:
-            if st.session_state.task_count > 1 and st.button("➖ Remove Task"):
-                st.session_state.task_count -= 1
-                st.rerun()
+        st.markdown(f"### Work Progress & Tasks Executed ({day_label})")
+        render_task_grid("log_tasks_grid")
 
         st.divider()
-
-        st.markdown("### 🔮 Planned Tasks for Next Day")
-        next_tasks = []
-        for j in range(st.session_state.next_task_count):
-            next_input = st.text_input(f"Next Day Task {j + 1}", key=f"next_task_{j}", placeholder="Describe task planned for tomorrow...").strip()
-            if next_input:
-                next_tasks.append(f"{j + 1}. {next_input}")
-
-        col_nt1, col_nt2, _ = st.columns([1, 1, 3])
-        with col_nt1:
-            if st.button("➕ Add Next Task"):
-                st.session_state.next_task_count += 1
-                st.rerun()
-        with col_nt2:
-            if st.session_state.next_task_count > 1 and st.button("➖ Remove Next Task"):
-                st.session_state.next_task_count -= 1
-                st.rerun()
-
-        st.divider()
-        st.markdown("### ⚠️ Site Remarks & Delay Issues (Optional)")
+        st.markdown("### ⚠️ Site Remarks & Delay Reasons (Optional)")
         site_remarks = st.text_area("Site Remarks / Delay Reasons", placeholder="Record material shortages, client delays, electrical issues, or site hold details...")
 
         st.divider()
 
-        if st.button("Submit Daily Task Log", use_container_width=True, type="primary"):
-            if not completed_tasks:
-                st.error("Please fill in at least one completed task description.")
+        if st.button("💾 Log Tasks", use_container_width=True, type="primary"):
+            grid_items = st.session_state.get("log_tasks_grid", [])
+            valid_items = [t for t in grid_items if t.get("description", "").strip()]
+
+            if not valid_items:
+                st.error("Please enter at least one task description.")
             elif not submitted_by.strip():
                 st.error("Please specify the Technician Name.")
             else:
-                combined_completed = "\n".join(completed_tasks)
-                combined_next = "\n".join(next_tasks) if next_tasks else "None planned"
+                combined_tasks = format_tasks_to_string(valid_items)
                 log_id = generate_log_id()
                 
                 log_row = [
                     log_id, selected_id, day_label, auto_log_time, str(log_date), 
-                    product_worked_on, combined_completed, combined_next, site_remarks, submitted_by
+                    product_worked_on, combined_tasks, "None planned", site_remarks, submitted_by
                 ]
                 append_to_sheet("Daily_Logs", log_row)
-
                 update_sheet_row("Installations", "installation_id", selected_id, {"status": work_status})
                 
                 st.success(f"Successfully recorded **{day_label}** log & updated status to **{work_status}** for Installation ID **`{selected_id}`**!")
-                st.session_state.task_count = 5
-                st.session_state.next_task_count = 5
+                st.session_state["log_tasks_grid"] = [
+                    {"done": True, "description": "", "category": "General"},
+                    {"done": True, "description": "", "category": "General"},
+                    {"done": True, "description": "", "category": "General"},
+                    {"done": True, "description": "", "category": "General"}
+                ]
+                st.rerun()
     else:
         st.markdown("""
             <div style="background-color: #FEF2F2; border-left: 5px solid #EF4444; padding: 14px 20px; border-radius: 6px; margin-bottom: 20px;">
@@ -738,286 +721,7 @@ elif menu == "Log Daily Tasks":
         """, unsafe_allow_html=True)
 
 # ------------------------------------------
-# 5. EDIT TASK LOG
-# ------------------------------------------
-elif menu == "Edit Task Log (By Primary Key)":
-    st.header("✏️ Dynamic Task Log Management")
-
-    df_logs = read_sheet("Daily_Logs")
-    df_inst = read_sheet("Installations")
-
-    if not df_logs.empty:
-        df_logs.columns = df_logs.columns.str.strip().str.lower()
-    if not df_inst.empty:
-        df_inst.columns = df_inst.columns.str.strip().str.lower()
-
-    inst_col_logs = next((c for c in df_logs.columns if "installation" in c or "inst" in c), "installation_id") if not df_logs.empty else "installation_id"
-    all_inst_ids = df_inst["installation_id"].tolist() if not df_inst.empty and "installation_id" in df_inst.columns else []
-
-    inst_options = ["-- Select Installation ID --"] + [
-        f"{str(row.get('installation_id', ''))} | {str(row.get('site_address', ''))[:25]}... [{str(row.get('status', 'In Progress'))}]" 
-        for _, row in df_inst.iterrows()
-    ] if not df_inst.empty and "installation_id" in df_inst.columns else ["No existing IDs found"]
-
-    if "edit_inst_id" not in st.session_state:
-        st.session_state.edit_inst_id = ""
-    if "edit_input_val" not in st.session_state:
-        st.session_state.edit_input_val = ""
-    if "edit_select_val" not in st.session_state:
-        st.session_state.edit_select_val = "-- Select Installation ID --"
-
-    def sync_edit_input():
-        input_text = st.session_state.edit_input_val.strip()
-        if input_text in all_inst_ids:
-            st.session_state.edit_inst_id = input_text
-            match = next((opt for opt in inst_options if opt.startswith(f"{input_text} |")), "-- Select Installation ID --")
-            st.session_state.edit_select_val = match
-        else:
-            matched = [i for i in all_inst_ids if input_text.lower() in str(i).lower()]
-            if matched:
-                st.session_state.edit_inst_id = matched[0]
-                match = next((opt for opt in inst_options if opt.startswith(f"{matched[0]} |")), "-- Select Installation ID --")
-                st.session_state.edit_select_val = match
-            else:
-                st.session_state.edit_inst_id = input_text
-
-    def sync_edit_select():
-        selected = st.session_state.edit_select_val
-        if selected and selected not in ["-- Select Installation ID --", "No existing IDs found"]:
-            extracted_id = selected.split(" | ")[0]
-            st.session_state.edit_inst_id = extracted_id
-            st.session_state.edit_input_val = extracted_id
-        else:
-            st.session_state.edit_inst_id = ""
-            st.session_state.edit_input_val = ""
-
-    st.subheader("Select the Data")
-    edit_tab1, edit_tab2 = st.tabs(["🔎 Search by Installation Id", "📅 Search by Date"])
-
-    with edit_tab1:
-        col_e_in, col_e_sel = st.columns(2)
-        with col_e_in:
-            st.text_input(
-                "Enter Installation ID directly:",
-                placeholder="e.g., INST-2026-UKVXU",
-                key="edit_input_val",
-                on_change=sync_edit_input
-            )
-        with col_e_sel:
-            st.selectbox(
-                "Installation Id",
-                options=inst_options,
-                key="edit_select_val",
-                on_change=sync_edit_select
-            )
-
-    with edit_tab2:
-        col_ed1, col_ed2 = st.columns(2)
-        with col_ed1:
-            filter_edit_date = st.date_input("Filter Orders by Created Date:", value=datetime.now(), key="edit_date_filter", format="YYYY-MM-DD")
-        with col_ed2:
-            if not df_inst.empty and "order_created_date" in df_inst.columns:
-                filtered_df = df_inst[df_inst["order_created_date"].astype(str) == str(filter_edit_date)]
-                if not filtered_df.empty:
-                    date_options = ["-- Select Installation ID --"] + [
-                        f"{str(row.get('installation_id', ''))} | {str(row.get('site_address', ''))[:20]}... | Status: [{str(row.get('status', 'In Progress'))}]" 
-                        for _, row in filtered_df.iterrows()
-                    ]
-                    def sync_edit_date_select():
-                        sel = st.session_state.edit_date_select
-                        if sel != "-- Select Installation ID --":
-                            ext_id = sel.split(" | ")[0]
-                            st.session_state.edit_inst_id = ext_id
-                            st.session_state.edit_input_val = ext_id
-                            match = next((opt for opt in inst_options if opt.startswith(f"{ext_id} |")), "-- Select Installation ID --")
-                            st.session_state.edit_select_val = match
-
-                    st.selectbox("Select Project matching date:", date_options, key="edit_date_select", on_change=sync_edit_date_select)
-                else:
-                    st.info(f"No installation orders found created on {filter_edit_date}.")
-            else:
-                st.info("No installation records available to filter by date.")
-
-    st.divider()
-
-    selected_id = st.session_state.edit_inst_id
-
-    if selected_id and not df_inst.empty and selected_id in df_inst["installation_id"].astype(str).values:
-        inst_info = df_inst[df_inst["installation_id"].astype(str) == selected_id].iloc[0]
-        current_project_status = str(inst_info.get("status", "In Progress")).strip()
-
-        existing_logs = pd.DataFrame()
-        if not df_logs.empty and inst_col_logs in df_logs.columns:
-            df_logs[inst_col_logs] = df_logs[inst_col_logs].astype(str).str.strip()
-            existing_logs = df_logs[df_logs[inst_col_logs] == selected_id.strip()].reset_index(drop=True)
-
-        log_day_choices = []
-        for idx, row in existing_logs.iterrows():
-            calc_day = str(row.get("day_number")) if pd.notna(row.get("day_number")) and str(row.get("day_number")).strip() != "" else f"Day {idx + 1}"
-            log_date_str = str(row.get("logged_date")) if pd.notna(row.get("logged_date")) else str(row.get("log_date", "N/A"))
-            log_id_str = str(row.get("log_id")) if pd.notna(row.get("log_id")) else ""
-            log_day_choices.append(f"{calc_day} | Date: {log_date_str} ({log_id_str})")
-
-        next_day_num = len(existing_logs) + 1
-        next_day_label = f"➕ Create New Log (Day {next_day_num})"
-        
-        # Allow new daily log creation dynamically until marked Completed
-        if current_project_status.lower() != "completed":
-            log_day_choices.append(next_day_label)
-
-        selected_day_label = st.selectbox("Select Log Entry to Edit or Add:", log_day_choices)
-        is_new_entry = (selected_day_label == next_day_label)
-
-        if not is_new_entry:
-            selected_idx = log_day_choices.index(selected_day_label)
-            selected_log_row = existing_logs.iloc[selected_idx]
-            raw_day = selected_log_row.get("day_number")
-            active_day_name = str(raw_day) if pd.notna(raw_day) and str(raw_day).strip() != "" else f"Day {selected_idx + 1}"
-            raw_log_id = selected_log_row.get("log_id")
-            current_log_id = str(raw_log_id) if pd.notna(raw_log_id) else ""
-        else:
-            selected_log_row = pd.Series()
-            active_day_name = f"Day {next_day_num}"
-            current_log_id = ""
-
-        raw_team = inst_info.get("team_details")
-        team_details_safe = str(raw_team) if pd.notna(raw_team) and str(raw_team).strip() != "" else "N/A"
-
-        header_action = "Creating New Entry:" if is_new_entry else "Editing:"
-        st.markdown(f"""
-            <div style="background-color: #EBF3FE; border-left: 5px solid #00A651; padding: 14px 20px; border-radius: 6px; margin-bottom: 20px;">
-                <span style="color: #0F4C81; font-weight: 700; font-size: 15px;">Active Installation ID:</span>
-                <span style="color: #00A651; font-weight: 700; font-size: 16px; margin-left: 8px; font-family: monospace;">{selected_id}</span>
-                <span style="color: #1A6BBA; font-weight: 600; font-size: 14px; margin-left: 15px;">({header_action} <b>{active_day_name}</b> | Team: {team_details_safe})</span>
-            </div>
-        """, unsafe_allow_html=True)
-
-        if current_project_status.lower() == "completed":
-            st.info("ℹ️ This installation project is marked as **Completed**. Dynamic logging of new days is locked unless status is updated.")
-
-        with st.expander("📋 View All Previously Recorded Work Summaries for this Site", expanded=True):
-            if existing_logs.empty:
-                st.write("No prior daily logs recorded yet for this project.")
-            else:
-                for idx, log in existing_logs.iterrows():
-                    log_day = str(log.get('day_number')) if pd.notna(log.get('day_number')) and str(log.get('day_number')).strip() != "" else f"Day {idx + 1}"
-                    log_time = str(log.get('logged_date')) if pd.notna(log.get('logged_date')) else str(log.get('log_date', 'N/A'))
-                    tech = str(log.get('submitted_by')) if pd.notna(log.get('submitted_by')) else 'N/A'
-                    tasks = str(log.get('tasks_completed')) if pd.notna(log.get('tasks_completed')) else 'No tasks logged.'
-                    
-                    st.markdown(f"**{log_day}** — *{log_time}* (By: **{tech}**)")
-                    st.text(tasks)
-                    st.markdown("---")
-
-        with st.form(key="edit_task_log_form"):
-            col_p1, col_p2, col_p3, col_p4 = st.columns(4)
-            
-            with col_p1:
-                if not is_new_entry:
-                    try:
-                        raw_date = str(selected_log_row.get("logged_date", selected_log_row.get("log_date", "")))
-                        parsed_date = datetime.strptime(raw_date, "%Y-%m-%d")
-                    except ValueError:
-                        parsed_date = datetime.now()
-                else:
-                    parsed_date = datetime.now()
-                new_log_date = st.date_input("Log Date", value=parsed_date, format="YYYY-MM-DD")
-
-            with col_p2:
-                raw_product = "" if is_new_entry else str(selected_log_row.get("product_worked_on", "") or "")
-                new_product = st.text_input("Product Worked On", value=raw_product, placeholder="e.g. Rolling Shutter")
-
-            with col_p3:
-                default_tech = team_details_safe.split('+')[0].strip() if '+' in team_details_safe else team_details_safe
-                raw_tech = default_tech if is_new_entry else str(selected_log_row.get("submitted_by", "") or "")
-                new_tech = st.text_input("Technician Name", value=raw_tech)
-
-            with col_p4:
-                curr_status = current_project_status if current_project_status in STATUS_OPTIONS else "In Progress"
-                status_idx = STATUS_OPTIONS.index(curr_status)
-                new_status = st.selectbox("Work Progress Status *", STATUS_OPTIONS, index=status_idx)
-
-            st.divider()
-
-            existing_tasks_text = "" if is_new_entry else str(selected_log_row.get("tasks_completed", selected_log_row.get("completed_tasks", "")) or "")
-            
-            new_completed = st.text_area(
-                f"Work Progress & Tasks Executed ({active_day_name})", 
-                value=existing_tasks_text, 
-                height=200,
-                placeholder="1. Reach site\n2. Open area\n3. Start installation...",
-                help="Enter daily task updates line by line."
-            )
-
-            existing_remarks = "" if is_new_entry else str(selected_log_row.get("site_remarks", "") or "")
-            new_site_remarks = st.text_area(
-                "Site Remarks / Delay Reasons (Optional)", 
-                value=existing_remarks, 
-                height=90,
-                placeholder="Record material issues, client delays, or general site notes..."
-            )
-
-            btn_label = f"➕ Save New {active_day_name} Log" if is_new_entry else f"💾 Save Updated {active_day_name} Log"
-            submit_edit = st.form_submit_button(btn_label, type="primary", use_container_width=True)
-
-            if submit_edit:
-                cleaned_tasks = new_completed.strip()
-                if not cleaned_tasks:
-                    st.error("Tasks completed cannot be empty.")
-                elif not new_tech.strip():
-                    st.error("Technician Name is required.")
-                else:
-                    if is_new_entry:
-                        new_log_id = generate_log_id()
-                        auto_log_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        log_row = [
-                            new_log_id, selected_id, active_day_name, auto_log_time, str(new_log_date),
-                            new_product, cleaned_tasks, "", new_site_remarks, new_tech
-                        ]
-                        append_to_sheet("Daily_Logs", log_row)
-                        update_sheet_row("Installations", "installation_id", selected_id, {"status": new_status})
-                        st.success(f"Added new **{active_day_name}** log under Installation ID **`{selected_id}`**!")
-                        st.rerun()
-                    else:
-                        updated_fields = {
-                            "logged_date": str(new_log_date),
-                            "product_worked_on": new_product,
-                            "tasks_completed": cleaned_tasks,
-                            "site_remarks": new_site_remarks,
-                            "submitted_by": new_tech,
-                            "day_number": active_day_name
-                        }
-                        
-                        target_key = "log_id" if current_log_id else inst_col_logs
-                        target_val = current_log_id if current_log_id else selected_id
-
-                        update_sheet_row("Daily_Logs", target_key, target_val, updated_fields)
-                        update_sheet_row("Installations", "installation_id", selected_id, {"status": new_status})
-
-                        st.success(f"Successfully updated **{active_day_name}** log under Installation ID **`{selected_id}`**!")
-                        st.rerun()
-
-        if not is_new_entry:
-            st.divider()
-            with st.expander(f"🗑️ Danger Zone: Delete {active_day_name} Log Entry"):
-                st.warning(f"Deleting this entry will permanently remove the {active_day_name} log from Google Sheets.")
-                if st.button(f"Confirm Delete {active_day_name}", key="delete_log_btn"):
-                    if current_log_id:
-                        deleted = delete_sheet_row("Daily_Logs", "log_id", current_log_id)
-                    else:
-                        deleted = delete_sheet_row("Daily_Logs", inst_col_logs, selected_id)
-                        
-                    if deleted:
-                        st.success(f"{active_day_name} log entry deleted successfully!")
-                        st.rerun()
-                    else:
-                        st.error("Failed to delete log entry.")
-
-    elif selected_id:
-        st.error(f"Installation ID `{selected_id}` not found in master records.")
-
-# ------------------------------------------
-# 6. VIEW LOGS & UPDATE STATUS
+# 5. VIEW LOGS & UPDATE STATUS
 # ------------------------------------------
 elif menu == "View Logs & Update Status":
     st.header("🔍 View Logs & Update Installation Status")
@@ -1089,15 +793,10 @@ elif menu == "View Logs & Update Status":
                     ```
                     {row.get('tasks_completed', '')}
                     ```
-                    
-                    **Planned Tasks for Next Day:**
-                    ```
-                    {row.get('next_day_planned_tasks', 'None recorded')}
-                    ```
                     """)
 
 # ------------------------------------------
-# 7. MASTER DATABASE
+# 6. MASTER DATABASE
 # ------------------------------------------
 elif menu == "Master Database":
     st.header("Master Database View (Google Sheets)")
