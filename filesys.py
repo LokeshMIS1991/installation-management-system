@@ -284,10 +284,14 @@ if menu == "Active Tasks Dashboard":
             st.subheader("🚧 Ongoing Projects & Task Completion Status")
 
             for _, project in active_inst.iterrows():
-                inst_id = str(project.get("installation_id", "N/A") or "N/A")
-                site_addr = str(project.get("site_address", "N/A") or "N/A")
-                team = str(project.get("team_details", "Unassigned") or "Unassigned")
-                p_status = str(project.get("status", "In Progress") or "In Progress")
+                inst_id = str(project.get("installation_id") or "N/A")
+                
+                # Safe type check before string slicing to prevent TypeError
+                raw_site_addr = project.get("site_address")
+                site_addr = str(raw_site_addr) if pd.notna(raw_site_addr) and raw_site_addr != "" else "N/A"
+                
+                team = str(project.get("team_details") or "Unassigned")
+                p_status = str(project.get("status") or "In Progress")
 
                 p_logs = pd.DataFrame()
                 if not df_logs.empty and inst_col_logs in df_logs.columns:
@@ -824,7 +828,7 @@ elif menu == "Edit Task Log (By Primary Key)":
 
     selected_id = st.session_state.edit_inst_id
 
-    if selected_id and not df_inst.empty and selected_id in df_inst["installation_id"].astype(str).values:
+   if selected_id and not df_inst.empty and selected_id in df_inst["installation_id"].astype(str).values:
         inst_info = df_inst[df_inst["installation_id"].astype(str) == selected_id].iloc[0]
 
         existing_logs = pd.DataFrame()
@@ -837,19 +841,26 @@ elif menu == "Edit Task Log (By Primary Key)":
         else:
             log_day_choices = []
             for idx, row in existing_logs.iterrows():
-                calc_day = str(row.get("day_number", f"Day {idx + 1}") or f"Day {idx + 1}")
-                log_date_str = str(row.get("logged_date", row.get("log_date", "N/A")) or "N/A")
-                log_id_str = str(row.get("log_id", "") or "")
+                calc_day = str(row.get("day_number")) if pd.notna(row.get("day_number")) and row.get("day_number") != "" else f"Day {idx + 1}"
+                log_date_str = str(row.get("logged_date")) if pd.notna(row.get("logged_date")) else str(row.get("log_date", "N/A"))
+                log_id_str = str(row.get("log_id")) if pd.notna(row.get("log_id")) else ""
                 log_day_choices.append(f"{calc_day} | Date: {log_date_str} ({log_id_str})")
 
             selected_day_label = st.selectbox("Select Log Entry to Update:", log_day_choices)
             selected_idx = log_day_choices.index(selected_day_label)
             selected_log_row = existing_logs.iloc[selected_idx]
 
-            active_day_name = str(selected_log_row.get("day_number", f"Day {selected_idx + 1}") or f"Day {selected_idx + 1}")
-            current_log_id = str(selected_log_row.get("log_id", "") or "")
-            team_details_safe = str(inst_info.get('team_details', 'N/A') or 'N/A')
+            # Safe extraction to prevent TypeError on None / NaN values
+            raw_day = selected_log_row.get("day_number")
+            active_day_name = str(raw_day) if pd.notna(raw_day) and str(raw_day).strip() != "" else f"Day {selected_idx + 1}"
+            
+            raw_log_id = selected_log_row.get("log_id")
+            current_log_id = str(raw_log_id) if pd.notna(raw_log_id) else ""
+            
+            raw_team = inst_info.get("team_details")
+            team_details_safe = str(raw_team) if pd.notna(raw_team) and str(raw_team).strip() != "" else "N/A"
 
+            # Render styled box safely
             st.markdown(f"""
                 <div style="background-color: #EBF3FE; border-left: 5px solid #00A651; padding: 14px 20px; border-radius: 6px; margin-bottom: 20px;">
                     <span style="color: #0F4C81; font-weight: 700; font-size: 15px;">Active Installation ID:</span>
@@ -857,7 +868,7 @@ elif menu == "Edit Task Log (By Primary Key)":
                     <span style="color: #1A6BBA; font-weight: 600; font-size: 14px; margin-left: 15px;">(Editing: <b>{active_day_name}</b> | Team: {team_details_safe})</span>
                 </div>
             """, unsafe_html=True)
-
+            
             with st.expander("📋 View All Previously Recorded Work Summaries for this Site", expanded=True):
                 for idx, log in existing_logs.iterrows():
                     log_day = str(log.get('day_number', f"Day {idx + 1}") or f"Day {idx + 1}")
