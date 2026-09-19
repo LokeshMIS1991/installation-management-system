@@ -828,47 +828,47 @@ elif menu == "Edit Task Log (By Primary Key)":
 
     selected_id = st.session_state.edit_inst_id
 
-   if selected_id and not df_inst.empty and selected_id in df_inst["installation_id"].astype(str).values:
-        inst_info = df_inst[df_inst["installation_id"].astype(str) == selected_id].iloc[0]
-
-        existing_logs = pd.DataFrame()
-        if not df_logs.empty and inst_col_logs in df_logs.columns:
-            df_logs[inst_col_logs] = df_logs[inst_col_logs].astype(str).str.strip()
-            existing_logs = df_logs[df_logs[inst_col_logs] == selected_id.strip()].reset_index(drop=True)
-
-        if existing_logs.empty:
-            st.warning(f"No task logs found recorded yet for Installation ID: `{selected_id}`.")
-        else:
-            log_day_choices = []
-            for idx, row in existing_logs.iterrows():
-                calc_day = str(row.get("day_number")) if pd.notna(row.get("day_number")) and row.get("day_number") != "" else f"Day {idx + 1}"
-                log_date_str = str(row.get("logged_date")) if pd.notna(row.get("logged_date")) else str(row.get("log_date", "N/A"))
-                log_id_str = str(row.get("log_id")) if pd.notna(row.get("log_id")) else ""
-                log_day_choices.append(f"{calc_day} | Date: {log_date_str} ({log_id_str})")
-
-            selected_day_label = st.selectbox("Select Log Entry to Update:", log_day_choices)
-            selected_idx = log_day_choices.index(selected_day_label)
-            selected_log_row = existing_logs.iloc[selected_idx]
-
-            # Safe extraction to prevent TypeError on None / NaN values
-            raw_day = selected_log_row.get("day_number")
-            active_day_name = str(raw_day) if pd.notna(raw_day) and str(raw_day).strip() != "" else f"Day {selected_idx + 1}"
-            
-            raw_log_id = selected_log_row.get("log_id")
-            current_log_id = str(raw_log_id) if pd.notna(raw_log_id) else ""
-            
-            raw_team = inst_info.get("team_details")
-            team_details_safe = str(raw_team) if pd.notna(raw_team) and str(raw_team).strip() != "" else "N/A"
-
-            # Render styled box safely
-            st.markdown(f"""
-                <div style="background-color: #EBF3FE; border-left: 5px solid #00A651; padding: 14px 20px; border-radius: 6px; margin-bottom: 20px;">
-                    <span style="color: #0F4C81; font-weight: 700; font-size: 15px;">Active Installation ID:</span>
-                    <span style="color: #00A651; font-weight: 700; font-size: 16px; margin-left: 8px; font-family: monospace;">{selected_id}</span>
-                    <span style="color: #1A6BBA; font-weight: 600; font-size: 14px; margin-left: 15px;">(Editing: <b>{active_day_name}</b> | Team: {team_details_safe})</span>
-                </div>
-            """, unsafe_html=True)
-            
+       if selected_id and not df_inst.empty and selected_id in df_inst["installation_id"].astype(str).values:
+            inst_info = df_inst[df_inst["installation_id"].astype(str) == selected_id].iloc[0]
+    
+            existing_logs = pd.DataFrame()
+            if not df_logs.empty and inst_col_logs in df_logs.columns:
+                df_logs[inst_col_logs] = df_logs[inst_col_logs].astype(str).str.strip()
+                existing_logs = df_logs[df_logs[inst_col_logs] == selected_id.strip()].reset_index(drop=True)
+    
+            if existing_logs.empty:
+                st.warning(f"No task logs found recorded yet for Installation ID: `{selected_id}`.")
+            else:
+                log_day_choices = []
+                for idx, row in existing_logs.iterrows():
+                    calc_day = str(row.get("day_number")) if pd.notna(row.get("day_number")) and row.get("day_number") != "" else f"Day {idx + 1}"
+                    log_date_str = str(row.get("logged_date")) if pd.notna(row.get("logged_date")) else str(row.get("log_date", "N/A"))
+                    log_id_str = str(row.get("log_id")) if pd.notna(row.get("log_id")) else ""
+                    log_day_choices.append(f"{calc_day} | Date: {log_date_str} ({log_id_str})")
+    
+                selected_day_label = st.selectbox("Select Log Entry to Update:", log_day_choices)
+                selected_idx = log_day_choices.index(selected_day_label)
+                selected_log_row = existing_logs.iloc[selected_idx]
+    
+                # Safe extraction to prevent TypeError on None / NaN values
+                raw_day = selected_log_row.get("day_number")
+                active_day_name = str(raw_day) if pd.notna(raw_day) and str(raw_day).strip() != "" else f"Day {selected_idx + 1}"
+                
+                raw_log_id = selected_log_row.get("log_id")
+                current_log_id = str(raw_log_id) if pd.notna(raw_log_id) else ""
+                
+                raw_team = inst_info.get("team_details")
+                team_details_safe = str(raw_team) if pd.notna(raw_team) and str(raw_team).strip() != "" else "N/A"
+    
+                # Render styled box safely
+                st.markdown(f"""
+                    <div style="background-color: #EBF3FE; border-left: 5px solid #00A651; padding: 14px 20px; border-radius: 6px; margin-bottom: 20px;">
+                        <span style="color: #0F4C81; font-weight: 700; font-size: 15px;">Active Installation ID:</span>
+                        <span style="color: #00A651; font-weight: 700; font-size: 16px; margin-left: 8px; font-family: monospace;">{selected_id}</span>
+                        <span style="color: #1A6BBA; font-weight: 600; font-size: 14px; margin-left: 15px;">(Editing: <b>{active_day_name}</b> | Team: {team_details_safe})</span>
+                    </div>
+                """, unsafe_html=True)
+                
             with st.expander("📋 View All Previously Recorded Work Summaries for this Site", expanded=True):
                 for idx, log in existing_logs.iterrows():
                     log_day = str(log.get('day_number', f"Day {idx + 1}") or f"Day {idx + 1}")
