@@ -249,7 +249,6 @@ menu = st.sidebar.radio("Navigation", [
     "Master Database"
 ])
 
-# Component to render Itemized Task Grid
 def render_task_grid(session_key):
     if session_key not in st.session_state:
         st.session_state[session_key] = [
@@ -301,6 +300,49 @@ def render_task_grid(session_key):
             st.rerun()
     with col_metric:
         st.markdown(f"<div style='text-align: right; padding-top: 8px; color: #64748B; font-weight: 600;'>Total: <b>{len(tasks)}</b> tasks</div>", unsafe_allow_html=True)
+
+def render_worker_inputs():
+    if "workers_list" not in st.session_state or not st.session_state.workers_list:
+        st.session_state.workers_list = ["", ""]
+
+    st.markdown("### 👷 Site Workers / Team Members On-Site")
+    
+    for i in range(0, len(st.session_state.workers_list), 2):
+        col_w1, col_w2 = st.columns(2)
+        
+        with col_w1:
+            val1 = st.session_state.workers_list[i]
+            st.session_state.workers_list[i] = st.text_input(
+                f"Worker #{i+1} Name", 
+                value=val1, 
+                key=f"worker_field_{i}",
+                placeholder=f"e.g., Worker {i+1} Name"
+            )
+            
+        if i + 1 < len(st.session_state.workers_list):
+            with col_w2:
+                val2 = st.session_state.workers_list[i+1]
+                st.session_state.workers_list[i+1] = st.text_input(
+                    f"Worker #{i+2} Name", 
+                    value=val2, 
+                    key=f"worker_field_{i+1}",
+                    placeholder=f"e.g., Worker {i+2} Name"
+                )
+
+    c_add, c_remove = st.columns([2, 2])
+    with c_add:
+        if st.button("➕ Add Another Worker"):
+            st.session_state.workers_list.append("")
+            st.rerun()
+    with c_remove:
+        if len(st.session_state.workers_list) > 1:
+            if st.button("➖ Remove Last Worker Field"):
+                st.session_state.workers_list.pop()
+                st.rerun()
+
+    valid_workers = [w.strip() for w in st.session_state.workers_list if w.strip()]
+    st.caption(f"Currently logging **{len(valid_workers)}** worker(s) present today.")
+    return ", ".join(valid_workers)
 
 # ------------------------------------------
 # 1. ACTIVE TASKS DASHBOARD
@@ -462,13 +504,23 @@ elif menu == "Handover Date Dashboard":
                 render_project_list(filtered_df, alert_color="#6B7280")
 
 # ------------------------------------------
-# 3. NEW INSTALLATION ORDER
+# 3. NEW INSTALLATION ORDER (With Team Lead & Dynamic Team Members)
 # ------------------------------------------
 elif menu == "New Installation Order":
     st.header("Create New Installation Order")
 
     if "temp_inst_id" not in st.session_state:
         st.session_state.temp_inst_id = generate_project_id()
+
+    # Dynamic multi-product list initialisation
+    if "order_products" not in st.session_state:
+        st.session_state.order_products = [
+            {"category": "Rolling Shutters", "sub_category": "Motorized Rolling Shutter", "custom_name": "", "dimensions": "", "quantity": 1}
+        ]
+
+    # Dynamic Team Members List Initialisation
+    if "team_members" not in st.session_state:
+        st.session_state.team_members = [""]
 
     st.markdown(f"""
         <div style="background-color: #EBF3FE; border: 1px solid #1A6BBA; padding: 14px 20px; border-radius: 8px; margin-bottom: 20px;">
@@ -480,44 +532,143 @@ elif menu == "New Installation Order":
     col1, col2 = st.columns(2)
     
     with col1:
-        team_details = st.text_input("Team's Details *", placeholder="e.g., Rajeer + 2 Helpers")
+        st.markdown("### 👨‍💼 Team Structure")
+        team_lead = st.text_input("Team Lead Name *", placeholder="e.g., Rajeer")
+        
+        st.markdown("**Team Members / Helpers**")
+        member_to_remove = []
+        
+        for idx, member in enumerate(st.session_state.team_members):
+            c_mem, c_del = st.columns([3.5, 0.8])
+            with c_mem:
+                st.session_state.team_members[idx] = st.text_input(
+                    f"Team Member #{idx + 1}", 
+                    value=member, 
+                    placeholder=f"e.g., Helper {idx + 1}", 
+                    key=f"team_member_field_{idx}",
+                    label_visibility="collapsed"
+                )
+            with c_del:
+                if len(st.session_state.team_members) > 1:
+                    if st.button("🗑️", key=f"del_team_mem_{idx}"):
+                        member_to_remove.append(idx)
+        
+        if member_to_remove:
+            for i in sorted(member_to_remove, reverse=True):
+                st.session_state.team_members.pop(i)
+            st.rerun()
+
+        if st.button("➕ Add Team Member"):
+            st.session_state.team_members.append("")
+            st.rerun()
+
+        st.markdown("<br>", unsafe_allow_html=True)
         city_name = st.text_input("City Name *", "Mumbai").strip()
         site_address = st.text_area("Site Address *", placeholder="Full installation site address...")
 
     with col2:
+        st.markdown("### 📅 Order Dates")
         min_past_date = datetime.now() - timedelta(days=7)
         order_created_date = st.date_input("Installation Date (Order Created Date)", value=datetime.now(), min_value=min_past_date, format="YYYY-MM-DD")
         site_clearance = st.date_input("Site Clearance Date", value=datetime.now(), min_value=min_past_date, format="YYYY-MM-DD")
         target_ho_date = st.date_input("Target Handover Date", value=datetime.now() + timedelta(days=15), min_value=min_past_date, format="YYYY-MM-DD")
 
     st.divider()
+    st.subheader("📦 Order Products Details")
 
-    col_cat, col_sub = st.columns(2)
-    with col_cat:
-        selected_category = st.selectbox("Select The Product", list(PRODUCT_CATALOG.keys()))
-    with col_sub:
-        selected_sub_category = st.selectbox("Select Sub-Category", PRODUCT_CATALOG[selected_category])
+    prod_to_remove = []
 
-    final_product_name = selected_sub_category
-    if selected_category == "Other" or selected_sub_category == "Other":
-        custom_name = st.text_input("Enter Custom Product Name", placeholder="Specify item name...")
-        if custom_name.strip():
-            final_product_name = custom_name.strip()
+    for idx, prod in enumerate(st.session_state.order_products):
+        with st.container():
+            st.markdown(f"#### Product #{idx + 1}")
+            c_cat, c_sub = st.columns(2)
+            
+            cats = list(PRODUCT_CATALOG.keys())
+            curr_cat_idx = cats.index(prod["category"]) if prod["category"] in cats else 0
+            
+            with c_cat:
+                selected_cat = st.selectbox(
+                    "Select The Product", 
+                    cats, 
+                    index=curr_cat_idx, 
+                    key=f"prod_cat_{idx}"
+                )
+                prod["category"] = selected_cat
 
-    col_dim, col_qty = st.columns(2)
-    with col_dim:
-        dimensions = st.text_input("Dimensions (WxH)", placeholder="e.g., 5330X6000")
-    with col_qty:
-        quantity = st.number_input("Quantity", min_value=1, value=1, step=1)
+            sub_options = PRODUCT_CATALOG.get(selected_cat, ["Other"])
+            curr_sub_idx = sub_options.index(prod["sub_category"]) if prod["sub_category"] in sub_options else 0
+
+            with c_sub:
+                selected_sub = st.selectbox(
+                    "Select Sub-Category", 
+                    sub_options, 
+                    index=curr_sub_idx, 
+                    key=f"prod_sub_{idx}"
+                )
+                prod["sub_category"] = selected_sub
+
+            if selected_cat == "Other" or selected_sub == "Other":
+                prod["custom_name"] = st.text_input(
+                    "Enter Custom Product Name", 
+                    value=prod.get("custom_name", ""), 
+                    placeholder="Specify item name...", 
+                    key=f"prod_custom_{idx}"
+                )
+
+            c_dim, c_qty, c_del = st.columns([2, 2, 0.8])
+            with c_dim:
+                prod["dimensions"] = st.text_input(
+                    "Dimensions (WxH)", 
+                    value=prod.get("dimensions", ""), 
+                    placeholder="e.g., 5330X6000", 
+                    key=f"prod_dim_{idx}"
+                )
+            with c_qty:
+                prod["quantity"] = st.number_input(
+                    "Quantity", 
+                    min_value=1, 
+                    value=int(prod.get("quantity", 1)), 
+                    step=1, 
+                    key=f"prod_qty_{idx}"
+                )
+            with c_del:
+                st.write(" ")
+                st.write(" ")
+                if len(st.session_state.order_products) > 1:
+                    if st.button("🗑️", key=f"del_prod_{idx}"):
+                        prod_to_remove.append(idx)
+
+            st.markdown("---")
+
+    if prod_to_remove:
+        for i in sorted(prod_to_remove, reverse=True):
+            st.session_state.order_products.pop(i)
+        st.rerun()
+
+    c_add_p, _ = st.columns([2, 3])
+    with c_add_p:
+        if st.button("➕ Add Another Product"):
+            st.session_state.order_products.append(
+                {"category": "Rolling Shutters", "sub_category": "Motorized Rolling Shutter", "custom_name": "", "dimensions": "", "quantity": 1}
+            )
+            st.rerun()
 
     st.divider()
 
     if st.button("Save Installation Order", use_container_width=True, type="primary"):
-        if not team_details.strip():
-            st.error("Please enter Team's Details.")
+        valid_members = [m.strip() for m in st.session_state.team_members if m.strip()]
+        
+        if not team_lead.strip():
+            st.error("Please enter the Team Lead Name.")
         elif not site_address.strip():
             st.error("Please enter a valid Site Address.")
         else:
+            # Combine Lead and Members into standard team_details format
+            if valid_members:
+                team_details = f"Lead: {team_lead.strip()} | Members: {', '.join(valid_members)}"
+            else:
+                team_details = f"Lead: {team_lead.strip()}"
+
             df_inst = read_sheet("Installations")
             existing_ids = df_inst["installation_id"].tolist() if not df_inst.empty else []
             
@@ -533,14 +684,28 @@ elif menu == "New Installation Order":
             ]
             append_to_sheet("Installations", inst_row)
             
-            item_row = [inst_id, selected_category, final_product_name, dimensions, int(quantity)]
-            append_to_sheet("Order_Items", item_row)
+            # Save all added products to Order_Items
+            for prod in st.session_state.order_products:
+                final_name = prod["sub_category"]
+                if prod["category"] == "Other" or prod["sub_category"] == "Other":
+                    if prod.get("custom_name", "").strip():
+                        final_name = prod["custom_name"].strip()
+
+                item_row = [inst_id, prod["category"], final_name, prod.get("dimensions", ""), int(prod.get("quantity", 1))]
+                append_to_sheet("Order_Items", item_row)
             
-            st.success(f"Saved to Google Sheets! Generated Installation ID: **`{inst_id}`**")
+            st.success(f"Saved installation order for **{team_details}** with {len(st.session_state.order_products)} product(s)! Generated ID: **`{inst_id}`**")
+            
+            # Reset form state
             st.session_state.temp_inst_id = generate_project_id()
+            st.session_state.order_products = [
+                {"category": "Rolling Shutters", "sub_category": "Motorized Rolling Shutter", "custom_name": "", "dimensions": "", "quantity": 1}
+            ]
+            st.session_state.team_members = [""]
+            st.rerun()
 
 # ------------------------------------------
-# 4. LOG DAILY TASKS (Itemized Grid UI)
+# 4. LOG DAILY TASKS
 # ------------------------------------------
 elif menu == "Log Daily Tasks":
     st.header("📋 Log Daily Tasks")
@@ -656,24 +821,25 @@ elif menu == "Log Daily Tasks":
             <div style="background-color: #EBF3FE; border-left: 5px solid #00A651; padding: 14px 20px; border-radius: 6px; margin-bottom: 20px;">
                 <span style="color: #0F4C81; font-weight: 700; font-size: 15px;">Active Installation ID:</span>
                 <span style="color: #00A651; font-weight: 700; font-size: 16px; margin-left: 8px; font-family: monospace;">{selected_id}</span>
-                <span style="color: #1A6BBA; font-weight: 600; font-size: 14px; margin-left: 15px;">(Auto-Calculated: <b>{day_label}</b> | Team: {inst_info.get('team_details', 'N/A')})</span>
+                <span style="color: #1A6BBA; font-weight: 600; font-size: 14px; margin-left: 15px;">(Auto-Calculated: <b>{day_label}</b> | Assigned Team: {inst_info.get('team_details', 'N/A')})</span>
             </div>
         """, unsafe_allow_html=True)
 
-        col_p1, col_p2, col_p3, col_p4 = st.columns([1, 1, 1, 1])
+        col_p1, col_p2, col_p3 = st.columns([1, 1, 1])
         with col_p1:
             log_date = st.date_input("Log Date", value=datetime.now(), min_value=datetime.now() - timedelta(days=14), format="YYYY-MM-DD")
         with col_p2:
             product_worked_on = st.selectbox("Product Worked On *", product_options)
         with col_p3:
-            default_tech = inst_info['team_details'].split('+')[0].strip() if '+' in str(inst_info.get('team_details', '')) else str(inst_info.get('team_details', ''))
-            submitted_by = st.text_input("Technician Name *", value=default_tech)
-        with col_p4:
             curr_status = inst_info.get('status', 'In Progress')
             status_index = STATUS_OPTIONS.index(curr_status) if curr_status in STATUS_OPTIONS else 0
             work_status = st.selectbox("Work Progress Status *", STATUS_OPTIONS, index=status_index)
 
         auto_log_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        st.divider()
+
+        submitted_by = render_worker_inputs()
 
         st.divider()
 
@@ -693,7 +859,7 @@ elif menu == "Log Daily Tasks":
             if not valid_items:
                 st.error("Please enter at least one task description.")
             elif not submitted_by.strip():
-                st.error("Please specify the Technician Name.")
+                st.error("Please enter at least one worker's name.")
             else:
                 combined_tasks = format_tasks_to_string(valid_items)
                 log_id = generate_log_id()
@@ -705,13 +871,15 @@ elif menu == "Log Daily Tasks":
                 append_to_sheet("Daily_Logs", log_row)
                 update_sheet_row("Installations", "installation_id", selected_id, {"status": work_status})
                 
-                st.success(f"Successfully recorded **{day_label}** log & updated status to **{work_status}** for Installation ID **`{selected_id}`**!")
+                st.success(f"Successfully recorded **{day_label}** log with workers (**{submitted_by}**) & updated status to **{work_status}** for Installation ID **`{selected_id}`**!")
+                
                 st.session_state["log_tasks_grid"] = [
                     {"done": True, "description": "", "category": "General"},
                     {"done": True, "description": "", "category": "General"},
                     {"done": True, "description": "", "category": "General"},
                     {"done": True, "description": "", "category": "General"}
                 ]
+                st.session_state["workers_list"] = ["", ""]
                 st.rerun()
     else:
         st.markdown("""
@@ -786,7 +954,7 @@ elif menu == "View Logs & Update Status":
                     * **Visit Log ID:** `{row.get('log_id', 'N/A')}`
                     * **Timestamp:** `{str(row.get('logged_timestamp', '')).split(' ')[-1]}`
                     * **Product Worked On:** {row.get('product_worked_on', 'N/A')}
-                    * **Technician:** {row.get('submitted_by', 'N/A')}
+                    * **Workers On Site:** {row.get('submitted_by', 'N/A')}
                     * **Site Remarks:** {row.get('site_remarks', 'None')}
                     
                     **Completed Tasks:**
