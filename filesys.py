@@ -741,7 +741,7 @@ elif menu == "Log Daily Tasks":
 # 5. EDIT TASK LOG
 # ------------------------------------------
 elif menu == "Edit Task Log (By Primary Key)":
-    st.header("✏️ Edit Task Log")
+    st.header("✏️ Dynamic Task Log Management")
 
     df_logs = read_sheet("Daily_Logs")
     df_inst = read_sheet("Installations")
@@ -844,44 +844,61 @@ elif menu == "Edit Task Log (By Primary Key)":
 
     if selected_id and not df_inst.empty and selected_id in df_inst["installation_id"].astype(str).values:
         inst_info = df_inst[df_inst["installation_id"].astype(str) == selected_id].iloc[0]
+        current_project_status = str(inst_info.get("status", "In Progress")).strip()
 
         existing_logs = pd.DataFrame()
         if not df_logs.empty and inst_col_logs in df_logs.columns:
             df_logs[inst_col_logs] = df_logs[inst_col_logs].astype(str).str.strip()
             existing_logs = df_logs[df_logs[inst_col_logs] == selected_id.strip()].reset_index(drop=True)
 
-        if existing_logs.empty:
-            st.warning(f"No task logs found recorded yet for Installation ID: `{selected_id}`.")
-        else:
-            log_day_choices = []
-            for idx, row in existing_logs.iterrows():
-                calc_day = str(row.get("day_number")) if pd.notna(row.get("day_number")) and str(row.get("day_number")).strip() != "" else f"Day {idx + 1}"
-                log_date_str = str(row.get("logged_date")) if pd.notna(row.get("logged_date")) else str(row.get("log_date", "N/A"))
-                log_id_str = str(row.get("log_id")) if pd.notna(row.get("log_id")) else ""
-                log_day_choices.append(f"{calc_day} | Date: {log_date_str} ({log_id_str})")
+        log_day_choices = []
+        for idx, row in existing_logs.iterrows():
+            calc_day = str(row.get("day_number")) if pd.notna(row.get("day_number")) and str(row.get("day_number")).strip() != "" else f"Day {idx + 1}"
+            log_date_str = str(row.get("logged_date")) if pd.notna(row.get("logged_date")) else str(row.get("log_date", "N/A"))
+            log_id_str = str(row.get("log_id")) if pd.notna(row.get("log_id")) else ""
+            log_day_choices.append(f"{calc_day} | Date: {log_date_str} ({log_id_str})")
 
-            selected_day_label = st.selectbox("Select Log Entry to Update:", log_day_choices)
+        next_day_num = len(existing_logs) + 1
+        next_day_label = f"➕ Create New Log (Day {next_day_num})"
+        
+        # Allow new daily log creation dynamically until marked Completed
+        if current_project_status.lower() != "completed":
+            log_day_choices.append(next_day_label)
+
+        selected_day_label = st.selectbox("Select Log Entry to Edit or Add:", log_day_choices)
+        is_new_entry = (selected_day_label == next_day_label)
+
+        if not is_new_entry:
             selected_idx = log_day_choices.index(selected_day_label)
             selected_log_row = existing_logs.iloc[selected_idx]
-
             raw_day = selected_log_row.get("day_number")
             active_day_name = str(raw_day) if pd.notna(raw_day) and str(raw_day).strip() != "" else f"Day {selected_idx + 1}"
-            
             raw_log_id = selected_log_row.get("log_id")
             current_log_id = str(raw_log_id) if pd.notna(raw_log_id) else ""
-            
-            raw_team = inst_info.get("team_details")
-            team_details_safe = str(raw_team) if pd.notna(raw_team) and str(raw_team).strip() != "" else "N/A"
+        else:
+            selected_log_row = pd.Series()
+            active_day_name = f"Day {next_day_num}"
+            current_log_id = ""
 
-            st.markdown(f"""
-                <div style="background-color: #EBF3FE; border-left: 5px solid #00A651; padding: 14px 20px; border-radius: 6px; margin-bottom: 20px;">
-                    <span style="color: #0F4C81; font-weight: 700; font-size: 15px;">Active Installation ID:</span>
-                    <span style="color: #00A651; font-weight: 700; font-size: 16px; margin-left: 8px; font-family: monospace;">{selected_id}</span>
-                    <span style="color: #1A6BBA; font-weight: 600; font-size: 14px; margin-left: 15px;">(Editing: <b>{active_day_name}</b> | Team: {team_details_safe})</span>
-                </div>
-            """, unsafe_allow_html=True)
+        raw_team = inst_info.get("team_details")
+        team_details_safe = str(raw_team) if pd.notna(raw_team) and str(raw_team).strip() != "" else "N/A"
 
-            with st.expander("📋 View All Previously Recorded Work Summaries for this Site", expanded=True):
+        header_action = "Creating New Entry:" if is_new_entry else "Editing:"
+        st.markdown(f"""
+            <div style="background-color: #EBF3FE; border-left: 5px solid #00A651; padding: 14px 20px; border-radius: 6px; margin-bottom: 20px;">
+                <span style="color: #0F4C81; font-weight: 700; font-size: 15px;">Active Installation ID:</span>
+                <span style="color: #00A651; font-weight: 700; font-size: 16px; margin-left: 8px; font-family: monospace;">{selected_id}</span>
+                <span style="color: #1A6BBA; font-weight: 600; font-size: 14px; margin-left: 15px;">({header_action} <b>{active_day_name}</b> | Team: {team_details_safe})</span>
+            </div>
+        """, unsafe_allow_html=True)
+
+        if current_project_status.lower() == "completed":
+            st.info("ℹ️ This installation project is marked as **Completed**. Dynamic logging of new days is locked unless status is updated.")
+
+        with st.expander("📋 View All Previously Recorded Work Summaries for this Site", expanded=True):
+            if existing_logs.empty:
+                st.write("No prior daily logs recorded yet for this project.")
+            else:
                 for idx, log in existing_logs.iterrows():
                     log_day = str(log.get('day_number')) if pd.notna(log.get('day_number')) and str(log.get('day_number')).strip() != "" else f"Day {idx + 1}"
                     log_time = str(log.get('logged_date')) if pd.notna(log.get('logged_date')) else str(log.get('log_date', 'N/A'))
@@ -892,83 +909,95 @@ elif menu == "Edit Task Log (By Primary Key)":
                     st.text(tasks)
                     st.markdown("---")
 
-            with st.form(key="edit_task_log_form"):
-                col_p1, col_p2, col_p3, col_p4 = st.columns(4)
-                
-                with col_p1:
+        with st.form(key="edit_task_log_form"):
+            col_p1, col_p2, col_p3, col_p4 = st.columns(4)
+            
+            with col_p1:
+                if not is_new_entry:
                     try:
                         raw_date = str(selected_log_row.get("logged_date", selected_log_row.get("log_date", "")))
                         parsed_date = datetime.strptime(raw_date, "%Y-%m-%d")
                     except ValueError:
                         parsed_date = datetime.now()
-                    new_log_date = st.date_input("Log Date", value=parsed_date, format="YYYY-MM-DD")
+                else:
+                    parsed_date = datetime.now()
+                new_log_date = st.date_input("Log Date", value=parsed_date, format="YYYY-MM-DD")
 
-                with col_p2:
-                    raw_product = str(selected_log_row.get("product_worked_on", "") or "")
-                    new_product = st.text_input("Product Worked On", value=raw_product, placeholder="e.g. Rolling Shutter")
+            with col_p2:
+                raw_product = "" if is_new_entry else str(selected_log_row.get("product_worked_on", "") or "")
+                new_product = st.text_input("Product Worked On", value=raw_product, placeholder="e.g. Rolling Shutter")
 
-                with col_p3:
-                    new_tech = st.text_input("Technician Name", value=str(selected_log_row.get("submitted_by", "") or ""))
+            with col_p3:
+                default_tech = team_details_safe.split('+')[0].strip() if '+' in team_details_safe else team_details_safe
+                raw_tech = default_tech if is_new_entry else str(selected_log_row.get("submitted_by", "") or "")
+                new_tech = st.text_input("Technician Name", value=raw_tech)
 
-                with col_p4:
-                    curr_status = str(inst_info.get('status', 'In Progress') or 'In Progress')
-                    status_idx = STATUS_OPTIONS.index(curr_status) if curr_status in STATUS_OPTIONS else 0
-                    new_status = st.selectbox("Work Progress Status *", STATUS_OPTIONS, index=status_idx)
+            with col_p4:
+                curr_status = current_project_status if current_project_status in STATUS_OPTIONS else "In Progress"
+                status_idx = STATUS_OPTIONS.index(curr_status)
+                new_status = st.selectbox("Work Progress Status *", STATUS_OPTIONS, index=status_idx)
 
-                st.divider()
+            st.divider()
 
-                existing_tasks_text = str(selected_log_row.get("tasks_completed", selected_log_row.get("completed_tasks", "")) or "")
-                
-                new_completed = st.text_area(
-                    f"Work Progress & Tasks Executed ({active_day_name})", 
-                    value=existing_tasks_text, 
-                    height=200,
-                    help="Modify or append tasks directly to this log entry."
-                )
+            existing_tasks_text = "" if is_new_entry else str(selected_log_row.get("tasks_completed", selected_log_row.get("completed_tasks", "")) or "")
+            
+            new_completed = st.text_area(
+                f"Work Progress & Tasks Executed ({active_day_name})", 
+                value=existing_tasks_text, 
+                height=200,
+                placeholder="1. Reach site\n2. Open area\n3. Start installation...",
+                help="Enter daily task updates line by line."
+            )
 
-                new_site_remarks = st.text_area(
-                    "Site Remarks / Delay Reasons (Optional)", 
-                    value=str(selected_log_row.get("site_remarks", "") or ""), 
-                    height=90
-                )
+            existing_remarks = "" if is_new_entry else str(selected_log_row.get("site_remarks", "") or "")
+            new_site_remarks = st.text_area(
+                "Site Remarks / Delay Reasons (Optional)", 
+                value=existing_remarks, 
+                height=90,
+                placeholder="Record material issues, client delays, or general site notes..."
+            )
 
-                submit_edit = st.form_submit_button(f"💾 Save Updated {active_day_name} Log", type="primary", use_container_width=True)
+            btn_label = f"➕ Save New {active_day_name} Log" if is_new_entry else f"💾 Save Updated {active_day_name} Log"
+            submit_edit = st.form_submit_button(btn_label, type="primary", use_container_width=True)
 
-                if submit_edit:
-                    cleaned_tasks = new_completed.strip()
-                    if not cleaned_tasks:
-                        st.error("Tasks completed cannot be empty.")
+            if submit_edit:
+                cleaned_tasks = new_completed.strip()
+                if not cleaned_tasks:
+                    st.error("Tasks completed cannot be empty.")
+                elif not new_tech.strip():
+                    st.error("Technician Name is required.")
+                else:
+                    if is_new_entry:
+                        new_log_id = generate_log_id()
+                        auto_log_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        log_row = [
+                            new_log_id, selected_id, active_day_name, auto_log_time, str(new_log_date),
+                            new_product, cleaned_tasks, "", new_site_remarks, new_tech
+                        ]
+                        append_to_sheet("Daily_Logs", log_row)
+                        update_sheet_row("Installations", "installation_id", selected_id, {"status": new_status})
+                        st.success(f"Added new **{active_day_name}** log under Installation ID **`{selected_id}`**!")
+                        st.rerun()
                     else:
-                        curr_db_task = str(selected_log_row.get("tasks_completed", selected_log_row.get("completed_tasks", "")) or "").strip()
-                        curr_db_prod = str(selected_log_row.get("product_worked_on", "") or "").strip()
-                        curr_db_tech = str(selected_log_row.get("submitted_by", "") or "").strip()
-                        curr_db_date = str(selected_log_row.get("logged_date", selected_log_row.get("log_date", "")) or "").strip()
+                        updated_fields = {
+                            "logged_date": str(new_log_date),
+                            "product_worked_on": new_product,
+                            "tasks_completed": cleaned_tasks,
+                            "site_remarks": new_site_remarks,
+                            "submitted_by": new_tech,
+                            "day_number": active_day_name
+                        }
+                        
+                        target_key = "log_id" if current_log_id else inst_col_logs
+                        target_val = current_log_id if current_log_id else selected_id
 
-                        if (cleaned_tasks == curr_db_task and 
-                            new_product.strip() == curr_db_prod and 
-                            new_tech.strip() == curr_db_tech and 
-                            str(new_log_date).strip() == curr_db_date and
-                            new_status == curr_status):
-                            st.warning("⚠️ Same entry already done. No changes were made.")
-                        else:
-                            updated_fields = {
-                                "logged_date": str(new_log_date),
-                                "product_worked_on": new_product,
-                                "tasks_completed": cleaned_tasks,
-                                "site_remarks": new_site_remarks,
-                                "submitted_by": new_tech,
-                                "day_number": active_day_name
-                            }
-                            
-                            target_key = "log_id" if current_log_id else inst_col_logs
-                            target_val = current_log_id if current_log_id else selected_id
+                        update_sheet_row("Daily_Logs", target_key, target_val, updated_fields)
+                        update_sheet_row("Installations", "installation_id", selected_id, {"status": new_status})
 
-                            update_sheet_row("Daily_Logs", target_key, target_val, updated_fields)
-                            update_sheet_row("Installations", "installation_id", selected_id, {"status": new_status})
+                        st.success(f"Successfully updated **{active_day_name}** log under Installation ID **`{selected_id}`**!")
+                        st.rerun()
 
-                            st.success(f"Successfully updated log for **{active_day_name}** under Installation ID **`{selected_id}`**!")
-                            st.rerun()
-
+        if not is_new_entry:
             st.divider()
             with st.expander(f"🗑️ Danger Zone: Delete {active_day_name} Log Entry"):
                 st.warning(f"Deleting this entry will permanently remove the {active_day_name} log from Google Sheets.")
