@@ -587,62 +587,6 @@ elif menu == "New Installation Order":
         with st.container():
             st.markdown(f"#### Product #{idx + 1}")
             
-            c_cat, c_sub = st.columns(2)
-            cats = list(PRODUCT_CATALOG.keys())
-            curr_cat_idx = cats.index(prod["category"]) if prod["category"] in cats else 0
-            
-            with c_cat:
-                selected_cat = st.selectbox("Select The Product", cats, index=curr_cat_idx, key=f"prod_cat_{idx}")
-                prod["category"] = selected_cat
-
-            sub_options = PRODUCT_CATALOG.get(selected_cat, ["Other"])
-            curr_sub_idx = sub_options.index(prod["sub_category"]) if prod["sub_category"] in sub_options else 0
-
-            with c_sub:
-                selected_sub = st.selectbox("Select Sub-Category", sub_options, index=curr_sub_idx, key=f"prod_sub_{idx}")
-                prod["sub_category"] = selected_sub
-
-            if selected_cat == "Other" or selected_sub == "Other":
-                prod["custom_name"] = st.text_input("Enter Custom Product Name", value=prod.get("custom_name", ""), placeholder="Specify item name...", key=f"prod_custom_{idx}")
-
-            c_dim, c_qty, c_del = st.columns([2.3, 2.3, 0.4])
-            
-            with c_dim:
-                prod["dimensions"] = st.text_input("Dimensions (WxH)", value=prod.get("dimensions", ""), placeholder="e.g., 5330X6000", key=f"prod_dim_{idx}")
-                
-            with c_qty:
-                prod["quantity"] = st.number_input("Quantity", min_value=1, value=int(prod.get("quantity", 1)), step=1, key=f"prod_qty_{idx}")
-                
-            with c_del:
-                st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-                if len(st.session_state.order_products) > 1:
-                    if st.button("🗑️", key=f"del_prod_{idx}"):
-                        prod_to_remove.append(idx)
-
-            st.markdown("---")
-
-    if prod_to_remove:
-        for i in sorted(prod_to_remove, reverse=True):
-            st.session_state.order_products.pop(i)
-        st.rerun()
-
-    c_add_p, _ = st.columns([2, 3])
-    with c_add_p:
-        if st.button("➕ Add Another Product"):
-            st.session_state.order_products.append(
-                {"category": "Rolling Shutters", "sub_category": "Motorized Rolling Shutter", "custom_name": "", "dimensions": "", "quantity": 1}
-            )
-            st.rerun()
-
-    st.divider()
-    st.subheader("📦 Order Products Details")
-
-    prod_to_remove = []
-
-    for idx, prod in enumerate(st.session_state.order_products):
-        with st.container():
-            st.markdown(f"#### Product #{idx + 1}")
-            
             # Row 1: Product Category & Sub-Category (50% / 50% split)
             c_cat, c_sub = st.columns(2)
             
@@ -719,6 +663,57 @@ elif menu == "New Installation Order":
                 {"category": "Rolling Shutters", "sub_category": "Motorized Rolling Shutter", "custom_name": "", "dimensions": "", "quantity": 1}
             )
             st.rerun()
+
+    st.divider()
+
+    if st.button("Save Installation Order", use_container_width=True, type="primary"):
+        valid_members = [m.strip() for m in st.session_state.team_members if m.strip()]
+        
+        if not team_lead.strip():
+            st.error("Please enter the Team Lead Name.")
+        elif not site_address.strip():
+            st.error("Please enter a valid Site Address.")
+        else:
+            if valid_members:
+                team_details = f"Lead: {team_lead.strip()} | Members: {', '.join(valid_members)}"
+            else:
+                team_details = f"Lead: {team_lead.strip()}"
+
+            df_inst = read_sheet("Installations")
+            existing_ids = df_inst["installation_id"].tolist() if not df_inst.empty else []
+            
+            inst_id = st.session_state.temp_inst_id
+            while inst_id in existing_ids:
+                inst_id = generate_project_id()
+
+            city_prefix = city_name[:3].upper() if city_name else "GEN"
+
+            inst_row = [
+                inst_id, city_prefix, site_address, team_details, 
+                str(order_created_date), str(site_clearance), str(target_ho_date), "In Progress"
+            ]
+            append_to_sheet("Installations", inst_row)
+            
+            for prod in st.session_state.order_products:
+                final_name = prod["sub_category"]
+                if prod["category"] == "Other" or prod["sub_category"] == "Other":
+                    if prod.get("custom_name", "").strip():
+                        final_name = prod["custom_name"].strip()
+
+                item_row = [inst_id, prod["category"], final_name, prod.get("dimensions", ""), int(prod.get("quantity", 1))]
+                append_to_sheet("Order_Items", item_row)
+            
+            # Store success confirmation message to persist across st.rerun()
+            st.session_state.last_created_order = f"✅ Installation Order Successfully Created! ID: **`{inst_id}`** | Assigned Team: **{team_details}**"
+            
+            # Reset form state
+            st.session_state.temp_inst_id = generate_project_id()
+            st.session_state.order_products = [
+                {"category": "Rolling Shutters", "sub_category": "Motorized Rolling Shutter", "custom_name": "", "dimensions": "", "quantity": 1}
+            ]
+            st.session_state.team_members = [""]
+            st.rerun()
+
 # ------------------------------------------
 # 4. LOG DAILY TASKS
 # ------------------------------------------
