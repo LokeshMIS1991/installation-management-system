@@ -85,7 +85,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Google Sheets Client
+# Google Sheets Client Connection & Initialization
 @st.cache_resource
 def get_gspread_client():
     scope = [
@@ -102,9 +102,36 @@ def get_gspread_client():
     
     return gspread.authorize(creds)
 
+def get_default_headers(worksheet_name):
+    if worksheet_name == "Installations":
+        return [
+            "installation_id", "city_prefix", "site_address", "team_details", 
+            "order_created_date", "site_clearance_date", "target_ho_date", "status"
+        ]
+    elif worksheet_name == "Order_Items":
+        return [
+            "installation_id", "category", "sub_category", "dimensions", "quantity"
+        ]
+    elif worksheet_name == "Daily_Logs":
+        return [
+            "log_id", "installation_id", "day_number", "logged_timestamp", 
+            "logged_date", "product_worked_on", "tasks_completed", 
+            "next_day_planned_tasks", "site_remarks", "submitted_by"
+        ]
+    return []
+
 def get_worksheet(worksheet_name):
     client = get_gspread_client()
-    return client.open(SPREADSHEET_NAME).worksheet(worksheet_name)
+    spreadsheet = client.open(SPREADSHEET_NAME)
+    
+    try:
+        return spreadsheet.worksheet(worksheet_name)
+    except gspread.WorksheetNotFound:
+        headers = get_default_headers(worksheet_name)
+        worksheet = spreadsheet.add_worksheet(title=worksheet_name, rows="100", cols=str(len(headers) or 10))
+        if headers:
+            worksheet.append_row(headers)
+        return worksheet
 
 def append_to_sheet(sheet_name, row_data):
     try:
@@ -135,22 +162,8 @@ def read_sheet(sheet_name):
         return get_empty_default_df(sheet_name)
 
 def get_empty_default_df(sheet_name):
-    if sheet_name == "Installations":
-        return pd.DataFrame(columns=[
-            "installation_id", "city_prefix", "site_address", "team_details", 
-            "order_created_date", "site_clearance_date", "target_ho_date", "status"
-        ])
-    elif sheet_name == "Order_Items":
-        return pd.DataFrame(columns=[
-            "installation_id", "category", "sub_category", "dimensions", "quantity"
-        ])
-    elif sheet_name == "Daily_Logs":
-        return pd.DataFrame(columns=[
-            "log_id", "installation_id", "day_number", "logged_timestamp", 
-            "logged_date", "product_worked_on", "tasks_completed", 
-            "next_day_planned_tasks", "site_remarks", "submitted_by"
-        ])
-    return pd.DataFrame()
+    headers = get_default_headers(sheet_name)
+    return pd.DataFrame(columns=headers)
 
 def update_sheet_row(sheet_name, key_column_name, key_value, updated_row_dict):
     try:
@@ -314,7 +327,7 @@ if menu == "Active Tasks Dashboard":
                             <h4 style="margin: 0; color: #0F4C81;">📍 {inst_id} — <span style="font-size: 14px; color: #555;">{site_addr[:40]}...</span></h4>
                             <p style="margin: 5px 0 0 0; font-size: 13px;"><b>Team Assigned:</b> {team} | <b>Days Worked:</b> {total_logs} Day(s) | <b>Status:</b> <span style="color: #D97706; font-weight: bold;">{p_status}</span></p>
                         </div>
-                    """, unsafe_html=True)
+                    """, unsafe_allow_html=True)
 
                     st.write(f"**Completion Progress:** {calc_progress}%")
                     st.progress(calc_progress / 100)
@@ -404,7 +417,7 @@ elif menu == "Handover Date Dashboard":
                                     <b>Status:</b> {status}
                                 </p>
                             </div>
-                        """, unsafe_html=True)
+                        """, unsafe_allow_html=True)
 
             with tab_overdue:
                 render_project_list(overdue_df, alert_color="#DC2626")
