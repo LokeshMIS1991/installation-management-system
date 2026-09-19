@@ -557,7 +557,7 @@ elif menu == "Log Daily Tasks":
 
 # 3. EDIT TASK LOG
 elif menu == "Edit Task Log (By Primary Key)":
-    st.header("✏️ Edit & Append Task Log")
+    st.header("✏️ Edit Task Log")
 
     df_logs = read_sheet("Daily_Logs")
     df_inst = read_sheet("Installations")
@@ -615,7 +615,7 @@ elif menu == "Edit Task Log (By Primary Key)":
         with col_e_in:
             st.text_input(
                 "Enter Installation ID directly:",
-                placeholder="e.g., INST-2026-G4HVI",
+                placeholder="e.g., INST-2026-UKVXU",
                 key="edit_input_val",
                 on_change=sync_edit_input
             )
@@ -664,42 +664,48 @@ elif menu == "Edit Task Log (By Primary Key)":
         existing_logs = pd.DataFrame()
         if not df_logs.empty and inst_col_logs in df_logs.columns:
             df_logs[inst_col_logs] = df_logs[inst_col_logs].astype(str).str.strip()
-            existing_logs = df_logs[df_logs[inst_col_logs] == selected_id.strip()]
+            existing_logs = df_logs[df_logs[inst_col_logs] == selected_id.strip()].reset_index(drop=True)
 
         if existing_logs.empty:
             st.warning(f"No task logs found recorded yet for Installation ID: `{selected_id}`.")
         else:
-            log_day_choices = [
-                f"{row.get('day_number', f'Day {idx+1}')} | Date: {row.get('logged_date', row.get('log_date', 'N/A'))} ({row.get('log_id', '')})" 
-                for idx, row in existing_logs.reset_index(drop=True).iterrows()
-            ]
-            
+            # Build clean Day dropdown options dynamically (Day 1, Day 2, Day 3...)
+            log_day_choices = []
+            for idx, row in existing_logs.iterrows():
+                calc_day = row.get("day_number", f"Day {idx + 1}")
+                log_date_str = row.get("logged_date", row.get("log_date", "N/A"))
+                log_id_str = row.get("log_id", "")
+                log_day_choices.append(f"{calc_day} | Date: {log_date_str} ({log_id_str})")
+
             selected_day_label = st.selectbox("Select Log Entry to Update:", log_day_choices)
             selected_idx = log_day_choices.index(selected_day_label)
             selected_log_row = existing_logs.iloc[selected_idx]
 
-            current_day = selected_log_row.get("day_number", f"Day {selected_idx + 1}")
+            active_day_name = selected_log_row.get("day_number", f"Day {selected_idx + 1}")
             current_log_id = selected_log_row.get("log_id", "")
 
+            # Banner showing active state
             st.markdown(f"""
                 <div style="background-color: #EBF3FE; border-left: 5px solid #00A651; padding: 14px 20px; border-radius: 6px; margin-bottom: 20px;">
                     <span style="color: #0F4C81; font-weight: 700; font-size: 15px;">Active Installation ID:</span>
                     <span style="color: #00A651; font-weight: 700; font-size: 16px; margin-left: 8px; font-family: monospace;">{selected_id}</span>
-                    <span style="color: #1A6BBA; font-weight: 600; font-size: 14px; margin-left: 15px;">(Editing: <b>{current_day}</b> | Team: {inst_info.get('team_details', 'N/A')})</span>
+                    <span style="color: #1A6BBA; font-weight: 600; font-size: 14px; margin-left: 15px;">(Editing: <b>{active_day_name}</b> | Team: {inst_info.get('team_details', 'N/A')})</span>
                 </div>
-            """, unsafe_allow_html=True)
+            """, unsafe_html=True)
 
-            # View previous activity logs summary
+            # Display all previous logs up to this point
             with st.expander("📋 View All Previously Recorded Work Summaries for this Site", expanded=True):
                 for idx, log in existing_logs.iterrows():
+                    log_day = log.get('day_number', f"Day {idx + 1}")
                     log_time = log.get('logged_date', log.get('log_date', 'N/A'))
                     tech = log.get('submitted_by', 'N/A')
                     tasks = log.get('tasks_completed', log.get('completed_tasks', 'No tasks logged.'))
                     
-                    st.markdown(f"**{log.get('day_number', f'Log #{idx+1}')}** — *{log_time}* (By: **{tech}**)")
+                    st.markdown(f"**{log_day}** — *{log_time}* (By: **{tech}**)")
                     st.text(tasks)
                     st.markdown("---")
 
+            # Update Form
             with st.form(key="edit_task_log_form"):
                 col_p1, col_p2, col_p3, col_p4 = st.columns(4)
                 
@@ -712,9 +718,8 @@ elif menu == "Edit Task Log (By Primary Key)":
                     new_log_date = st.date_input("Log Date", value=parsed_date, format="YYYY-MM-DD")
 
                 with col_p2:
-                    # Manual text entry (replaces dropdown)
                     raw_product = str(selected_log_row.get("product_worked_on", ""))
-                    new_product = st.text_input("Product Worked On", value=raw_product, placeholder="e.g. Rolling Shutter / General Site Work")
+                    new_product = st.text_input("Product Worked On", value=raw_product, placeholder="e.g. Rolling Shutter")
 
                 with col_p3:
                     new_tech = st.text_input("Technician Name", value=str(selected_log_row.get("submitted_by", "")))
@@ -726,14 +731,13 @@ elif menu == "Edit Task Log (By Primary Key)":
 
                 st.divider()
 
-                # Manual dynamic tasks update area
                 existing_tasks_text = str(selected_log_row.get("tasks_completed", selected_log_row.get("completed_tasks", "")))
                 
                 new_completed = st.text_area(
-                    "Work Progress & Tasks Executed", 
+                    f"Work Progress & Tasks Executed ({active_day_name})", 
                     value=existing_tasks_text, 
                     height=200,
-                    help="Append new incremental work directly at the end of this list."
+                    help="Modify or append tasks directly to this log entry."
                 )
 
                 new_site_remarks = st.text_area(
@@ -742,7 +746,7 @@ elif menu == "Edit Task Log (By Primary Key)":
                     height=90
                 )
 
-                submit_edit = st.form_submit_button("💾 Save Updated Log", type="primary", use_container_width=True)
+                submit_edit = st.form_submit_button(f"💾 Save Updated {active_day_name} Log", type="primary", use_container_width=True)
 
                 if submit_edit:
                     if not new_completed.strip():
@@ -753,7 +757,8 @@ elif menu == "Edit Task Log (By Primary Key)":
                             "product_worked_on": new_product,
                             "tasks_completed": new_completed,
                             "site_remarks": new_site_remarks,
-                            "submitted_by": new_tech
+                            "submitted_by": new_tech,
+                            "day_number": active_day_name
                         }
                         
                         target_key = "log_id" if current_log_id else inst_col_logs
@@ -762,20 +767,20 @@ elif menu == "Edit Task Log (By Primary Key)":
                         update_sheet_row("Daily_Logs", target_key, target_val, updated_fields)
                         update_sheet_row("Installations", "installation_id", selected_id, {"status": new_status})
 
-                        st.success(f"Successfully updated log for **{current_day}** under Installation ID **`{selected_id}`**!")
+                        st.success(f"Successfully updated log for **{active_day_name}** under Installation ID **`{selected_id}`**!")
                         st.rerun()
 
             st.divider()
-            with st.expander("🗑️ Danger Zone: Delete Log Entry"):
-                st.warning(f"Deleting this entry will permanently remove the {current_day} log from Google Sheets.")
-                if st.button(f"Confirm Delete {current_day}", key="delete_log_btn"):
+            with st.expander(f"🗑️ Danger Zone: Delete {active_day_name} Log Entry"):
+                st.warning(f"Deleting this entry will permanently remove the {active_day_name} log from Google Sheets.")
+                if st.button(f"Confirm Delete {active_day_name}", key="delete_log_btn"):
                     if current_log_id:
                         deleted = delete_sheet_row("Daily_Logs", "log_id", current_log_id)
                     else:
                         deleted = delete_sheet_row("Daily_Logs", inst_col_logs, selected_id)
                         
                     if deleted:
-                        st.success("Log entry deleted successfully!")
+                        st.success(f"{active_day_name} log entry deleted successfully!")
                         st.rerun()
                     else:
                         st.error("Failed to delete log entry.")
