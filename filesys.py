@@ -237,6 +237,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 menu = st.sidebar.radio("Navigation", [
+    "Active Tasks Dashboard",
+    "Handover Date Dashboard",
     "New Installation Order", 
     "Log Daily Tasks",
     "Edit Task Log (By Primary Key)",
@@ -250,8 +252,168 @@ if "task_count" not in st.session_state:
 if "next_task_count" not in st.session_state:
     st.session_state.next_task_count = 5
 
-# 1. NEW INSTALLATION ORDER
-if menu == "New Installation Order":
+# ------------------------------------------
+# 1. ACTIVE TASKS DASHBOARD
+# ------------------------------------------
+if menu == "Active Tasks Dashboard":
+    st.header("📊 Active Installation Progress Dashboard")
+
+    df_logs = read_sheet("Daily_Logs")
+    df_inst = read_sheet("Installations")
+
+    if df_inst.empty:
+        st.info("No installation projects found.")
+    else:
+        df_inst.columns = df_inst.columns.str.strip().str.lower()
+        if not df_logs.empty:
+            df_logs.columns = df_logs.columns.str.strip().str.lower()
+
+        # Exclude completed projects
+        active_inst = df_inst[df_inst.get("status", "In Progress").astype(str).str.lower() != "completed"].copy()
+
+        if active_inst.empty:
+            st.success("🎉 All installation tasks are complete! No pending or 'In Progress' work.")
+        else:
+            inst_col_logs = next((c for c in df_logs.columns if "installation" in c or "inst" in c), "installation_id") if not df_logs.empty else "installation_id"
+
+            col_m1, col_m2 = st.columns(2)
+            col_m1.metric("Active Sites In Progress", len(active_inst))
+            col_m2.metric("Total Active Logs Recorded", len(df_logs) if not df_logs.empty else 0)
+
+            st.divider()
+            st.subheader("🚧 Ongoing Projects & Task Completion Status")
+
+            for _, project in active_inst.iterrows():
+                inst_id = str(project.get("installation_id", "N/A") or "N/A")
+                site_addr = str(project.get("site_address", "N/A") or "N/A")
+                team = str(project.get("team_details", "Unassigned") or "Unassigned")
+                p_status = str(project.get("status", "In Progress") or "In Progress")
+
+                p_logs = pd.DataFrame()
+                if not df_logs.empty and inst_col_logs in df_logs.columns:
+                    p_logs = df_logs[df_logs[inst_col_logs].astype(str).str.strip() == inst_id.strip()]
+
+                total_logs = len(p_logs)
+                completed_task_count = 0
+                latest_tasks_text = "No tasks recorded yet."
+                
+                if not p_logs.empty:
+                    all_tasks_combined = " ".join(p_logs.get("tasks_completed", p_logs.get("completed_tasks", "")).dropna().astype(str))
+                    completed_task_count = sum(1 for line in all_tasks_combined.split('\n') if line.strip())
+                    latest_log = p_logs.iloc[-1]
+                    latest_tasks_text = str(latest_log.get("tasks_completed", latest_log.get("completed_tasks", "N/A")) or "N/A")
+
+                estimated_total_steps = 10 
+                calc_progress = min(int((completed_task_count / estimated_total_steps) * 100), 95) if completed_task_count > 0 else 5
+
+                with st.container():
+                    st.markdown(f"""
+                        <div style="background-color: #F8F9FA; border: 1px solid #E0E0E0; padding: 15px; border-radius: 8px; margin-bottom: 10px;">
+                            <h4 style="margin: 0; color: #0F4C81;">📍 {inst_id} — <span style="font-size: 14px; color: #555;">{site_addr[:40]}...</span></h4>
+                            <p style="margin: 5px 0 0 0; font-size: 13px;"><b>Team Assigned:</b> {team} | <b>Days Worked:</b> {total_logs} Day(s) | <b>Status:</b> <span style="color: #D97706; font-weight: bold;">{p_status}</span></p>
+                        </div>
+                    """, unsafe_html=True)
+
+                    st.write(f"**Completion Progress:** {calc_progress}%")
+                    st.progress(calc_progress / 100)
+
+                    with st.expander(f"🔍 View Recent Task Updates for {inst_id}"):
+                        st.markdown("**Latest Work Logged:**")
+                        st.text(latest_tasks_text)
+                    
+                    st.divider()
+
+# ------------------------------------------
+# 2. HANDOVER DATE DASHBOARD
+# ------------------------------------------
+elif menu == "Handover Date Dashboard":
+    st.header("📅 Handover Schedule Dashboard")
+
+    df_inst = read_sheet("Installations")
+
+    if df_inst.empty:
+        st.info("No installation records found.")
+    else:
+        df_inst.columns = df_inst.columns.str.strip().str.lower()
+        handover_col = next((c for c in df_inst.columns if "target_ho_date" in c or "handover" in c or "completion_date" in c), None)
+
+        if not handover_col:
+            st.error("No handover date column found in the Installations sheet.")
+        else:
+            df_inst["parsed_handover"] = pd.to_datetime(df_inst[handover_col], errors="coerce")
+            
+            show_completed = st.checkbox("Include Completed Handovers", value=False)
+            filtered_df = df_inst.copy()
+            if not show_completed and "status" in filtered_df.columns:
+                filtered_df = filtered_df[filtered_df["status"].astype(str).str.lower() != "completed"]
+
+            today = pd.to_datetime(datetime.now().date())
+
+            overdue_df = filtered_df[filtered_df["parsed_handover"] < today]
+            today_df = filtered_df[filtered_df["parsed_handover"] == today]
+            upcoming_df = filtered_df[(filtered_df["parsed_handover"] > today) & (filtered_df["parsed_handover"] <= today + pd.Timedelta(days=7))]
+            future_df = filtered_df[filtered_df["parsed_handover"] > today + pd.Timedelta(days=7)]
+            unscheduled_df = filtered_df[filtered_df["parsed_handover"].isna()]
+
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("🚨 Overdue", len(overdue_df))
+            m2.metric("📌 Handover Today", len(today_df))
+            m3.metric("⏳ Next 7 Days", len(upcoming_df))
+            m4.metric("📅 Future / Unscheduled", len(future_df) + len(unscheduled_df))
+
+            st.divider()
+            st.subheader("📈 Handover Distribution Over Time")
+            chart_data = filtered_df.dropna(subset=["parsed_handover"])
+            if not chart_data.empty:
+                handover_counts = chart_data["parsed_handover"].dt.date.value_counts().sort_index()
+                st.bar_chart(handover_counts)
+            else:
+                st.info("No valid handover dates available to chart.")
+
+            st.divider()
+
+            tab_overdue, tab_today, tab_upcoming, tab_all = st.tabs([
+                f"🚨 Overdue ({len(overdue_df)})", 
+                f"📌 Today ({len(today_df)})", 
+                f"⏳ Next 7 Days ({len(upcoming_df)})", 
+                f"📋 All Tracked ({len(filtered_df)})"
+            ])
+
+            def render_project_list(dataframe, alert_color="#D97706"):
+                if dataframe.empty:
+                    st.write("No projects in this category.")
+                else:
+                    for _, row in dataframe.iterrows():
+                        inst_id = str(row.get("installation_id", "N/A") or "N/A")
+                        site = str(row.get("site_address", "N/A") or "N/A")
+                        team = str(row.get("team_details", "Unassigned") or "Unassigned")
+                        h_date = str(row.get(handover_col, "Not Set") or "Not Set")
+                        status = str(row.get("status", "In Progress") or "In Progress")
+
+                        st.markdown(f"""
+                            <div style="background-color: #F8F9FA; border-left: 5px solid {alert_color}; padding: 12px 18px; border-radius: 6px; margin-bottom: 12px;">
+                                <h4 style="margin: 0; color: #0F4C81;">📍 {inst_id} — <span style="font-size: 14px; color: #444;">{site[:40]}...</span></h4>
+                                <p style="margin: 4px 0 0 0; font-size: 13px;">
+                                    <b>Target Handover Date:</b> <span style="color: {alert_color}; font-weight: bold;">{h_date}</span> | 
+                                    <b>Team:</b> {team} | 
+                                    <b>Status:</b> {status}
+                                </p>
+                            </div>
+                        """, unsafe_html=True)
+
+            with tab_overdue:
+                render_project_list(overdue_df, alert_color="#DC2626")
+            with tab_today:
+                render_project_list(today_df, alert_color="#00A651")
+            with tab_upcoming:
+                render_project_list(upcoming_df, alert_color="#2563EB")
+            with tab_all:
+                render_project_list(filtered_df, alert_color="#6B7280")
+
+# ------------------------------------------
+# 3. NEW INSTALLATION ORDER
+# ------------------------------------------
+elif menu == "New Installation Order":
     st.header("Create New Installation Order")
 
     if "temp_inst_id" not in st.session_state:
@@ -326,7 +488,9 @@ if menu == "New Installation Order":
             st.success(f"Saved to Google Sheets! Generated Installation ID: **`{inst_id}`**")
             st.session_state.temp_inst_id = generate_project_id()
 
-# 2. LOG DAILY TASKS
+# ------------------------------------------
+# 4. LOG DAILY TASKS
+# ------------------------------------------
 elif menu == "Log Daily Tasks":
     st.header("📋 Log Daily Tasks")
 
@@ -459,7 +623,7 @@ elif menu == "Log Daily Tasks":
                 <span style="color: #00A651; font-weight: 700; font-size: 16px; margin-left: 8px; font-family: monospace;">{selected_id}</span>
                 <span style="color: #1A6BBA; font-weight: 600; font-size: 14px; margin-left: 15px;">(Auto-Calculated: <b>{day_label}</b> | Team: {inst_info.get('team_details', 'N/A')})</span>
             </div>
-        """, unsafe_allow_html=True)
+        """, unsafe_html=True)
 
         if not existing_logs.empty:
             last_log = existing_logs.iloc[-1]
@@ -555,7 +719,9 @@ elif menu == "Log Daily Tasks":
             </div>
         """, unsafe_allow_html=True)
 
-# 3. EDIT TASK LOG
+# ------------------------------------------
+# 5. EDIT TASK LOG
+# ------------------------------------------
 elif menu == "Edit Task Log (By Primary Key)":
     st.header("✏️ Edit Task Log")
 
@@ -684,7 +850,6 @@ elif menu == "Edit Task Log (By Primary Key)":
             current_log_id = str(selected_log_row.get("log_id", "") or "")
             team_details_safe = str(inst_info.get('team_details', 'N/A') or 'N/A')
 
-            # Safe Markdown formatting without NoneType conversion errors
             st.markdown(f"""
                 <div style="background-color: #EBF3FE; border-left: 5px solid #00A651; padding: 14px 20px; border-radius: 6px; margin-bottom: 20px;">
                     <span style="color: #0F4C81; font-weight: 700; font-size: 15px;">Active Installation ID:</span>
@@ -751,7 +916,6 @@ elif menu == "Edit Task Log (By Primary Key)":
                     if not cleaned_tasks:
                         st.error("Tasks completed cannot be empty.")
                     else:
-                        # Check if the existing record in database already contains identical data
                         curr_db_task = str(selected_log_row.get("tasks_completed", selected_log_row.get("completed_tasks", "")) or "").strip()
                         curr_db_prod = str(selected_log_row.get("product_worked_on", "") or "").strip()
                         curr_db_tech = str(selected_log_row.get("submitted_by", "") or "").strip()
@@ -760,7 +924,8 @@ elif menu == "Edit Task Log (By Primary Key)":
                         if (cleaned_tasks == curr_db_task and 
                             new_product.strip() == curr_db_prod and 
                             new_tech.strip() == curr_db_tech and 
-                            str(new_log_date).strip() == curr_db_date):
+                            str(new_log_date).strip() == curr_db_date and
+                            new_status == curr_status):
                             st.warning("⚠️ Same entry already done. No changes were made.")
                         else:
                             updated_fields = {
@@ -799,7 +964,9 @@ elif menu == "Edit Task Log (By Primary Key)":
     elif selected_id:
         st.error(f"Installation ID `{selected_id}` not found in master records.")
 
-# 4. VIEW LOGS & UPDATE STATUS
+# ------------------------------------------
+# 6. VIEW LOGS & UPDATE STATUS
+# ------------------------------------------
 elif menu == "View Logs & Update Status":
     st.header("🔍 View Logs & Update Installation Status")
 
@@ -877,7 +1044,9 @@ elif menu == "View Logs & Update Status":
                     ```
                     """)
 
-# 5. MASTER DATABASE
+# ------------------------------------------
+# 7. MASTER DATABASE
+# ------------------------------------------
 elif menu == "Master Database":
     st.header("Master Database View (Google Sheets)")
     
