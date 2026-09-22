@@ -368,7 +368,11 @@ elif user_role == "Supervisor":
         "Master Database"
     ]
 else:
-    menu_options = ["Log Daily Tasks"]
+    menu_options = [
+        "Log Daily Tasks", 
+        "My Work History", 
+        "My Profile & Settings"
+    ]
 
 menu = st.sidebar.radio("Navigation Menu", menu_options)
 
@@ -456,7 +460,79 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 # 6. MODULE IMPLEMENTATIONS
 # ==========================================
 
-if menu == "Admin Analytics Dashboard":
+# --- WORKER: MY WORK HISTORY ---
+if menu == "My Work History":
+    st.header(f"📜 Work Log History - {user_name}")
+    df_logs = read_sheet("Worker_Daily_Logs")
+
+    if df_logs.empty or "worker_name" not in df_logs.columns:
+        st.info("⚠️ No Field Logs Recorded Yet")
+    else:
+        my_logs = df_logs[df_logs["worker_name"].astype(str).str.strip().str.lower() == user_name.strip().lower()]
+        
+        if my_logs.empty:
+            st.info("⚠️ You have not submitted any daily work logs yet.")
+        else:
+            # Summary Statistics Cards
+            tot_my_hrs = my_logs["hours_spent"].sum() if "hours_spent" in my_logs.columns else 0
+            tot_my_trv = len(my_logs[my_logs["is_travel_day"] == "Yes"]) if "is_travel_day" in my_logs.columns else 0
+            tot_sites = my_logs["installation_id"].nunique() if "installation_id" in my_logs.columns else 0
+
+            k1, k2, k3 = st.columns(3)
+            with k1:
+                st.markdown(f'<div class="kpi-card"><div class="kpi-number">{tot_my_hrs} hrs</div><div class="kpi-label">Total Hours Logged</div></div>', unsafe_allow_html=True)
+            with k2:
+                st.markdown(f'<div class="kpi-card"><div class="kpi-number">{tot_my_trv} Days</div><div class="kpi-label">Travel Days (TA/DA)</div></div>', unsafe_allow_html=True)
+            with k3:
+                st.markdown(f'<div class="kpi-card"><div class="kpi-number">{tot_sites}</div><div class="kpi-label">Sites Worked On</div></div>', unsafe_allow_html=True)
+
+            st.write("##")
+            st.subheader("Submitted Logs")
+            
+            # Display history table
+            disp_cols = [c for c in ["logged_date", "installation_id", "task_name", "progress_percentage", "hours_spent", "is_travel_day", "site_remarks"] if c in my_logs.columns]
+            st.dataframe(my_logs[disp_cols].sort_values(by="logged_date", ascending=False), use_container_width=True)
+
+# --- WORKER: MY PROFILE & SETTINGS ---
+elif menu == "My Profile & Settings":
+    st.header("👤 Worker Profile & Security")
+    
+    col_l, col_center, col_r = st.columns([1, 2, 1])
+    with col_center:
+        st.markdown(f"""
+            <div class="card-box">
+                <h3 style="margin:0;">{user_name}</h3>
+                <p style="margin:5px 0;"><b>Role:</b> {user_role}</p>
+                <p style="margin:5px 0;"><b>Worker ID:</b> {user.get('worker_id', 'N/A')}</p>
+                <p style="margin:5px 0;"><b>Base Station:</b> {user_base_location}</p>
+                <p style="margin:5px 0;"><b>Aadhaar No:</b> {user.get('aadhaar_no', 'N/A')}</p>
+            </div>
+        """, unsafe_allow_html=True)
+
+        st.subheader("🔑 Change Security PIN")
+        with st.form("change_pin_form"):
+            curr_pin = st.text_input("Current PIN", type="password")
+            new_pin1 = st.text_input("New 4-Digit PIN", type="password", max_chars=4)
+            new_pin2 = st.text_input("Confirm New PIN", type="password", max_chars=4)
+
+            update_pin_btn = st.form_submit_button("Update Security PIN", use_container_width=True)
+
+            if update_pin_btn:
+                if str(curr_pin).strip() != str(user.get("pin", "")).strip():
+                    st.error("Incorrect current PIN!")
+                elif not new_pin1 or len(new_pin1) < 4:
+                    st.error("New PIN must be at least 4 digits.")
+                elif new_pin1 != new_pin2:
+                    st.error("New PINs do not match!")
+                else:
+                    success = update_sheet_row("Workers_Master", "name", user_name, {"pin": new_pin1.strip()})
+                    if success:
+                        st.session_state.authenticated_user["pin"] = new_pin1.strip()
+                        st.success("PIN updated successfully!")
+                        st.rerun()
+
+# --- ADMIN: ANALYTICS DASHBOARD ---
+elif menu == "Admin Analytics Dashboard":
     st.header("📊 Admin Operations Dashboard")
     df_logs = read_sheet("Worker_Daily_Logs")
     df_workers = read_sheet("Workers_Master")
@@ -492,6 +568,7 @@ if menu == "Admin Analytics Dashboard":
         else:
             st.info("⚠️ No Installation Sites Created Yet — Create orders to view status distribution.")
 
+# --- ADMIN: USER MANAGEMENT ---
 elif menu == "User Management":
     st.header("👥 User & Access Management")
     df_workers = read_sheet("Workers_Master")
@@ -522,7 +599,6 @@ elif menu == "User Management":
                     elif len(clean_aadhaar) != 12 or not clean_aadhaar.isdigit():
                         st.error("Invalid Aadhaar Number! Must be exactly 12 numeric digits.")
                     else:
-                        # DUPLICATE AADHAAR CHECK
                         if not df_workers.empty and "aadhaar_no" in df_workers.columns:
                             existing_aadhaars = df_workers["aadhaar_no"].astype(str).str.strip().tolist()
                             if clean_aadhaar in existing_aadhaars:
@@ -572,6 +648,7 @@ elif menu == "User Management":
                         st.success(f"Updated **{selected_edit_user}** successfully!")
                         st.rerun()
 
+# --- ADMIN: TA/DA PAYROLL & TRAVEL SUMMARY ---
 elif menu == "TA/DA Payroll & Travel Summary":
     st.header("✈️ TA/DA Travel Allowance & Payroll Report")
     st.caption("Automated calculation aggregating travel days (Base Location ≠ Site Location)")
@@ -611,6 +688,7 @@ elif menu == "TA/DA Payroll & Travel Summary":
                 mime="text/csv"
             )
 
+# --- ADMIN: ADVANCED FIELD LOGS INSPECTOR ---
 elif menu == "Advanced Field Logs Inspector":
     st.header("🔍 Advanced Field Log Inspector & Exporter")
     df_logs = read_sheet("Worker_Daily_Logs")
@@ -649,6 +727,7 @@ elif menu == "Advanced Field Logs Inspector":
             mime="text/csv"
         )
 
+# --- SUPERVISOR: ACTIVE TASKS ---
 elif menu == "Active Tasks Dashboard":
     st.header("📋 Active Tasks Dashboard")
     df_tasks = read_sheet("Task_Assignments")
@@ -672,6 +751,7 @@ elif menu == "Active Tasks Dashboard":
 
         st.dataframe(filtered_tasks, use_container_width=True)
 
+# --- SUPERVISOR: HANDOVER DASHBOARD ---
 elif menu == "Handover Date Dashboard":
     st.header("📅 Site Handover Date Dashboard")
     df_sites = read_sheet("Sites_Master")
@@ -696,6 +776,7 @@ elif menu == "Handover Date Dashboard":
                 </div>
             """, unsafe_allow_html=True)
 
+# --- SUPERVISOR: NEW ORDER ---
 elif menu == "New Installation Order":
     st.header("🆕 Create New Installation Order")
     with st.form("new_order_form"):
@@ -726,10 +807,12 @@ elif menu == "New Installation Order":
                 append_to_sheet("Sites_Master", new_site)
                 st.success(f"Installation Order **{inst_id}** recorded in Data Base!")
 
+# --- COMMON: LOG DAILY TASKS ---
 elif menu == "Log Daily Tasks":
     st.header(f"📝 Log Daily Tasks - {user_name}")
     render_restricted_work_input(target_worker_name=user_name, is_crew_log=False)
 
+# --- SUPERVISOR: TEAM HEAD DASHBOARD ---
 elif menu == "Team Head Dashboard":
     st.header("👥 Dual-Tab Team Head Dashboard")
     tab_personal, tab_crew = st.tabs(["👤 Personal Work Log", "👨‍🔧 Crew Task Logging"])
@@ -750,6 +833,7 @@ elif menu == "Team Head Dashboard":
             st.divider()
             render_restricted_work_input(target_worker_name=selected_crew, is_crew_log=True)
 
+# --- SUPERVISOR: VIEW LOGS & UPDATE ---
 elif menu == "View Logs & Update Status":
     st.header("🔍 View Daily Logs & Update Status")
     df_sites = read_sheet("Sites_Master")
@@ -799,6 +883,7 @@ elif menu == "View Logs & Update Status":
                     st.write(f"**Travel Day (TA/DA):** {l.get('is_travel_day')}")
                     st.write(f"**Remarks:** {l.get('site_remarks', 'None')}")
 
+# --- MASTER DATABASE ---
 elif menu == "Master Database":
     st.header("🗄️ Live Google Sheets Database")
     m_tab1, m_tab2, m_tab3, m_tab4 = st.tabs(["Workers Master", "Sites Master", "Task Assignments", "Worker Daily Logs"])
