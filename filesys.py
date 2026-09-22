@@ -792,34 +792,93 @@ elif menu == "Handover Date Dashboard":
 
 # --- SUPERVISOR: NEW ORDER ---
 elif menu == "New Installation Order":
-    st.header("🆕 Create New Installation Order")
-    with st.form("new_order_form"):
-        c1, c2 = st.columns(2)
-        with c1:
-            inst_id = st.text_input("Installation ID", value=f"INST-2026-{datetime.now().strftime('%M%S')}")
-            site_name = st.text_input("Site / Project Name")
-            site_city = st.text_input("Site City")
-        with c2:
-            team_lead = st.text_input("Assigned Team Lead", value=user_name)
-            order_date = st.date_input("Order Date", value=datetime.now())
-            handover_date = st.date_input("Target Handover Date", value=datetime.now() + timedelta(days=30))
+    st.header("Create New Installation Order")
+    
+    # Session state initialization for dynamic dynamic team members and products
+    if "team_members_count" not in st.session_state:
+        st.session_state.team_members_count = 1
+    if "products_count" not in st.session_state:
+        st.session_state.products_count = 1
 
-        submit = st.form_submit_button("Create Installation Order", type="primary")
-        if submit:
-            if not site_name or not site_city:
-                st.error("Please fill in site name and city.")
-            else:
-                new_site = {
-                    "installation_id": inst_id,
-                    "site_name": site_name,
-                    "site_city": site_city,
-                    "team_lead": team_lead,
-                    "status": "In Progress",
-                    "order_date": str(order_date),
-                    "handover_date": str(handover_date)
-                }
-                append_to_sheet("Sites_Master", new_site)
-                st.success(f"Installation Order **{inst_id}** recorded in Data Base!")
+    visit_id = f"INST-2026-F8HLQ"
+    st.info(f"**Automated Visit ID:** {visit_id}")
+
+    col_team, col_dates = st.columns(2)
+
+    # 👨‍💼 Team Structure Section
+    with col_team:
+        st.markdown("### 👨‍💼 Team Structure")
+        team_lead_name = st.text_input("Team Lead Name *", placeholder="e.g., Rajeer", key="inst_team_lead")
+        
+        team_helpers = []
+        for i in range(st.session_state.team_members_count):
+            helper = st.text_input(f"Team Members / Helpers", placeholder=f"e.g., Helper {i+1}", key=f"inst_helper_{i}")
+            if helper.strip():
+                team_helpers.append(helper.strip())
+        
+        if st.button("➕ Add Team Member", key="btn_add_team_member"):
+            st.session_state.team_members_count += 1
+            st.rerun()
+
+        city_name = st.text_input("City Name *", value="Mumbai", key="inst_city_name")
+        site_address = st.text_area("Site Address *", placeholder="Full installation site address...", key="inst_site_address")
+
+    # 📅 Order Dates Section
+    with col_dates:
+        st.markdown("### 📅 Order Dates")
+        inst_date = st.date_input("Installation Date (Order Created Date)", value=datetime.now(), key="inst_order_date")
+        site_clearance_date = st.date_input("Site Clearance Date", value=datetime.now(), key="inst_clearance_date")
+        target_handover_date = st.date_input("Target Handover Date", value=datetime.now() + timedelta(days=15), key="inst_handover_date")
+
+    st.divider()
+
+    # 📦 Order Products Details Section
+    st.markdown("### 📦 Order Products Details")
+    
+    products_data = []
+    for p_idx in range(st.session_state.products_count):
+        st.markdown(f"#### Product #{p_idx + 1}")
+        col_p1, col_p2 = st.columns(2)
+        with col_p1:
+            product_type = st.selectbox("Select The Product", ["Rolling Shutters", "Sliding Gates", "Boom Barriers", "Automation Motors"], key=f"prod_type_{p_idx}")
+            dimensions = st.text_input("Dimensions (WxH)", placeholder="e.g., 5330X6000", key=f"prod_dim_{p_idx}")
+        with col_p2:
+            sub_category = st.selectbox("Select Sub-Category", ["Manual Rolling Shutter", "Motorized Rolling Shutter", "High Speed Shutter"], key=f"prod_sub_{p_idx}")
+            quantity = st.number_input("Quantity", min_value=1, value=1, step=1, key=f"prod_qty_{p_idx}")
+        
+        products_data.append({
+            "product_type": product_type,
+            "sub_category": sub_category,
+            "dimensions": dimensions,
+            "quantity": quantity
+        })
+
+    if st.button("➕ Add Another Product", key="btn_add_product"):
+        st.session_state.products_count += 1
+        st.rerun()
+
+    st.write("##")
+    if st.button("💾 Submit Installation Order", type="primary", use_container_width=True, key="btn_submit_inst_order"):
+        if not team_lead_name or not city_name or not site_address:
+            st.error("Please fill in all mandatory fields (Team Lead Name, City Name, and Site Address).")
+        else:
+            order_data = {
+                "installation_id": visit_id,
+                "team_lead": team_lead_name,
+                "team_members": ", ".join(team_helpers),
+                "site_city": city_name,
+                "site_address": site_address,
+                "order_date": str(inst_date),
+                "site_clearance_date": str(site_clearance_date),
+                "handover_date": str(target_handover_date),
+                "products_summary": str(products_data),
+                "status": "In Progress"
+            }
+            append_to_sheet("Sites_Master", order_data)
+            st.success(f"Installation Order **{visit_id}** recorded successfully in the database!")
+            # Reset counters
+            st.session_state.team_members_count = 1
+            st.session_state.products_count = 1
 
 # --- COMMON: LOG DAILY TASKS ---
 elif menu == "Log Daily Tasks":
