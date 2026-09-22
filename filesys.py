@@ -242,13 +242,12 @@ def update_sheet_row(sheet_name: str, key_col: str, key_val: str, update_dict: d
         st.error(f"Error updating tab '{sheet_name}': {e}")
         return False
 
-# Function to parse continuous data string into Worker dictionaries
 def parse_raw_worker_string(raw_str):
     pattern = re.compile(
-        r'(W\d{3})'                                 # Worker ID (e.g. W002)
+        r'(W\d{3})'                                 # Worker ID
         r'([A-Za-z\s]+?)'                           # Name
-        r'(\d{12})'                                 # Aadhaar (12 digits)
-        r'(\d{4})'                                  # PIN (4 digits)
+        r'(\d{12})'                                 # National ID
+        r'(\d{4})'                                  # PIN
         r'(Supervisor|Worker|Admin)'               # Role
         r'([A-Za-z]+)'                              # Base Location
     )
@@ -388,7 +387,7 @@ if st.sidebar.button("🚪 LOG OUT", use_container_width=True):
     st.rerun()
 
 # ==========================================
-# 5. RESTRICTED DROPDOWN-ONLY LOGGING HELPER
+# 5. RESTRICTED WORK INPUT HELPER
 # ==========================================
 def render_restricted_work_input(target_worker_name, is_crew_log=False):
     df_sites = read_sheet("Sites_Master")
@@ -418,9 +417,9 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
     is_travel = str(target_base).strip().lower() != str(site_city).strip().lower()
 
     if is_travel:
-        st.warning(f"✈️ **Travel Day Detected (TA/DA Triggered)**: Base (`{target_base}`) ≠ Site Location (`{site_city}`)")
+        st.warning(f"✈️ **Travel Day Detected (TA/DA Triggered)**: Base ({target_base}) ≠ Site Location ({site_city})")
     else:
-        st.info(f"🏠 **Local Site**: Base (`{target_base}`) matches Site Location (`{site_city}`)")
+        st.info(f"🏠 **Local Site**: Base ({target_base}) matches Site Location ({site_city})")
 
     assigned_tasks = df_tasks[df_tasks["installation_id"] == selected_site_id]["task_name"].tolist() if not df_tasks.empty and "task_name" in df_tasks.columns else []
     if not assigned_tasks:
@@ -431,17 +430,30 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
         selected_task = st.selectbox("Task Worked On", assigned_tasks, key=f"tsk_{target_worker_name}_{is_crew_log}")
     with c_pct:
         progress_options = ["0%", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%"]
-        progress_str = st.selectbox("Progress (%) Dropdown", progress_options, index=5, key=f"pct_{target_worker_name}_{is_crew_log}")
+        progress_str = st.selectbox("Progress (%)", progress_options, index=5, key=f"pct_{target_worker_name}_{is_crew_log}")
         progress_pct = int(progress_str.replace("%", ""))
     with c_hrs:
-        hours_spent = st.selectbox("Hours Dropdown", list(range(0, 17)), index=8, key=f"hrs_{target_worker_name}_{is_crew_log}")
+        hours_spent = st.selectbox("Hours", list(range(0, 17)), index=8, key=f"hrs_{target_worker_name}_{is_crew_log}")
     with c_min:
-        minutes_spent = st.selectbox("Minutes Dropdown", [0, 15, 30, 45], key=f"min_{target_worker_name}_{is_crew_log}")
+        minutes_spent = st.selectbox("Minutes", [0, 15, 30, 45], key=f"min_{target_worker_name}_{is_crew_log}")
 
     site_remarks = st.text_area("Site Remarks / Delays", placeholder="Note any motor issues, power availability, or structural delays...", key=f"rem_{target_worker_name}_{is_crew_log}")
 
+    # Optional Site Photo Upload Field
+    uploaded_photo = st.file_uploader(
+        "📷 Upload Site Photo (Optional)", 
+        type=["jpg", "jpeg", "png"], 
+        key=f"photo_{target_worker_name}_{is_crew_log}",
+        help="Capture or attach an image of the ongoing or completed installation task."
+    )
+
+    if uploaded_photo is not None:
+        st.image(uploaded_photo, caption="Uploaded Site Photo Preview", width=250)
+
     if st.button(f"💾 Sync Daily Log to Data Base ({target_worker_name})", key=f"btn_{target_worker_name}_{is_crew_log}"):
         log_id = f"LOG-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        photo_filename = uploaded_photo.name if uploaded_photo is not None else "No Photo"
+
         log_entry = {
             "log_id": log_id,
             "installation_id": selected_site_id,
@@ -456,6 +468,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
             "site_city": site_city,
             "is_travel_day": "Yes" if is_travel else "No",
             "site_remarks": site_remarks,
+            "site_photo": photo_filename,
             "logged_by": user_name
         }
         append_to_sheet("Worker_Daily_Logs", log_entry)
@@ -466,7 +479,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 # 6. MODULE IMPLEMENTATIONS
 # ==========================================
 
-# --- NEW PAGE: EMPLOYEE ANALYTICS & REPORTS ---
+# --- PAGE: EMPLOYEE ANALYTICS & REPORTS ---
 if menu == "Employee Analytics & Reports":
     st.header("👤 Employee Deep Dive & Individual Analytics")
     st.caption("Select any worker to isolate their performance, daily progress graphs, and travel logs.")
@@ -478,32 +491,26 @@ if menu == "Employee Analytics & Reports":
         st.warning("⚠️ Workers database is empty.")
     else:
         worker_names = df_workers["name"].tolist()
-        
-        # Default selector to Parvesh Kumar if present, else first worker
         default_index = worker_names.index("Parvesh Kumar") if "Parvesh Kumar" in worker_names else 0
         selected_emp = st.selectbox("🔍 Select Employee to Generate Report:", worker_names, index=default_index)
 
-        # Retrieve specific worker profile details
         emp_info = df_workers[df_workers["name"] == selected_emp].iloc[0]
         
-        # Header Info Card
         st.markdown(f"""
             <div class="card-box">
                 <h3 style="margin:0;">{emp_info.get('name')} ({emp_info.get('worker_id')})</h3>
-                <p style="margin:5px 0;"><b>Role:</b> {emp_info.get('role')} | <b>Base Location:</b> {emp_info.get('base_location')} | <b>Aadhaar:</b> [Aadhaar Redacted]</p>
+                <p style="margin:5px 0;"><b>Role:</b> {emp_info.get('role')} | <b>Base Location:</b> {emp_info.get('base_location')} | <b>ID Number:</b> [ID Redacted]</p>
             </div>
         """, unsafe_allow_html=True)
 
         if df_logs.empty or "worker_name" not in df_logs.columns:
             st.info(f"No task logs recorded yet for {selected_emp}.")
         else:
-            # Filter logs specifically for selected worker
             emp_logs = df_logs[df_logs["worker_name"].astype(str).str.strip().str.lower() == selected_emp.strip().lower()].copy()
 
             if emp_logs.empty:
                 st.warning(f"⚠️ No field logs recorded in the system for **{selected_emp}** yet.")
             else:
-                # Top Interactive Filters
                 st.subheader("⚙️ Filter Report")
                 col_f1, col_f2, col_f3 = st.columns(3)
                 
@@ -517,7 +524,6 @@ if menu == "Employee Analytics & Reports":
                     task_list = ["All Tasks"] + emp_logs["task_name"].unique().tolist()
                     filter_task = st.selectbox("Filter by Task Type", task_list)
 
-                # Apply dynamic interactive filters
                 filtered_emp_logs = emp_logs.copy()
                 if filter_site != "All Sites":
                     filtered_emp_logs = filtered_emp_logs[filtered_emp_logs["installation_id"] == filter_site]
@@ -528,7 +534,6 @@ if menu == "Employee Analytics & Reports":
                 if filter_task != "All Tasks":
                     filtered_emp_logs = filtered_emp_logs[filtered_emp_logs["task_name"] == filter_task]
 
-                # Metric Cards (KPIs)
                 tot_hours = filtered_emp_logs["hours_spent"].sum() if "hours_spent" in filtered_emp_logs.columns else 0
                 tot_travel_days = len(filtered_emp_logs[filtered_emp_logs["is_travel_day"] == "Yes"]) if "is_travel_day" in filtered_emp_logs.columns else 0
                 tot_projects = filtered_emp_logs["installation_id"].nunique() if "installation_id" in filtered_emp_logs.columns else 0
@@ -547,12 +552,10 @@ if menu == "Employee Analytics & Reports":
 
                 st.divider()
 
-                # Graphical Charts Section
                 st.subheader("📊 Individual Performance Charts")
                 g1, g2 = st.columns(2)
 
                 with g1:
-                    # Bar Chart: Daily Logged Hours per Site
                     fig_hrs = px.bar(
                         filtered_emp_logs,
                         x="logged_date",
@@ -565,7 +568,6 @@ if menu == "Employee Analytics & Reports":
                     st.plotly_chart(fig_hrs, use_container_width=True)
 
                 with g2:
-                    # Line Chart: Task Progress Trajectory
                     fig_prog = px.line(
                         filtered_emp_logs,
                         x="logged_date",
@@ -577,9 +579,8 @@ if menu == "Employee Analytics & Reports":
                     )
                     st.plotly_chart(fig_prog, use_container_width=True)
 
-                # Filtered Data Table & CSV Export
                 st.subheader(f"📋 Detailed Work Logs ({len(filtered_emp_logs)} Records)")
-                disp_cols = [c for c in ["log_id", "logged_date", "installation_id", "task_name", "progress_percentage", "hours_spent", "minutes_spent", "is_travel_day", "site_remarks"] if c in filtered_emp_logs.columns]
+                disp_cols = [c for c in ["log_id", "logged_date", "installation_id", "task_name", "progress_percentage", "hours_spent", "minutes_spent", "is_travel_day", "site_remarks", "site_photo"] if c in filtered_emp_logs.columns]
                 st.dataframe(filtered_emp_logs[disp_cols].sort_values(by="logged_date", ascending=False), use_container_width=True)
 
                 csv_data = filtered_emp_logs.to_csv(index=False).encode('utf-8')
@@ -626,7 +627,7 @@ elif menu == "My Work History":
                 filtered_logs = filtered_logs[mask]
 
             st.subheader(f"Submitted Log Entries ({len(filtered_logs)} Records)")
-            disp_cols = [c for c in ["log_id", "logged_date", "installation_id", "task_name", "progress_percentage", "hours_spent", "minutes_spent", "is_travel_day", "site_remarks"] if c in filtered_logs.columns]
+            disp_cols = [c for c in ["log_id", "logged_date", "installation_id", "task_name", "progress_percentage", "hours_spent", "minutes_spent", "is_travel_day", "site_remarks", "site_photo"] if c in filtered_logs.columns]
             st.dataframe(filtered_logs[disp_cols].sort_values(by="logged_date", ascending=False), use_container_width=True)
 
 # --- WORKER: MY PROFILE & SETTINGS ---
@@ -641,7 +642,7 @@ elif menu == "My Profile & Settings":
                 <p style="margin:5px 0;"><b>Role:</b> {user_role}</p>
                 <p style="margin:5px 0;"><b>Worker ID:</b> {user.get('worker_id', 'N/A')}</p>
                 <p style="margin:5px 0;"><b>Base Station:</b> {user_base_location}</p>
-                <p style="margin:5px 0;"><b>Aadhaar No:</b> [Aadhaar Redacted]</p>
+                <p style="margin:5px 0;"><b>ID Number:</b> [ID Redacted]</p>
             </div>
         """, unsafe_allow_html=True)
 
@@ -720,7 +721,7 @@ elif menu == "User Management":
                 with c1:
                     new_w_id = st.text_input("Worker ID", value=f"W{len(df_workers)+1:03d}")
                     new_name = st.text_input("Full Name")
-                    new_aadhaar = st.text_input("12-Digit Aadhaar Number", max_chars=12, placeholder="e.g. 123456789012")
+                    new_id_num = st.text_input("12-Digit Government ID", max_chars=12, placeholder="e.g. 123456789012")
                 with c2:
                     new_pin = st.text_input("4-Digit PIN / Password", type="password")
                     new_role = st.selectbox("System Role", ["Worker", "Supervisor", "Admin"])
@@ -728,24 +729,24 @@ elif menu == "User Management":
 
                 submit_new_user = st.form_submit_button("Create User & Sync to Data Base", use_container_width=True)
                 if submit_new_user:
-                    clean_aadhaar = str(new_aadhaar).strip()
+                    clean_id = str(new_id_num).strip()
                     
-                    if not new_name or not new_pin or not clean_aadhaar:
-                        st.error("Please enter Full Name, Aadhaar Number, and PIN.")
-                    elif len(clean_aadhaar) != 12 or not clean_aadhaar.isdigit():
-                        st.error("Invalid Aadhaar Number! Must be exactly 12 numeric digits.")
+                    if not new_name or not new_pin or not clean_id:
+                        st.error("Please enter Full Name, ID Number, and PIN.")
+                    elif len(clean_id) != 12 or not clean_id.isdigit():
+                        st.error("Invalid ID Number! Must be exactly 12 numeric digits.")
                     else:
                         if not df_workers.empty and "aadhaar_no" in df_workers.columns:
-                            existing_aadhaars = df_workers["aadhaar_no"].astype(str).str.strip().tolist()
-                            if clean_aadhaar in existing_aadhaars:
-                                matched_user = df_workers[df_workers["aadhaar_no"].astype(str).str.strip() == clean_aadhaar].iloc[0].get("name", "Unknown")
-                                st.error(f"❌ Duplicate Entry! Worker with this Aadhaar Number already exists (**{matched_user}**).")
+                            existing_ids = df_workers["aadhaar_no"].astype(str).str.strip().tolist()
+                            if clean_id in existing_ids:
+                                matched_user = df_workers[df_workers["aadhaar_no"].astype(str).str.strip() == clean_id].iloc[0].get("name", "Unknown")
+                                st.error(f"❌ Duplicate Entry! Worker with this ID Number already exists (**{matched_user}**).")
                                 st.stop()
 
                         user_dict = {
                             "worker_id": new_w_id,
                             "name": new_name,
-                            "aadhaar_no": clean_aadhaar,
+                            "aadhaar_no": clean_id,
                             "pin": str(new_pin),
                             "role": new_role,
                             "base_location": new_base
@@ -756,9 +757,9 @@ elif menu == "User Management":
 
     with tab_batch:
         st.subheader("⚡ Batch Import Workers from Continuous String")
-        st.caption("Paste continuous raw strings (e.g. `W002Vishak1234567890121234SupervisorJaipurW004Parvesh...`) to parse and sync in bulk.")
+        st.caption("Paste continuous raw strings to parse and sync in bulk.")
         
-        raw_text_input = st.text_area("Paste Continuous Data String Here:", placeholder="W002Vishak1234567890121234SupervisorJaipurW004Parvesh Kumar3456789012341111WorkerJaipur...")
+        raw_text_input = st.text_area("Paste Continuous Data String Here:", placeholder="W002Vishak1234567890121234SupervisorJaipurW004Parvesh...")
         
         if st.button("🔍 Parse and Import Worker Data"):
             if not raw_text_input:
@@ -787,7 +788,7 @@ elif menu == "User Management":
             col_l, col_center, col_r = st.columns([1, 2, 1])
             with col_center:
                 with st.form("edit_user_form"):
-                    st.text_input("Aadhaar Number (Unique ID - Uneditable)", value="[Aadhaar Redacted]", disabled=True)
+                    st.text_input("Government ID (Unique ID - Uneditable)", value="[ID Redacted]", disabled=True)
                     e_col1, e_col2 = st.columns(2)
                     with e_col1:
                         e_role = st.selectbox("Update Role", ["Worker", "Supervisor", "Admin"], index=["Worker", "Supervisor", "Admin"].index(user_data.get("role", "Worker")))
@@ -942,6 +943,7 @@ elif menu == "New Installation Order":
         st.session_state.team_members_count = 1
     if "products_count" not in st.session_state:
         st.session_state.products_count = 1
+
     visit_id = f"INST-2026-{os.urandom(2).hex().upper()}"
     st.info(f"**Automated Visit ID:** {visit_id}")
 
@@ -953,7 +955,7 @@ elif menu == "New Installation Order":
         
         team_helpers = []
         for i in range(st.session_state.team_members_count):
-            helper = st.text_input(f"Team Members / Helpers", placeholder=f"e.g., Parvesh Kumar", key=f"inst_helper_{i}")
+            helper = st.text_input("Team Members / Helpers", placeholder="e.g., Parvesh Kumar", key=f"inst_helper_{i}")
             if helper.strip():
                 team_helpers.append(helper.strip())
         
@@ -1104,6 +1106,7 @@ elif menu == "View Logs & Update Status":
                     st.write(f"**Task:** {l.get('task_name')} ({l.get('progress_percentage')}% Progress)")
                     st.write(f"**Time Spent:** {l.get('hours_spent')} hrs {l.get('minutes_spent')} mins")
                     st.write(f"**Travel Day (TA/DA):** {l.get('is_travel_day')}")
+                    st.write(f"**Photo Attached:** {l.get('site_photo', 'No Photo')}")
                     st.write(f"**Remarks:** {l.get('site_remarks', 'None')}")
 
 # --- MASTER DATABASE ---
