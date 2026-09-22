@@ -5,16 +5,68 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 
 # ==========================================
-# 1. PAGE CONFIG & BRANDING THEME
+# 1. PAGE CONFIG & BRANDING THEME (SIDHARTH SHUTTER & AUTOMATION)
 # ==========================================
-st.set_page_config(page_title="Installation & Field Operations Portal", layout="wide", page_icon="🏗️")
+st.set_page_config(
+    page_title="Sidharth Shutter & Automation - Portal", 
+    layout="wide", 
+    page_icon="⚙️"
+)
 
-st.markdown("""
+# Brand Color Palette extracted from Logo
+COLOR_PRIMARY = "#10418A"    # Sidharth Deep Blue
+COLOR_ACCENT = "#00A859"     # Vibrant Green Dot
+COLOR_BG_LIGHT = "#EBF3FA"   # Soft Blue Tint for Cards
+COLOR_HOVER = "#0D3570"      # Darker Blue Hover State
+
+st.markdown(f"""
     <style>
-    .main-header { color: #0F4C81; font-weight: 700; }
-    .stButton>button { background-color: #0F4C81; color: white; border-radius: 5px; }
-    .stButton>button:hover { background-color: #00A651; color: white; }
-    .card-box { background-color: #F0F5FA; border-left: 5px solid #0F4C81; padding: 15px; border-radius: 6px; margin-bottom: 15px; }
+    /* Global Styling */
+    .stApp {{
+        background-color: #FAFCFF;
+    }}
+    
+    /* Headers */
+    h1, h2, h3, .main-header {{ 
+        color: {COLOR_PRIMARY} !important; 
+        font-weight: 700 !important; 
+    }}
+    
+    /* Buttons */
+    .stButton>button {{ 
+        background-color: {COLOR_PRIMARY} !important; 
+        color: white !important; 
+        border-radius: 6px !important;
+        border: none !important;
+        font-weight: 600 !important;
+        transition: all 0.3s ease !important;
+    }}
+    .stButton>button:hover {{ 
+        background-color: {COLOR_ACCENT} !important; 
+        color: white !important; 
+        box-shadow: 0 4px 10px rgba(0, 168, 89, 0.3) !important;
+    }}
+    
+    /* Card Boxes & Containers */
+    .card-box {{ 
+        background-color: {COLOR_BG_LIGHT}; 
+        border-left: 6px solid {COLOR_PRIMARY}; 
+        padding: 18px; 
+        border-radius: 8px; 
+        margin-bottom: 15px; 
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    }}
+    
+    /* Accent Badge Highlights */
+    .accent-badge {{
+        color: {COLOR_ACCENT};
+        font-weight: bold;
+    }}
+    
+    /* Sidebar Styling */
+    section[data-testid="stSidebar"] {{
+        background-color: #F0F4F8;
+    }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -94,16 +146,16 @@ def update_sheet_row(sheet_name: str, key_col: str, key_val: str, update_dict: d
         return False
 
 # ==========================================
-# 3. AUTHENTICATION & SIDEBAR
+# 3. AUTHENTICATION & SIDEBAR BRANDING
 # ==========================================
 if "authenticated_user" not in st.session_state:
     st.session_state.authenticated_user = None
 
 def render_sidebar_header():
-    st.sidebar.markdown("""
-        <div style="text-align: center; padding: 10px; background-color: #0F4C81; color: white; border-radius: 8px; margin-bottom: 15px;">
-            <h2 style="margin:0; font-size: 20px;">🏗️ INDUSTRIAL CORP</h2>
-            <p style="margin:0; font-size: 11px; color: #A3D1FF;">Live Google Sheets Operations Portal</p>
+    st.sidebar.markdown(f"""
+        <div style="text-align: center; padding: 12px; background-color: {COLOR_PRIMARY}; color: white; border-radius: 8px; margin-bottom: 15px;">
+            <h2 style="margin:0; font-size: 21px; color: white !important;">SIDHARTH</h2>
+            <p style="margin:0; font-size: 11px; letter-spacing: 1.5px; color: {COLOR_ACCENT}; font-weight: bold;">SHUTTER & AUTOMATION</p>
         </div>
     """, unsafe_allow_html=True)
 
@@ -111,8 +163,8 @@ render_sidebar_header()
 
 # Authentication Screen
 if not st.session_state.authenticated_user:
-    st.title("🔐 Worker & Supervisor Authentication")
-    st.caption("Verifying against Google Sheets `Workers_Master` database.")
+    st.title("🔐 Authentication Portal")
+    st.caption("Sidharth Shutter & Automation Field Operations System")
     
     df_workers = read_sheet("Workers_Master")
     
@@ -126,7 +178,7 @@ if not st.session_state.authenticated_user:
     with col1:
         selected_name = st.selectbox("Select Your Name", worker_names)
     with col2:
-        entered_pin = st.text_input("Enter 4-Digit PIN / Password", type="password", max_chars=10)
+        entered_pin = st.text_input("Enter 4-Digit PIN", type="password", max_chars=10)
 
     if st.button("Authenticate", type="primary", use_container_width=True):
         user_row = df_workers[
@@ -154,7 +206,7 @@ if st.sidebar.button("🚪 Logout", use_container_width=True):
 
 st.sidebar.divider()
 
-# Navigation Mapping based on Role from Google Sheet
+# Navigation Mapping based on Role
 STATUS_OPTIONS = ["In Progress", "Completed", "On Hold", "Pending Inspection"]
 
 if user_role == "Admin":
@@ -220,7 +272,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 
     assigned_tasks = df_tasks[df_tasks["installation_id"] == selected_site_id]["task_name"].tolist() if not df_tasks.empty and "task_name" in df_tasks.columns else []
     if not assigned_tasks:
-        assigned_tasks = ["General Site Preparation & Assembly"]
+        assigned_tasks = ["Motorized Rolling Shutter Assembly", "Electrical Wiring & Automation", "Sliding Gate Fitting", "Structural Welding"]
 
     c_tsk, c_pct, c_hrs, c_min = st.columns([3, 2, 1, 1])
     with c_tsk:
@@ -232,7 +284,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
     with c_min:
         minutes_spent = st.selectbox("Minutes", [0, 15, 30, 45], key=f"min_{target_worker_name}_{is_crew_log}")
 
-    site_remarks = st.text_area("Site Remarks / Delays", placeholder="Note any material shortages or obstacles...", key=f"rem_{target_worker_name}_{is_crew_log}")
+    site_remarks = st.text_area("Site Remarks / Delays", placeholder="Note any motor issues, power availability, or structural delays...", key=f"rem_{target_worker_name}_{is_crew_log}")
 
     if st.button(f"💾 Sync Daily Log to Google Sheets ({target_worker_name})", type="primary", key=f"btn_{target_worker_name}_{is_crew_log}"):
         log_id = f"LOG-{datetime.now().strftime('%Y%m%d%H%M%S')}"
@@ -253,7 +305,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
             "logged_by": user_name
         }
         append_to_sheet("Worker_Daily_Logs", log_entry)
-        st.success(f"Successfully recorded log in Google Sheets for **{target_worker_name}**!")
+        st.success(f"Successfully recorded log for **{target_worker_name}**!")
         st.rerun()
 
 # ==========================================
@@ -298,11 +350,11 @@ elif menu == "Handover Date Dashboard":
         st.subheader("Upcoming Project Handovers")
         for _, site in df_sites.iterrows():
             days = site.get("days_remaining", 0)
-            badge_color = "#00A651" if days > 15 else ("#E6A100" if days >= 0 else "#D32F2F")
+            badge_color = COLOR_ACCENT if days > 15 else ("#E6A100" if days >= 0 else "#D32F2F")
             
             st.markdown(f"""
                 <div class="card-box">
-                    <h3 style="margin:0; color:#0F4C81;">{site.get('site_name', 'N/A')} ({site.get('installation_id', 'N/A')})</h3>
+                    <h3 style="margin:0;">{site.get('site_name', 'N/A')} ({site.get('installation_id', 'N/A')})</h3>
                     <p style="margin:5px 0;"><b>City:</b> {site.get('site_city', 'N/A')} | <b>Team Lead:</b> {site.get('team_lead', 'N/A')}</p>
                     <p style="margin:5px 0;"><b>Target Handover:</b> {site.get('handover_date', 'N/A')}</p>
                     <p style="margin:5px 0;"><b>Status:</b> <span style="color:{badge_color}; font-weight:bold;">{site.get('status', 'In Progress')} ({days} Days Remaining)</span></p>
@@ -323,7 +375,7 @@ elif menu == "New Installation Order":
             order_date = st.date_input("Order Date", value=datetime.now())
             handover_date = st.date_input("Target Handover Date", value=datetime.now() + timedelta(days=30))
 
-        submit = st.form_submit_button("Add Order to Google Sheets", type="primary")
+        submit = st.form_submit_button("Create Installation Order", type="primary")
         if submit:
             if not site_name or not site_city:
                 st.error("Please fill in site name and city.")
@@ -338,7 +390,7 @@ elif menu == "New Installation Order":
                     "handover_date": str(handover_date)
                 }
                 append_to_sheet("Sites_Master", new_site)
-                st.success(f"Installation Order **{inst_id}** appended to Google Sheets!")
+                st.success(f"Installation Order **{inst_id}** recorded!")
 
 # --- LOG DAILY TASKS ---
 elif menu == "Log Daily Tasks":
@@ -382,7 +434,7 @@ elif menu == "View Logs & Update Status":
         
         st.markdown(f"""
             <div class="card-box">
-                <h3 style="margin:0; color:#0F4C81;">{site_row.get('site_name', 'N/A')} ({site_row.get('installation_id', 'N/A')})</h3>
+                <h3 style="margin:0;">{site_row.get('site_name', 'N/A')} ({site_row.get('installation_id', 'N/A')})</h3>
                 <p style="margin:5px 0;"><b>City:</b> {site_row.get('site_city', 'N/A')} | <b>Team Lead:</b> {site_row.get('team_lead', 'N/A')}</p>
                 <p style="margin:5px 0;"><b>Current Status:</b> <b>{site_row.get('status', 'In Progress')}</b></p>
             </div>
@@ -397,9 +449,9 @@ elif menu == "View Logs & Update Status":
         with col_btn:
             st.write(" ")
             st.write(" ")
-            if st.button("Update Status in Google Sheets", type="primary"):
+            if st.button("Update Status", type="primary"):
                 update_sheet_row("Sites_Master", "installation_id", selected_inst, {"status": new_st})
-                st.success(f"Status updated to **{new_st}** in Google Sheets!")
+                st.success(f"Status updated to **{new_st}**!")
                 st.rerun()
 
         st.divider()
@@ -418,7 +470,7 @@ elif menu == "View Logs & Update Status":
 
 # --- MASTER DATABASE ---
 elif menu == "Master Database":
-    st.header("🗄️ Live Google Sheets View")
+    st.header("🗄️ Live Google Sheets Database")
     m_tab1, m_tab2, m_tab3, m_tab4 = st.tabs(["Workers Master", "Sites Master", "Task Assignments", "Worker Daily Logs"])
 
     with m_tab1:
