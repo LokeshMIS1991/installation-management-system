@@ -1,10 +1,10 @@
 import os
+import re
 import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
-import streamlit as st
 import plotly.express as px
 
 # ==========================================
@@ -37,18 +37,13 @@ COLOR_BG_LIGHT = "#EBF3FA"   # Soft Blue Background Tint
 # Apply High-Specificity Global CSS Inject
 st.markdown(f"""
     <style>
-    /* App background */
     .stApp {{
         background-color: #F4F7FC;
     }}
-    
-    /* Headers */
     h1, h2, h3 {{ 
         color: {COLOR_PRIMARY} !important; 
         font-weight: 700 !important; 
     }}
-    
-    /* Standard Buttons (Global Green Override) */
     .stButton>button {{ 
         background-color: {COLOR_ACCENT} !important; 
         background: {COLOR_ACCENT} !important; 
@@ -69,8 +64,6 @@ st.markdown(f"""
         color: #FFFFFF !important; 
         box-shadow: 0 6px 15px rgba(0, 168, 89, 0.45) !important;
     }}
-    
-    /* Card Boxes & Dashboard Containers */
     .card-box {{ 
         background-color: {COLOR_BG_LIGHT}; 
         border-left: 6px solid {COLOR_PRIMARY}; 
@@ -79,7 +72,6 @@ st.markdown(f"""
         margin-bottom: 15px; 
         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
     }}
-
     .kpi-card {{
         background-color: #FFFFFF;
         border: 2px solid {COLOR_PRIMARY};
@@ -88,46 +80,35 @@ st.markdown(f"""
         text-align: center;
         box-shadow: 0 2px 8px rgba(0,0,0,0.05);
     }}
-
     .kpi-number {{
         font-size: 28px;
         font-weight: bold;
         color: {COLOR_PRIMARY};
     }}
-
     .kpi-label {{
         font-size: 13px;
         color: #6C757D;
         font-weight: 600;
     }}
-    
-    /* ==========================================
-       SIDEBAR COMPACTION & GREEN LOGOUT BUTTON
-       ========================================== */
     section[data-testid="stSidebar"] {{
         background-color: #EBF1F8;
     }}
-
     section[data-testid="stSidebar"] .block-container {{
         padding-top: 1.5rem !important;
         padding-bottom: 1.5rem !important;
     }}
-
     section[data-testid="stSidebar"] hr {{
         margin-top: 0.8rem !important;
         margin-bottom: 0.8rem !important;
     }}
-
     section[data-testid="stSidebar"] div[role="radiogroup"] > label {{
         padding-top: 2px !important;
         padding-bottom: 2px !important;
         margin-bottom: 2px !important;
     }}
-
     section[data-testid="stSidebar"] div[role="radiogroup"] {{
         gap: 4px !important;
     }}
-
     section[data-testid="stSidebar"] div.stButton > button {{
         background-color: {COLOR_ACCENT} !important;
         background: {COLOR_ACCENT} !important;
@@ -141,34 +122,20 @@ st.markdown(f"""
         margin-top: 10px !important;
         box-shadow: 0 4px 10px rgba(0, 168, 89, 0.35) !important;
     }}
-
     section[data-testid="stSidebar"] div.stButton > button * {{
         color: #FFFFFF !important;
         font-weight: 700 !important;
     }}
-
-    section[data-testid="stSidebar"] div.stButton > button:hover {{
-        background-color: #008747 !important;
-        background: #008747 !important;
-        color: #FFFFFF !important;
-        box-shadow: 0 6px 14px rgba(0, 168, 89, 0.5) !important;
-    }}
-
-    /* ==========================================
-       GLOBAL INPUT & FORM STYLING
-       ========================================== */
     div[data-testid="stForm"] div[data-baseweb="input"],
     div[data-testid="stForm"] div[data-baseweb="select"] > div {{
         border: 2px solid {COLOR_PRIMARY} !important;
         border-radius: 8px !important;
         background-color: #FFFFFF !important;
     }}
-
     div[data-testid="stForm"] label {{
         color: {COLOR_PRIMARY} !important;
         font-weight: 700 !important;
     }}
-
     div[data-testid="stForm"] {{
         background-color: #FFFFFF;
         border: 2px solid {COLOR_PRIMARY};
@@ -176,7 +143,6 @@ st.markdown(f"""
         padding: 28px 24px;
         box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
     }}
-
     div[data-testid="stFormSubmitButton"] > button {{
         background-color: {COLOR_ACCENT} !important;
         background: {COLOR_ACCENT} !important;
@@ -194,21 +160,12 @@ st.markdown(f"""
         align-items: center !important;
         justify-content: center !important;
     }}
-
     div[data-testid="stFormSubmitButton"] > button * {{
         color: #FFFFFF !important;
         font-weight: 700 !important;
         font-size: 15px !important;
         white-space: nowrap !important;
     }}
-
-    div[data-testid="stFormSubmitButton"] > button:hover {{
-        background-color: #008747 !important;
-        background: #008747 !important;
-        color: #FFFFFF !important;
-        box-shadow: 0 6px 15px rgba(0, 168, 89, 0.45) !important;
-    }}
-
     .login-caption {{
         color: #6C757D;
         text-align: center;
@@ -285,6 +242,29 @@ def update_sheet_row(sheet_name: str, key_col: str, key_val: str, update_dict: d
         st.error(f"Error updating tab '{sheet_name}': {e}")
         return False
 
+# Function to parse continuous data string into Worker dictionaries
+def parse_raw_worker_string(raw_str):
+    pattern = re.compile(
+        r'(W\d{3})'                                 # Worker ID (e.g. W002)
+        r'([A-Za-z\s]+?)'                           # Name
+        r'(\d{12})'                                 # Aadhaar (12 digits)
+        r'(\d{4})'                                  # PIN (4 digits)
+        r'(Supervisor|Worker|Admin)'               # Role
+        r'([A-Za-z]+)'                              # Base Location
+    )
+    parsed_workers = []
+    matches = pattern.findall(raw_str)
+    for m in matches:
+        parsed_workers.append({
+            "worker_id": m[0],
+            "name": m[1].strip(),
+            "aadhaar_no": m[2],
+            "pin": m[3],
+            "role": m[4],
+            "base_location": m[5]
+        })
+    return parsed_workers
+
 # ==========================================
 # 3. AUTHENTICATION (FORM LAYOUT)
 # ==========================================
@@ -313,7 +293,7 @@ if not st.session_state.authenticated_user:
 
             st.markdown('<div class="login-caption">Enterprise Operations & Field Portal</div>', unsafe_allow_html=True)
 
-            username_input = st.text_input("Username / Name", value=st.session_state.remembered_username, placeholder="e.g. Admin User or Vishak")
+            username_input = st.text_input("Username / Name", value=st.session_state.remembered_username, placeholder="e.g. Parvesh Kumar or Vishak")
             password_input = st.text_input("Password / PIN", type="password", placeholder="Enter password")
 
             col_chk1, col_chk2 = st.columns(2)
@@ -374,7 +354,8 @@ STATUS_OPTIONS = ["In Progress", "Completed", "On Hold", "Pending Inspection"]
 
 if user_role == "Admin":
     menu_options = [
-        "Admin Analytics Dashboard", 
+        "Admin Analytics Dashboard",
+        "Employee Analytics & Reports",
         "User Management", 
         "TA/DA Payroll & Travel Summary", 
         "Advanced Field Logs Inspector", 
@@ -382,7 +363,8 @@ if user_role == "Admin":
     ]
 elif user_role == "Supervisor":
     menu_options = [
-        "Active Tasks Dashboard", 
+        "Active Tasks Dashboard",
+        "Employee Analytics & Reports",
         "Handover Date Dashboard", 
         "New Installation Order", 
         "Log Daily Tasks", 
@@ -444,20 +426,16 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
     if not assigned_tasks:
         assigned_tasks = ["Motorized Rolling Shutter Assembly", "Electrical Wiring & Automation", "Sliding Gate Fitting", "Structural Welding"]
 
-    # DROPDOWN ONLY Progress (%) & Time selections
     c_tsk, c_pct, c_hrs, c_min = st.columns([3, 2, 1, 1])
     with c_tsk:
         selected_task = st.selectbox("Task Worked On", assigned_tasks, key=f"tsk_{target_worker_name}_{is_crew_log}")
     with c_pct:
-        # Strict percentage options dropdown
         progress_options = ["0%", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%"]
         progress_str = st.selectbox("Progress (%) Dropdown", progress_options, index=5, key=f"pct_{target_worker_name}_{is_crew_log}")
         progress_pct = int(progress_str.replace("%", ""))
     with c_hrs:
-        # Predefined hours dropdown
         hours_spent = st.selectbox("Hours Dropdown", list(range(0, 17)), index=8, key=f"hrs_{target_worker_name}_{is_crew_log}")
     with c_min:
-        # Predefined minutes dropdown
         minutes_spent = st.selectbox("Minutes Dropdown", [0, 15, 30, 45], key=f"min_{target_worker_name}_{is_crew_log}")
 
     site_remarks = st.text_area("Site Remarks / Delays", placeholder="Note any motor issues, power availability, or structural delays...", key=f"rem_{target_worker_name}_{is_crew_log}")
@@ -488,8 +466,132 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 # 6. MODULE IMPLEMENTATIONS
 # ==========================================
 
+# --- NEW PAGE: EMPLOYEE ANALYTICS & REPORTS ---
+if menu == "Employee Analytics & Reports":
+    st.header("👤 Employee Deep Dive & Individual Analytics")
+    st.caption("Select any worker to isolate their performance, daily progress graphs, and travel logs.")
+
+    df_workers = read_sheet("Workers_Master")
+    df_logs = read_sheet("Worker_Daily_Logs")
+
+    if df_workers.empty:
+        st.warning("⚠️ Workers database is empty.")
+    else:
+        worker_names = df_workers["name"].tolist()
+        
+        # Default selector to Parvesh Kumar if present, else first worker
+        default_index = worker_names.index("Parvesh Kumar") if "Parvesh Kumar" in worker_names else 0
+        selected_emp = st.selectbox("🔍 Select Employee to Generate Report:", worker_names, index=default_index)
+
+        # Retrieve specific worker profile details
+        emp_info = df_workers[df_workers["name"] == selected_emp].iloc[0]
+        
+        # Header Info Card
+        st.markdown(f"""
+            <div class="card-box">
+                <h3 style="margin:0;">{emp_info.get('name')} ({emp_info.get('worker_id')})</h3>
+                <p style="margin:5px 0;"><b>Role:</b> {emp_info.get('role')} | <b>Base Location:</b> {emp_info.get('base_location')} | <b>Aadhaar:</b> [Aadhaar Redacted]</p>
+            </div>
+        """, unsafe_allow_html=True)
+
+        if df_logs.empty or "worker_name" not in df_logs.columns:
+            st.info(f"No task logs recorded yet for {selected_emp}.")
+        else:
+            # Filter logs specifically for selected worker
+            emp_logs = df_logs[df_logs["worker_name"].astype(str).str.strip().str.lower() == selected_emp.strip().lower()].copy()
+
+            if emp_logs.empty:
+                st.warning(f"⚠️ No field logs recorded in the system for **{selected_emp}** yet.")
+            else:
+                # Top Interactive Filters
+                st.subheader("⚙️ Filter Report")
+                col_f1, col_f2, col_f3 = st.columns(3)
+                
+                with col_f1:
+                    site_list = ["All Sites"] + emp_logs["installation_id"].unique().tolist()
+                    filter_site = st.selectbox("Filter by Installation Site", site_list)
+                with col_f2:
+                    travel_opt = ["All Days", "Travel Days Only (Yes)", "Local Days Only (No)"]
+                    filter_travel = st.selectbox("Filter by Travel Status", travel_opt)
+                with col_f3:
+                    task_list = ["All Tasks"] + emp_logs["task_name"].unique().tolist()
+                    filter_task = st.selectbox("Filter by Task Type", task_list)
+
+                # Apply dynamic interactive filters
+                filtered_emp_logs = emp_logs.copy()
+                if filter_site != "All Sites":
+                    filtered_emp_logs = filtered_emp_logs[filtered_emp_logs["installation_id"] == filter_site]
+                if filter_travel == "Travel Days Only (Yes)":
+                    filtered_emp_logs = filtered_emp_logs[filtered_emp_logs["is_travel_day"] == "Yes"]
+                elif filter_travel == "Local Days Only (No)":
+                    filtered_emp_logs = filtered_emp_logs[filtered_emp_logs["is_travel_day"] == "No"]
+                if filter_task != "All Tasks":
+                    filtered_emp_logs = filtered_emp_logs[filtered_emp_logs["task_name"] == filter_task]
+
+                # Metric Cards (KPIs)
+                tot_hours = filtered_emp_logs["hours_spent"].sum() if "hours_spent" in filtered_emp_logs.columns else 0
+                tot_travel_days = len(filtered_emp_logs[filtered_emp_logs["is_travel_day"] == "Yes"]) if "is_travel_day" in filtered_emp_logs.columns else 0
+                tot_projects = filtered_emp_logs["installation_id"].nunique() if "installation_id" in filtered_emp_logs.columns else 0
+                avg_progress = filtered_emp_logs["progress_percentage"].mean() if "progress_percentage" in filtered_emp_logs.columns and not filtered_emp_logs.empty else 0
+
+                st.write("##")
+                k1, k2, k3, k4 = st.columns(4)
+                with k1:
+                    st.markdown(f'<div class="kpi-card"><div class="kpi-number">{tot_hours} hrs</div><div class="kpi-label">Total Logged Hours</div></div>', unsafe_allow_html=True)
+                with k2:
+                    st.markdown(f'<div class="kpi-card"><div class="kpi-number">{tot_travel_days} Days</div><div class="kpi-label">Travel Days (TA/DA)</div></div>', unsafe_allow_html=True)
+                with k3:
+                    st.markdown(f'<div class="kpi-card"><div class="kpi-number">{tot_projects}</div><div class="kpi-label">Unique Sites Worked</div></div>', unsafe_allow_html=True)
+                with k4:
+                    st.markdown(f'<div class="kpi-card"><div class="kpi-number">{avg_progress:.1f}%</div><div class="kpi-label">Avg Task Progress</div></div>', unsafe_allow_html=True)
+
+                st.divider()
+
+                # Graphical Charts Section
+                st.subheader("📊 Individual Performance Charts")
+                g1, g2 = st.columns(2)
+
+                with g1:
+                    # Bar Chart: Daily Logged Hours per Site
+                    fig_hrs = px.bar(
+                        filtered_emp_logs,
+                        x="logged_date",
+                        y="hours_spent",
+                        color="installation_id",
+                        title=f"Daily Hours Logged by {selected_emp}",
+                        labels={"logged_date": "Date", "hours_spent": "Hours Worked", "installation_id": "Site ID"},
+                        color_discrete_sequence=px.colors.qualitative.Set1
+                    )
+                    st.plotly_chart(fig_hrs, use_container_width=True)
+
+                with g2:
+                    # Line Chart: Task Progress Trajectory
+                    fig_prog = px.line(
+                        filtered_emp_logs,
+                        x="logged_date",
+                        y="progress_percentage",
+                        color="task_name",
+                        markers=True,
+                        title=f"Task Progress Trajectory (%)",
+                        labels={"logged_date": "Date", "progress_percentage": "Progress (%)", "task_name": "Task"}
+                    )
+                    st.plotly_chart(fig_prog, use_container_width=True)
+
+                # Filtered Data Table & CSV Export
+                st.subheader(f"📋 Detailed Work Logs ({len(filtered_emp_logs)} Records)")
+                disp_cols = [c for c in ["log_id", "logged_date", "installation_id", "task_name", "progress_percentage", "hours_spent", "minutes_spent", "is_travel_day", "site_remarks"] if c in filtered_emp_logs.columns]
+                st.dataframe(filtered_emp_logs[disp_cols].sort_values(by="logged_date", ascending=False), use_container_width=True)
+
+                csv_data = filtered_emp_logs.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label=f"📥 Export {selected_emp}'s Report (CSV)",
+                    data=csv_data,
+                    file_name=f"{selected_emp.replace(' ', '_')}_Report_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv"
+                )
+
 # --- WORKER: MY WORK HISTORY ---
-if menu == "My Work History":
+elif menu == "My Work History":
     st.header(f"📜 Work Log History & Audit Trail - {user_name}")
     st.caption("Complete transparency of all logged daily tasks, progress increments, and travel allowances.")
     
@@ -516,7 +618,6 @@ if menu == "My Work History":
                 st.markdown(f'<div class="kpi-card"><div class="kpi-number">{tot_sites}</div><div class="kpi-label">Sites Worked On</div></div>', unsafe_allow_html=True)
 
             st.write("##")
-            
             search_query = st.text_input("🔍 Search Logs by Site ID, Task Name, or Date", "")
             
             filtered_logs = my_logs.copy()
@@ -608,7 +709,7 @@ elif menu == "User Management":
     st.header("👥 User & Access Management")
     df_workers = read_sheet("Workers_Master")
 
-    tab_add, tab_edit = st.tabs(["➕ Add New Team Member", "✏️ Edit Existing User & Role"])
+    tab_add, tab_batch, tab_edit = st.tabs(["➕ Add Single User", "⚡ Batch Process Raw String", "✏️ Edit Existing User & Role"])
 
     with tab_add:
         st.subheader("Add Worker / Supervisor to System")
@@ -652,6 +753,28 @@ elif menu == "User Management":
                         append_to_sheet("Workers_Master", user_dict)
                         st.success(f"User **{new_name}** successfully registered and synced!")
                         st.rerun()
+
+    with tab_batch:
+        st.subheader("⚡ Batch Import Workers from Continuous String")
+        st.caption("Paste continuous raw strings (e.g. `W002Vishak1234567890121234SupervisorJaipurW004Parvesh...`) to parse and sync in bulk.")
+        
+        raw_text_input = st.text_area("Paste Continuous Data String Here:", placeholder="W002Vishak1234567890121234SupervisorJaipurW004Parvesh Kumar3456789012341111WorkerJaipur...")
+        
+        if st.button("🔍 Parse and Import Worker Data"):
+            if not raw_text_input:
+                st.warning("Please paste raw string first.")
+            else:
+                parsed_list = parse_raw_worker_string(raw_text_input)
+                if not parsed_list:
+                    st.error("Could not parse valid worker records from string. Check format.")
+                else:
+                    st.success(f"Successfully extracted {len(parsed_list)} worker records!")
+                    st.dataframe(pd.DataFrame(parsed_list))
+                    
+                    for w in parsed_list:
+                        append_to_sheet("Workers_Master", w)
+                    st.success("All extracted workers synced to Google Sheets!")
+                    st.rerun()
 
     with tab_edit:
         st.subheader("Update User Profile, Role & PIN")
@@ -762,48 +885,6 @@ elif menu == "Advanced Field Logs Inspector":
             mime="text/csv"
         )
 
-# Admin : Worker Dashboard
-def render_employee_analytics(df_logs, df_workers):
-    st.title("👤 Employee Analytics & Performance Report")
-    
-    # 1. Employee Selection Dropdown
-    worker_list = df_workers['name'].tolist()
-    selected_worker = st.selectbox("Select Employee:", worker_list, index=worker_list.index("Parvesh Kumar") if "Parvesh Kumar" in worker_list else 0)
-    
-    # Filter Data for Selected Worker
-    worker_logs = df_logs[df_logs['worker_name'] == selected_worker]
-    
-    # 2. Filtering Options
-    col_f1, col_f2 = st.columns(2)
-    with col_f1:
-        selected_site = st.multiselect("Filter by Site:", options=worker_logs['installation_id'].unique())
-    with col_f2:
-        date_range = st.date_input("Select Date Range:", [])
-        
-    if selected_site:
-        worker_logs = worker_logs[worker_logs['installation_id'].isin(selected_site)]
-
-    # 3. KPI Summary
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Total Hours Logged", f"{worker_logs['hours_spent'].sum()} hrs")
-    c2.metric("Sites Worked", worker_logs['installation_id'].nunique())
-    c3.metric("Travel Days", worker_logs[worker_logs['is_travel_day'] == 'Yes'].shape[0])
-
-    # 4. Interactive Graphs
-    st.subheader(f"📊 Work Trend: {selected_worker}")
-    fig = px.bar(
-        worker_logs, 
-        x='logged_date', 
-        y='hours_spent', 
-        color='installation_id',
-        title="Daily Logged Hours per Site"
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-    # 5. Data Table
-    st.subheader("📋 Detailed Task Logs")
-    st.dataframe(worker_logs[['logged_date', 'installation_id', 'task_name', 'hours_spent', 'site_remarks']])
-    
 # --- SUPERVISOR: ACTIVE TASKS ---
 elif menu == "Active Tasks Dashboard":
     st.header("📋 Active Tasks Dashboard")
@@ -857,25 +938,23 @@ elif menu == "Handover Date Dashboard":
 elif menu == "New Installation Order":
     st.header("Create New Installation Order")
     
-    # Session state initialization for dynamic team members and products
     if "team_members_count" not in st.session_state:
         st.session_state.team_members_count = 1
     if "products_count" not in st.session_state:
         st.session_state.products_count = 1
 
-    visit_id = "INST-2026-F8HLQ"
+    visit_id = f"INST-2026-{os.urandom(2.hex().upper() if hasattr(os, 'urandom') else 'F8HLQ'}"
     st.info(f"**Automated Visit ID:** {visit_id}")
 
     col_team, col_dates = st.columns(2)
 
-    # 👨‍💼 Team Structure Section
     with col_team:
         st.markdown("### 👨‍💼 Team Structure")
         team_lead_name = st.text_input("Team Lead Name *", placeholder="e.g., Rajeer", key="inst_team_lead")
         
         team_helpers = []
         for i in range(st.session_state.team_members_count):
-            helper = st.text_input(f"Team Members / Helpers", placeholder=f"e.g., Helper {i+1}", key=f"inst_helper_{i}")
+            helper = st.text_input(f"Team Members / Helpers", placeholder=f"e.g., Parvesh Kumar", key=f"inst_helper_{i}")
             if helper.strip():
                 team_helpers.append(helper.strip())
         
@@ -886,7 +965,6 @@ elif menu == "New Installation Order":
         city_name = st.text_input("City Name *", value="Mumbai", key="inst_city_name")
         site_address = st.text_area("Site Address *", placeholder="Full installation site address...", key="inst_site_address")
 
-    # 📅 Order Dates Section
     with col_dates:
         st.markdown("### 📅 Order Dates")
         inst_date = st.date_input("Installation Date (Order Created Date)", value=datetime.now(), key="inst_order_date")
@@ -895,7 +973,6 @@ elif menu == "New Installation Order":
 
     st.divider()
 
-    # 📦 Order Products Details Section (Dynamic Catalogue Lookup)
     st.markdown("### 📦 Order Products Details")
     
     products_data = []
@@ -913,7 +990,6 @@ elif menu == "New Installation Order":
             dimensions = st.text_input("Dimensions (WxH)", placeholder="e.g., 5330X6000", key=f"prod_dim_{p_idx}")
         
         with col_p2:
-            # Dynamically fetch relevant sub-categories based on product_type selection
             sub_cat_options = PRODUCT_CATALOG.get(product_type, ["Other"])
             sub_category = st.selectbox(
                 "Select Sub-Category", 
