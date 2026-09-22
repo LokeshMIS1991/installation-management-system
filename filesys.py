@@ -64,13 +64,13 @@ st.markdown(f"""
     }}
 
     /* ==========================================
-       LOGIN CARD STYLING & DIRECT FORM BUTTON FIX
+       LOGIN CARD STYLING (PURE WHITE BOXES + BLUE BORDER)
        ========================================== */
-    div[data-testid="stForm"] {{
+    .login-card {{
         background-color: #FFFFFF;
         border: 2px solid {COLOR_PRIMARY};
         border-radius: 16px;
-        padding: 35px 30px;
+        padding: 30px 25px;
         box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
         max-width: 480px;
         margin: 0 auto;
@@ -81,22 +81,41 @@ st.markdown(f"""
         text-align: center;
         font-size: 13px;
         margin-top: 10px;
-        margin-bottom: 25px;
+        margin-bottom: 20px;
         font-weight: 500;
     }}
 
-    div[data-testid="stForm"] .stTextInput label {{
+    /* Text Input Field Styling (White Background + Blue Border) */
+    .stTextInput label {{
         color: {COLOR_PRIMARY} !important;
         font-weight: 700 !important;
     }}
-    div[data-testid="stForm"] .stTextInput input {{
+    
+    .stTextInput div[data-baseweb="input"] {{
+        background-color: #FFFFFF !important;
+        border: 2px solid {COLOR_PRIMARY} !important;
         border-radius: 8px !important;
-        border: 1px solid {COLOR_PRIMARY} !important;
-        padding: 10px 14px !important;
+    }}
+    
+    .stTextInput input {{
+        background-color: #FFFFFF !important;
+        color: #1A1A1A !important;
+    }}
+    
+    .stTextInput div[data-baseweb="input"]:focus-within {{
+        border-color: {COLOR_ACCENT} !important;
+        box-shadow: 0 0 6px rgba(0, 168, 89, 0.4) !important;
+    }}
+
+    /* Checkbox Label Styling */
+    .stCheckbox label {{
+        color: {COLOR_PRIMARY} !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
     }}
 
     /* FORCE EMERALD GREEN BUTTON WITH WHITE TEXT ON LOGIN FORM */
-    div[data-testid="stFormSubmitButton"] > button {{
+    .login-btn-container button {{
         background-color: {COLOR_ACCENT} !important;
         background: {COLOR_ACCENT} !important;
         color: #FFFFFF !important;
@@ -110,13 +129,12 @@ st.markdown(f"""
         box-shadow: 0 4px 12px rgba(0, 168, 89, 0.35) !important;
     }}
 
-    /* Ensure text inside button stays white */
-    div[data-testid="stFormSubmitButton"] > button * {{
+    .login-btn-container button * {{
         color: #FFFFFF !important;
         font-weight: 700 !important;
     }}
 
-    div[data-testid="stFormSubmitButton"] > button:hover {{
+    .login-btn-container button:hover {{
         background-color: #008747 !important;
         background: #008747 !important;
         color: #FFFFFF !important;
@@ -206,12 +224,20 @@ def update_sheet_row(sheet_name: str, key_col: str, key_val: str, update_dict: d
 if "authenticated_user" not in st.session_state:
     st.session_state.authenticated_user = None
 
+if "remembered_username" not in st.session_state:
+    st.session_state.remembered_username = ""
+
 if not st.session_state.authenticated_user:
     st.write("##")
     
-    with st.form("login_form"):
-        # Display Logo Image directly at the top of the card
-        logo_path = "Company Logo.jpeg"  # Replace with exact filename if different
+    # Outer layout container
+    col_l, col_main, col_r = st.columns([1, 2, 1])
+    
+    with col_main:
+        st.markdown('<div class="login-card">', unsafe_allow_html=True)
+        
+        # Display Logo Image directly at top of card
+        logo_path = "Company Logo.jpeg"
         if os.path.exists(logo_path):
             st.image(logo_path, use_container_width=True)
         else:
@@ -224,10 +250,24 @@ if not st.session_state.authenticated_user:
 
         st.markdown('<div class="login-caption">Enterprise Operations & Field Portal</div>', unsafe_allow_html=True)
 
-        username_input = st.text_input("Username / Name", placeholder="e.g. Admin User or Vishak")
-        password_input = st.text_input("Password / PIN", type="password", placeholder="Enter password")
+        # Pre-fill username if "Remember Me" was toggled
+        username_input = st.text_input("Username / Name", value=st.session_state.remembered_username, placeholder="e.g. Admin User or Vishak", key="login_user")
+        
+        # Checkbox Row: Show Password + Remember Me
+        col_chk1, col_chk2 = st.columns(2)
+        with col_chk1:
+            show_password = st.checkbox("Show Password", value=False)
+        with col_chk2:
+            remember_me = st.checkbox("Remember Me", value=bool(st.session_state.remembered_username))
 
-        submit_button = st.form_submit_button("🔑 Login to Dashboard", use_container_width=True)
+        # Dynamic Password Field Type (toggles between dots and visible text)
+        pwd_type = "default" if show_password else "password"
+        password_input = st.text_input("Password / PIN", type=pwd_type, placeholder="Enter password", key="login_pwd")
+
+        # Submit Button
+        st.markdown('<div class="login-btn-container">', unsafe_allow_html=True)
+        submit_button = st.button("🔑 LOGIN TO DASHBOARD", use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
         if submit_button:
             if not username_input or not password_input:
@@ -241,12 +281,19 @@ if not st.session_state.authenticated_user:
                     ]
                     if not user_row.empty:
                         st.session_state.authenticated_user = user_row.iloc[0].to_dict()
+                        if remember_me:
+                            st.session_state.remembered_username = username_input.strip()
+                        else:
+                            st.session_state.remembered_username = ""
                         st.success("Authentication Successful!")
                         st.rerun()
                     else:
                         st.error("Invalid Username or Password.")
                 else:
                     st.error("Unable to load user database. Verify Google Sheets setup.")
+                    
+        st.markdown('</div>', unsafe_allow_html=True)
+        
     st.stop()
 
 # ==========================================
