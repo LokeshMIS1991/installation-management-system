@@ -22,6 +22,15 @@ PRODUCT_CATALOG = {
     "Other": ["Other"]
 }
 
+# Sub-task mapping per primary task category
+SUB_TASKS_MAPPING = {
+    "Motorized Rolling Shutter Assembly": ["Guide Rail Installation", "Barrel Shaft Fitting", "Slat Interlocking", "Motor Mounting", "Limit Switch Setting"],
+    "Electrical Wiring & Automation": ["Control Panel Cabling", "Sensor & Safety Edge Setup", "Remote/Push Button Wiring", "Power Testing & Grounding"],
+    "Sliding Gate Fitting": ["Track Leveling & Anchoring", "Gate Leaf Alignment", "Rack & Pinion Fitting", "Motor Hookup"],
+    "Structural Welding": ["Frame Bracket Fabrication", "Support Beam Welding", "Anchor Bolt Alignment"],
+    "General Inspection & Maintenance": ["Lubrication & Spring Tensioning", "Operational Safety Check", "Final Handover Test"]
+}
+
 # ==========================================
 # 1. PAGE CONFIG & GLOBAL THEME
 # ==========================================
@@ -329,7 +338,7 @@ if not st.session_state.authenticated_user:
     st.stop()
 
 # ==========================================
-# 4. ACTIVE SESSION & SIDEBAR NAVIGATION
+# 4. ACTIVE SESSION & REORDERED SIDEBAR NAVIGATION
 # ==========================================
 user = st.session_state.authenticated_user
 user_name = user.get("name", "User")
@@ -352,24 +361,31 @@ st.sidebar.divider()
 
 STATUS_OPTIONS = ["In Progress", "Completed", "On Hold", "Pending Inspection"]
 
+# REORDERED NAVIGATION MENU BASED ON USER SPECIFICATION
 if user_role == "Admin":
     menu_options = [
-        "Admin Analytics Dashboard",
+        "New Installation Order",
+        "Log Daily Tasks",
+        "View Logs & Update Status",
+        "Active Tasks Dashboard",
+        "Handover Date Dashboard",
         "Employee Analytics & Reports",
-        "User Management", 
-        "TA/DA Payroll & Travel Summary", 
-        "Advanced Field Logs Inspector", 
-        "Master Database"
+        "Team Head Dashboard",
+        "Master Database",
+        "Admin Analytics Dashboard",
+        "User Management",
+        "TA/DA Payroll & Travel Summary",
+        "Advanced Field Logs Inspector"
     ]
 elif user_role == "Supervisor":
     menu_options = [
+        "New Installation Order",
+        "Log Daily Tasks",
+        "View Logs & Update Status",
         "Active Tasks Dashboard",
+        "Handover Date Dashboard",
         "Employee Analytics & Reports",
-        "Handover Date Dashboard", 
-        "New Installation Order", 
-        "Log Daily Tasks", 
-        "Team Head Dashboard", 
-        "View Logs & Update Status", 
+        "Team Head Dashboard",
         "Master Database"
     ]
 else:
@@ -388,11 +404,12 @@ if st.sidebar.button("🚪 LOG OUT", use_container_width=True):
     st.rerun()
 
 # ==========================================
-# 5. RESTRICTED WORK INPUT HELPER
+# 5. RESTRICTED WORK INPUT HELPER (WITH SUB-TASKS & ASSIGNED WORKER)
 # ==========================================
 def render_restricted_work_input(target_worker_name, is_crew_log=False):
     df_sites = read_sheet("Sites_Master")
     df_tasks = read_sheet("Task_Assignments")
+    df_workers = read_sheet("Workers_Master")
 
     site_options = df_sites["installation_id"].tolist() if not df_sites.empty and "installation_id" in df_sites.columns else []
     if not site_options:
@@ -410,8 +427,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 
     target_base = user_base_location
     if is_crew_log:
-        df_w = read_sheet("Workers_Master")
-        match = df_w[df_w["name"] == target_worker_name]
+        match = df_workers[df_workers["name"] == target_worker_name] if not df_workers.empty else pd.DataFrame()
         if not match.empty:
             target_base = match.iloc[0].get("base_location", "Jaipur")
 
@@ -424,23 +440,36 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 
     assigned_tasks = df_tasks[df_tasks["installation_id"] == selected_site_id]["task_name"].tolist() if not df_tasks.empty and "task_name" in df_tasks.columns else []
     if not assigned_tasks:
-        assigned_tasks = ["Motorized Rolling Shutter Assembly", "Electrical Wiring & Automation", "Sliding Gate Fitting", "Structural Welding"]
+        assigned_tasks = list(SUB_TASKS_MAPPING.keys())
 
-    c_tsk, c_pct, c_hrs, c_min = st.columns([3, 2, 1, 1])
-    with c_tsk:
-        selected_task = st.selectbox("Task Worked On", assigned_tasks, key=f"tsk_{target_worker_name}_{is_crew_log}")
-    with c_pct:
+    # Task & Sub-Task Breakdown Section
+    st.markdown("#### 🎯 Task & Sub-Task Breakdown")
+    col_t1, col_t2 = st.columns(2)
+    with col_t1:
+        selected_task = st.selectbox("Primary Task", assigned_tasks, key=f"tsk_{target_worker_name}_{is_crew_log}")
+    with col_t2:
+        available_subtasks = SUB_TASKS_MAPPING.get(selected_task, ["General Sub-task"])
+        selected_subtask = st.selectbox("Sub-Task Worked On", available_subtasks, key=f"sub_tsk_{target_worker_name}_{is_crew_log}")
+
+    # Worker Assignment & Duration
+    all_worker_names = df_workers["name"].tolist() if not df_workers.empty and "name" in df_workers.columns else [target_worker_name]
+    default_w_idx = all_worker_names.index(target_worker_name) if target_worker_name in all_worker_names else 0
+
+    col_w, col_pct, col_hrs, col_min = st.columns([2, 1.5, 1, 1])
+    with col_w:
+        assigned_worker = st.selectbox("Assigned Worker", all_worker_names, index=default_w_idx, key=f"assigned_w_{target_worker_name}_{is_crew_log}")
+    with col_pct:
         progress_options = ["0%", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%"]
         progress_str = st.selectbox("Progress (%)", progress_options, index=5, key=f"pct_{target_worker_name}_{is_crew_log}")
         progress_pct = int(progress_str.replace("%", ""))
-    with c_hrs:
-        hours_spent = st.selectbox("Hours", list(range(0, 17)), index=8, key=f"hrs_{target_worker_name}_{is_crew_log}")
-    with c_min:
+    with col_hrs:
+        hours_spent = st.selectbox("Hours Taken", list(range(0, 17)), index=8, key=f"hrs_{target_worker_name}_{is_crew_log}")
+    with col_min:
         minutes_spent = st.selectbox("Minutes", [0, 15, 30, 45], key=f"min_{target_worker_name}_{is_crew_log}")
 
     site_remarks = st.text_area("Site Remarks / Delays", placeholder="Note any motor issues, power availability, or structural delays...", key=f"rem_{target_worker_name}_{is_crew_log}")
 
-    # Optional Site Photo Upload Field
+    # Optional Site Photo Upload Field (Available to both Worker and Supervisor)[cite: 4]
     uploaded_photo = st.file_uploader(
         "📷 Upload Site Photo (Optional)", 
         type=["jpg", "jpeg", "png"], 
@@ -451,7 +480,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
     if uploaded_photo is not None:
         st.image(uploaded_photo, caption="Uploaded Site Photo Preview", width=250)
 
-    if st.button(f"💾 Sync Daily Log to Data Base ({target_worker_name})", key=f"btn_{target_worker_name}_{is_crew_log}"):
+    if st.button(f"💾 Sync Daily Log to Data Base ({assigned_worker})", key=f"btn_{target_worker_name}_{is_crew_log}"):
         log_id = f"LOG-{datetime.now().strftime('%Y%m%d%H%M%S')}"
         photo_filename = uploaded_photo.name if uploaded_photo is not None else "No Photo"
 
@@ -459,12 +488,14 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
             "log_id": log_id,
             "installation_id": selected_site_id,
             "logged_date": str(log_date),
-            "worker_name": target_worker_name,
-            "role": user_role if target_worker_name == user_name else "Worker",
+            "worker_name": assigned_worker,
+            "role": user_role if assigned_worker == user_name else "Worker",
             "task_name": selected_task,
+            "sub_task_name": selected_subtask,
             "progress_percentage": progress_pct,
             "hours_spent": hours_spent,
             "minutes_spent": minutes_spent,
+            "total_time_str": f"{hours_spent}h {minutes_spent}m",
             "base_location": target_base,
             "site_city": site_city,
             "is_travel_day": "Yes" if is_travel else "No",
@@ -473,15 +504,169 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
             "logged_by": user_name
         }
         append_to_sheet("Worker_Daily_Logs", log_entry)
-        st.success(f"Successfully recorded log for **{target_worker_name}**!")
+        st.success(f"Successfully recorded log for **{assigned_worker}**!")
         st.rerun()
 
 # ==========================================
-# 6. MODULE IMPLEMENTATIONS
+# 6. MODULE IMPLEMENTATIONS (REORDERED TO MATCH MENU)
 # ==========================================
 
-# --- SUPERVISOR: ACTIVE TASKS (UPDATED WITH PROGRESS TRACK & CSV EXPORT) ---
-if menu == "Active Tasks Dashboard":
+# --- 1. NEW INSTALLATION ORDER ---
+if menu == "New Installation Order":
+    st.header("Create New Installation Order")
+    
+    if "team_members_count" not in st.session_state:
+        st.session_state.team_members_count = 1
+    if "products_count" not in st.session_state:
+        st.session_state.products_count = 1
+
+    visit_id = f"INST-2026-{os.urandom(2).hex().upper()}"
+    st.info(f"**Automated Visit ID:** {visit_id}")
+
+    col_team, col_dates = st.columns(2)
+
+    with col_team:
+        st.markdown("### 👨‍💼 Team Structure")
+        team_lead_name = st.text_input("Team Lead Name *", placeholder="e.g., Rajeer", key="inst_team_lead")
+        
+        team_helpers = []
+        for i in range(st.session_state.team_members_count):
+            helper = st.text_input("Team Members / Helpers", placeholder="e.g., Parvesh Kumar", key=f"inst_helper_{i}")
+            if helper.strip():
+                team_helpers.append(helper.strip())
+        
+        if st.button("➕ Add Team Member", key="btn_add_team_member"):
+            st.session_state.team_members_count += 1
+            st.rerun()
+
+        city_name = st.text_input("City Name *", value="Mumbai", key="inst_city_name")
+        site_address = st.text_area("Site Address *", placeholder="Full installation site address...", key="inst_site_address")
+
+    with col_dates:
+        st.markdown("### 📅 Order Dates")
+        inst_date = st.date_input("Installation Date (Order Created Date)", value=datetime.now(), key="inst_order_date")
+        site_clearance_date = st.date_input("Site Clearance Date", value=datetime.now(), key="inst_clearance_date")
+        target_handover_date = st.date_input("Target Handover Date", value=datetime.now() + timedelta(days=15), key="inst_handover_date")
+
+    st.divider()
+
+    st.markdown("### 📦 Order Products Details")
+    
+    products_data = []
+    catalog_main_categories = list(PRODUCT_CATALOG.keys())
+
+    for p_idx in range(st.session_state.products_count):
+        st.markdown(f"#### Product #{p_idx + 1}")
+        col_p1, col_p2 = st.columns(2)
+        with col_p1:
+            product_type = st.selectbox(
+                "Select The Product", 
+                catalog_main_categories, 
+                key=f"prod_type_{p_idx}"
+            )
+            dimensions = st.text_input("Dimensions (WxH)", placeholder="e.g., 5330X6000", key=f"prod_dim_{p_idx}")
+        
+        with col_p2:
+            sub_cat_options = PRODUCT_CATALOG.get(product_type, ["Other"])
+            sub_category = st.selectbox(
+                "Select Sub-Category", 
+                sub_cat_options, 
+                key=f"prod_sub_{p_idx}"
+            )
+            quantity = st.number_input("Quantity", min_value=1, value=1, step=1, key=f"prod_qty_{p_idx}")
+        
+        products_data.append({
+            "product_type": product_type,
+            "sub_category": sub_category,
+            "dimensions": dimensions,
+            "quantity": quantity
+        })
+
+    if st.button("➕ Add Another Product", key="btn_add_product"):
+        st.session_state.products_count += 1
+        st.rerun()
+
+    st.write("##")
+    if st.button("💾 Submit Installation Order", use_container_width=True, key="btn_submit_inst_order"):
+        if not team_lead_name or not city_name or not site_address:
+            st.error("Please fill in all mandatory fields (Team Lead Name, City Name, and Site Address).")
+        else:
+            order_data = {
+                "installation_id": visit_id,
+                "team_lead": team_lead_name,
+                "team_members": ", ".join(team_helpers),
+                "site_city": city_name,
+                "site_address": site_address,
+                "order_date": str(inst_date),
+                "site_clearance_date": str(site_clearance_date),
+                "handover_date": str(target_handover_date),
+                "products_summary": str(products_data),
+                "status": "In Progress"
+            }
+            append_to_sheet("Sites_Master", order_data)
+            st.success(f"Installation Order **{visit_id}** recorded successfully in the database!")
+            st.session_state.team_members_count = 1
+            st.session_state.products_count = 1
+
+# --- 2. LOG DAILY TASKS ---
+elif menu == "Log Daily Tasks":
+    st.header(f"📝 Log Daily Tasks - {user_name}")
+    render_restricted_work_input(target_worker_name=user_name, is_crew_log=False)
+
+# --- 3. VIEW LOGS & UPDATE STATUS ---
+elif menu == "View Logs & Update Status":
+    st.header("🔍 View Daily Logs & Update Status")
+    df_sites = read_sheet("Sites_Master")
+    df_logs = read_sheet("Worker_Daily_Logs")
+
+    if df_sites.empty or "installation_id" not in df_sites.columns:
+        st.info("⚠️ No Installation Sites Available")
+    else:
+        site_list = df_sites["installation_id"].tolist()
+        selected_inst = st.selectbox("Select Installation ID", site_list)
+
+        site_row = df_sites[df_sites["installation_id"] == selected_inst].iloc[0]
+        
+        st.markdown(f"""
+            <div class="card-box">
+                <h3 style="margin:0;">{site_row.get('site_name', 'N/A')} ({site_row.get('installation_id', 'N/A')})</h3>
+                <p style="margin:5px 0;"><b>City:</b> {site_row.get('site_city', 'N/A')} | <b>Team Lead:</b> {site_row.get('team_lead', 'N/A')}</p>
+                <p style="margin:5px 0;"><b>Current Status:</b> <b>{site_row.get('status', 'In Progress')}</b></p>
+            </div>
+        """, unsafe_allow_html=True)
+
+        st.subheader("⚙️ Update Project Status")
+        col_st, col_btn = st.columns([2, 1])
+        with col_st:
+            curr_st = site_row.get("status", "In Progress")
+            st_idx = STATUS_OPTIONS.index(curr_st) if curr_st in STATUS_OPTIONS else 0
+            new_st = st.selectbox("New Status", STATUS_OPTIONS, index=st_idx)
+        with col_btn:
+            st.write(" ")
+            st.write(" ")
+            if st.button("Update Status"):
+                update_sheet_row("Sites_Master", "installation_id", selected_inst, {"status": new_st})
+                st.success(f"Status updated to **{new_st}** in Data Base!")
+                st.rerun()
+
+        st.divider()
+        st.subheader("📜 Submitted Work Logs")
+        p_logs = df_logs[df_logs["installation_id"] == selected_inst] if not df_logs.empty and "installation_id" in df_logs.columns else pd.DataFrame()
+
+        if p_logs.empty:
+            st.info("⚠️ No Logs Recorded for this Site Yet")
+        else:
+            for _, l in p_logs.iterrows():
+                with st.expander(f"📅 Date: {l.get('logged_date')} | Worker: {l.get('worker_name')} | Log ID: {l.get('log_id')}"):
+                    st.write(f"**Primary Task:** {l.get('task_name')} | **Sub-Task:** {l.get('sub_task_name', 'N/A')}")
+                    st.write(f"**Assigned Worker:** {l.get('worker_name')} | **Progress:** {l.get('progress_percentage')}%")
+                    st.write(f"**Time Taken:** {l.get('hours_spent', 0)} hrs {l.get('minutes_spent', 0)} mins")
+                    st.write(f"**Travel Day (TA/DA):** {l.get('is_travel_day')}")
+                    st.write(f"**Photo Attached:** {l.get('site_photo', 'No Photo')}")
+                    st.write(f"**Remarks:** {l.get('site_remarks', 'None')}")
+
+# --- 4. ACTIVE TASKS DASHBOARD ---
+elif menu == "Active Tasks Dashboard":
     st.header("📋 Active Tasks Dashboard")
     st.caption("Track site installation progress, monitor individual task statuses, and export site reports.")
 
@@ -504,7 +689,7 @@ if menu == "Active Tasks Dashboard":
         if status_filter != "All Statuses" and "status" in filtered_tasks.columns:
             filtered_tasks = filtered_tasks[filtered_tasks["status"] == status_filter]
 
-        # --- SITE PROGRESS TRACKER & METRICS ---
+        # Site Progress Tracker & Metrics
         st.write("##")
         if site_filter != "All Sites":
             site_task_subset = df_tasks[df_tasks["installation_id"] == site_filter] if "installation_id" in df_tasks.columns else pd.DataFrame()
@@ -531,7 +716,7 @@ if menu == "Active Tasks Dashboard":
 
             st.divider()
 
-            # --- CSV EXPORT GENERATOR ---
+            # CSV Export Generator
             metrics_df = pd.DataFrame([{
                 "Site ID": site_filter,
                 "Overall Completion (%)": f"{overall_pct}%",
@@ -556,7 +741,32 @@ if menu == "Active Tasks Dashboard":
         st.subheader(f"Task List ({len(filtered_tasks)} Records)")
         st.dataframe(filtered_tasks, use_container_width=True)
 
-# --- PAGE: EMPLOYEE ANALYTICS & REPORTS ---
+# --- 5. HANDOVER DATE DASHBOARD ---
+elif menu == "Handover Date Dashboard":
+    st.header("📅 Site Handover Date Dashboard")
+    df_sites = read_sheet("Sites_Master")
+
+    if df_sites.empty or "handover_date" not in df_sites.columns:
+        st.info("⚠️ No Installation Sites Created Yet")
+    else:
+        df_sites["handover_date_dt"] = pd.to_datetime(df_sites["handover_date"], errors="coerce")
+        df_sites["days_remaining"] = (df_sites["handover_date_dt"] - datetime.now()).dt.days
+
+        st.subheader("Upcoming Project Handovers")
+        for _, site in df_sites.iterrows():
+            days = site.get("days_remaining", 0)
+            badge_color = COLOR_ACCENT if days > 15 else ("#E6A100" if days >= 0 else "#D32F2F")
+            
+            st.markdown(f"""
+                <div class="card-box">
+                    <h3 style="margin:0;">{site.get('site_name', 'N/A')} ({site.get('installation_id', 'N/A')})</h3>
+                    <p style="margin:5px 0;"><b>City:</b> {site.get('site_city', 'N/A')} | <b>Team Lead:</b> {site.get('team_lead', 'N/A')}</p>
+                    <p style="margin:5px 0;"><b>Target Handover:</b> {site.get('handover_date', 'N/A')}</p>
+                    <p style="margin:5px 0;"><b>Status:</b> <span style="color:{badge_color}; font-weight:bold;">{site.get('status', 'In Progress')} ({days} Days Remaining)</span></p>
+                </div>
+            """, unsafe_allow_html=True)
+
+# --- 6. EMPLOYEE ANALYTICS & REPORTS ---
 elif menu == "Employee Analytics & Reports":
     st.header("👤 Employee Deep Dive & Individual Analytics")
     st.caption("Select any worker to isolate their performance, daily progress graphs, and travel logs.")
@@ -657,7 +867,7 @@ elif menu == "Employee Analytics & Reports":
                     st.plotly_chart(fig_prog, use_container_width=True)
 
                 st.subheader(f"📋 Detailed Work Logs ({len(filtered_emp_logs)} Records)")
-                disp_cols = [c for c in ["log_id", "logged_date", "installation_id", "task_name", "progress_percentage", "hours_spent", "minutes_spent", "is_travel_day", "site_remarks", "site_photo"] if c in filtered_emp_logs.columns]
+                disp_cols = [c for c in ["log_id", "logged_date", "installation_id", "task_name", "sub_task_name", "progress_percentage", "hours_spent", "minutes_spent", "is_travel_day", "site_remarks", "site_photo"] if c in filtered_emp_logs.columns]
                 st.dataframe(filtered_emp_logs[disp_cols].sort_values(by="logged_date", ascending=False), use_container_width=True)
 
                 csv_data = filtered_emp_logs.to_csv(index=False).encode('utf-8')
@@ -668,429 +878,7 @@ elif menu == "Employee Analytics & Reports":
                     mime="text/csv"
                 )
 
-# --- WORKER: MY WORK HISTORY ---
-elif menu == "My Work History":
-    st.header(f"📜 Work Log History & Audit Trail - {user_name}")
-    st.caption("Complete transparency of all logged daily tasks, progress increments, and travel allowances.")
-    
-    df_logs = read_sheet("Worker_Daily_Logs")
-
-    if df_logs.empty or "worker_name" not in df_logs.columns:
-        st.info("⚠️ No Field Logs Recorded Yet")
-    else:
-        my_logs = df_logs[df_logs["worker_name"].astype(str).str.strip().str.lower() == user_name.strip().lower()]
-        
-        if my_logs.empty:
-            st.info("⚠️ You have not submitted any daily work logs yet.")
-        else:
-            tot_my_hrs = my_logs["hours_spent"].sum() if "hours_spent" in my_logs.columns else 0
-            tot_my_trv = len(my_logs[my_logs["is_travel_day"] == "Yes"]) if "is_travel_day" in my_logs.columns else 0
-            tot_sites = my_logs["installation_id"].nunique() if "installation_id" in my_logs.columns else 0
-
-            k1, k2, k3 = st.columns(3)
-            with k1:
-                st.markdown(f'<div class="kpi-card"><div class="kpi-number">{tot_my_hrs} hrs</div><div class="kpi-label">Total Hours Logged</div></div>', unsafe_allow_html=True)
-            with k2:
-                st.markdown(f'<div class="kpi-card"><div class="kpi-number">{tot_my_trv} Days</div><div class="kpi-label">Travel Days (TA/DA Claimed)</div></div>', unsafe_allow_html=True)
-            with k3:
-                st.markdown(f'<div class="kpi-card"><div class="kpi-number">{tot_sites}</div><div class="kpi-label">Sites Worked On</div></div>', unsafe_allow_html=True)
-
-            st.write("##")
-            search_query = st.text_input("🔍 Search Logs by Site ID, Task Name, or Date", "")
-            
-            filtered_logs = my_logs.copy()
-            if search_query:
-                mask = filtered_logs.astype(str).apply(lambda row: row.str.contains(search_query, case=False).any(), axis=1)
-                filtered_logs = filtered_logs[mask]
-
-            st.subheader(f"Submitted Log Entries ({len(filtered_logs)} Records)")
-            disp_cols = [c for c in ["log_id", "logged_date", "installation_id", "task_name", "progress_percentage", "hours_spent", "minutes_spent", "is_travel_day", "site_remarks", "site_photo"] if c in filtered_logs.columns]
-            st.dataframe(filtered_logs[disp_cols].sort_values(by="logged_date", ascending=False), use_container_width=True)
-
-# --- WORKER: MY PROFILE & SETTINGS ---
-elif menu == "My Profile & Settings":
-    st.header("👤 Worker Profile & Security")
-    
-    col_l, col_center, col_r = st.columns([1, 2, 1])
-    with col_center:
-        st.markdown(f"""
-            <div class="card-box">
-                <h3 style="margin:0;">{user_name}</h3>
-                <p style="margin:5px 0;"><b>Role:</b> {user_role}</p>
-                <p style="margin:5px 0;"><b>Worker ID:</b> {user.get('worker_id', 'N/A')}</p>
-                <p style="margin:5px 0;"><b>Base Station:</b> {user_base_location}</p>
-                <p style="margin:5px 0;"><b>ID Number:</b> [ID Redacted]</p>
-            </div>
-        """, unsafe_allow_html=True)
-
-        st.subheader("🔑 Change Security PIN")
-        with st.form("change_pin_form"):
-            curr_pin = st.text_input("Current PIN", type="password")
-            new_pin1 = st.text_input("New 4-Digit PIN", type="password", max_chars=4)
-            new_pin2 = st.text_input("Confirm New PIN", type="password", max_chars=4)
-
-            update_pin_btn = st.form_submit_button("Update Security PIN", use_container_width=True)
-
-            if update_pin_btn:
-                if str(curr_pin).strip() != str(user.get("pin", "")).strip():
-                    st.error("Incorrect current PIN!")
-                elif not new_pin1 or len(new_pin1) < 4:
-                    st.error("New PIN must be at least 4 digits.")
-                elif new_pin1 != new_pin2:
-                    st.error("New PINs do not match!")
-                else:
-                    success = update_sheet_row("Workers_Master", "name", user_name, {"pin": new_pin1.strip()})
-                    if success:
-                        st.session_state.authenticated_user["pin"] = new_pin1.strip()
-                        st.success("PIN updated successfully!")
-                        st.rerun()
-
-# --- ADMIN: ANALYTICS DASHBOARD ---
-elif menu == "Admin Analytics Dashboard":
-    st.header("📊 Admin Operations Dashboard")
-    df_logs = read_sheet("Worker_Daily_Logs")
-    df_workers = read_sheet("Workers_Master")
-    df_sites = read_sheet("Sites_Master")
-
-    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-    with kpi1:
-        st.markdown(f'<div class="kpi-card"><div class="kpi-number">{len(df_workers)}</div><div class="kpi-label">Active Team Members</div></div>', unsafe_allow_html=True)
-    with kpi2:
-        st.markdown(f'<div class="kpi-card"><div class="kpi-number">{len(df_sites)}</div><div class="kpi-label">Total Installation Sites</div></div>', unsafe_allow_html=True)
-    with kpi3:
-        tot_hrs = df_logs["hours_spent"].sum() if not df_logs.empty and "hours_spent" in df_logs.columns else 0
-        st.markdown(f'<div class="kpi-card"><div class="kpi-number">{tot_hrs} hrs</div><div class="kpi-label">Total Field Hours Logged</div></div>', unsafe_allow_html=True)
-    with kpi4:
-        trv_days = len(df_logs[df_logs["is_travel_day"] == "Yes"]) if not df_logs.empty and "is_travel_day" in df_logs.columns else 0
-        st.markdown(f'<div class="kpi-card"><div class="kpi-number">{trv_days} Days</div><div class="kpi-label">TA/DA Travel Days Claims</div></div>', unsafe_allow_html=True)
-
-    st.write("##")
-    col_chart1, col_chart2 = st.columns(2)
-    with col_chart1:
-        st.subheader("Field Hours per Worker")
-        if not df_logs.empty and "worker_name" in df_logs.columns and df_logs["hours_spent"].sum() > 0:
-            hrs_df = df_logs.groupby("worker_name")["hours_spent"].sum().reset_index()
-            st.bar_chart(hrs_df.set_index("worker_name"))
-        else:
-            st.info("⚠️ No Field Hours Logged Yet — Chart will generate automatically when workers submit logs.")
-
-    with col_chart2:
-        st.subheader("Site Status Distribution")
-        if not df_sites.empty and "status" in df_sites.columns:
-            st_counts = df_sites["status"].value_counts()
-            st.bar_chart(st_counts)
-        else:
-            st.info("⚠️ No Installation Sites Created Yet — Create orders to view status distribution.")
-
-# --- ADMIN: USER MANAGEMENT ---
-elif menu == "User Management":
-    st.header("👥 User & Access Management")
-    df_workers = read_sheet("Workers_Master")
-
-    tab_add, tab_batch, tab_edit = st.tabs(["➕ Add Single User", "⚡ Batch Process Raw String", "✏️ Edit Existing User & Role"])
-
-    with tab_add:
-        st.subheader("Add Worker / Supervisor to System")
-        col_l, col_center, col_r = st.columns([1, 2, 1])
-        with col_center:
-            with st.form("add_user_form"):
-                c1, c2 = st.columns(2)
-                with c1:
-                    new_w_id = st.text_input("Worker ID", value=f"W{len(df_workers)+1:03d}")
-                    new_name = st.text_input("Full Name")
-                    new_id_num = st.text_input("12-Digit Government ID", max_chars=12, placeholder="e.g. 123456789012")
-                with c2:
-                    new_pin = st.text_input("4-Digit PIN / Password", type="password")
-                    new_role = st.selectbox("System Role", ["Worker", "Supervisor", "Admin"])
-                    new_base = st.text_input("Base Station / City", value="Jaipur")
-
-                submit_new_user = st.form_submit_button("Create User & Sync to Data Base", use_container_width=True)
-                if submit_new_user:
-                    clean_id = str(new_id_num).strip()
-                    
-                    if not new_name or not new_pin or not clean_id:
-                        st.error("Please enter Full Name, ID Number, and PIN.")
-                    elif len(clean_id) != 12 or not clean_id.isdigit():
-                        st.error("Invalid ID Number! Must be exactly 12 numeric digits.")
-                    else:
-                        if not df_workers.empty and "aadhaar_no" in df_workers.columns:
-                            existing_ids = df_workers["aadhaar_no"].astype(str).str.strip().tolist()
-                            if clean_id in existing_ids:
-                                matched_user = df_workers[df_workers["aadhaar_no"].astype(str).str.strip() == clean_id].iloc[0].get("name", "Unknown")
-                                st.error(f"❌ Duplicate Entry! Worker with this ID Number already exists (**{matched_user}**).")
-                                st.stop()
-
-                        user_dict = {
-                            "worker_id": new_w_id,
-                            "name": new_name,
-                            "aadhaar_no": clean_id,
-                            "pin": str(new_pin),
-                            "role": new_role,
-                            "base_location": new_base
-                        }
-                        append_to_sheet("Workers_Master", user_dict)
-                        st.success(f"User **{new_name}** successfully registered and synced!")
-                        st.rerun()
-
-    with tab_batch:
-        st.subheader("⚡ Batch Import Workers from Continuous String")
-        st.caption("Paste continuous raw strings to parse and sync in bulk.")
-        
-        raw_text_input = st.text_area("Paste Continuous Data String Here:", placeholder="W002Vishak1234567890121234SupervisorJaipurW004Parvesh...")
-        
-        if st.button("🔍 Parse and Import Worker Data"):
-            if not raw_text_input:
-                st.warning("Please paste raw string first.")
-            else:
-                parsed_list = parse_raw_worker_string(raw_text_input)
-                if not parsed_list:
-                    st.error("Could not parse valid worker records from string. Check format.")
-                else:
-                    st.success(f"Successfully extracted {len(parsed_list)} worker records!")
-                    st.dataframe(pd.DataFrame(parsed_list))
-                    
-                    for w in parsed_list:
-                        append_to_sheet("Workers_Master", w)
-                    st.success("All extracted workers synced to Google Sheets!")
-                    st.rerun()
-
-    with tab_edit:
-        st.subheader("Update User Profile, Role & PIN")
-        if df_workers.empty or "name" not in df_workers.columns:
-            st.info("⚠️ No Users Registered in Master Database")
-        else:
-            selected_edit_user = st.selectbox("Select User to Edit", df_workers["name"].tolist())
-            user_data = df_workers[df_workers["name"] == selected_edit_user].iloc[0]
-
-            col_l, col_center, col_r = st.columns([1, 2, 1])
-            with col_center:
-                with st.form("edit_user_form"):
-                    st.text_input("Government ID (Unique ID - Uneditable)", value="[ID Redacted]", disabled=True)
-                    e_col1, e_col2 = st.columns(2)
-                    with e_col1:
-                        e_role = st.selectbox("Update Role", ["Worker", "Supervisor", "Admin"], index=["Worker", "Supervisor", "Admin"].index(user_data.get("role", "Worker")))
-                        e_pin = st.text_input("Update PIN", value=str(user_data.get("pin", "")))
-                    with e_col2:
-                        e_base = st.text_input("Update Base Location", value=str(user_data.get("base_location", "Jaipur")))
-
-                    submit_edit = st.form_submit_button("Update Profile in Data Base", use_container_width=True)
-                    if submit_edit:
-                        updates = {
-                            "role": e_role,
-                            "pin": e_pin,
-                            "base_location": e_base
-                        }
-                        update_sheet_row("Workers_Master", "name", selected_edit_user, updates)
-                        st.success(f"Updated **{selected_edit_user}** successfully!")
-                        st.rerun()
-
-# --- ADMIN: TA/DA PAYROLL & TRAVEL SUMMARY ---
-elif menu == "TA/DA Payroll & Travel Summary":
-    st.header("✈️ TA/DA Travel Allowance & Payroll Report")
-    st.caption("Automated calculation aggregating travel days (Base Location ≠ Site Location)")
-
-    df_logs = read_sheet("Worker_Daily_Logs")
-
-    if df_logs.empty or "is_travel_day" not in df_logs.columns:
-        st.info("⚠️ No Travel Days Claimed Yet (Base Location = Site Location)")
-    else:
-        travel_logs = df_logs[df_logs["is_travel_day"] == "Yes"]
-
-        if travel_logs.empty:
-            st.warning("⚠️ No Travel Days Claimed Yet (Base Location = Site Location)")
-        else:
-            st.subheader("Travel Days Summary by Worker")
-            summary_df = travel_logs.groupby(["worker_name", "base_location"]).agg(
-                total_travel_days=("is_travel_day", "count"),
-                total_hours_worked=("hours_spent", "sum")
-            ).reset_index()
-
-            col_rate, _ = st.columns([1, 2])
-            with col_rate:
-                ta_rate = st.number_input("Daily TA/DA Allowance Rate (₹)", value=500, step=50)
-
-            summary_df["Estimated Allowance (₹)"] = summary_df["total_travel_days"] * ta_rate
-            st.dataframe(summary_df, use_container_width=True)
-
-            st.divider()
-            st.subheader("Detailed Travel Log Records")
-            st.dataframe(travel_logs[["log_id", "logged_date", "worker_name", "base_location", "site_city", "task_name", "hours_spent", "site_remarks"]], use_container_width=True)
-
-            csv_payroll = summary_df.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="📥 Export TA/DA Payroll Report (CSV)",
-                data=csv_payroll,
-                file_name=f"TADA_Payroll_Report_{datetime.now().strftime('%Y%m%d')}.csv",
-                mime="text/csv"
-            )
-
-# --- ADMIN: ADVANCED FIELD LOGS INSPECTOR ---
-elif menu == "Advanced Field Logs Inspector":
-    st.header("🔍 Advanced Field Log Inspector & Exporter")
-    df_logs = read_sheet("Worker_Daily_Logs")
-
-    if df_logs.empty:
-        st.info("⚠️ No Field Logs Recorded Yet")
-    else:
-        f_col1, f_col2, f_col3 = st.columns(3)
-        with f_col1:
-            worker_list = ["All Workers"] + df_logs["worker_name"].unique().tolist()
-            filter_worker = st.selectbox("Filter by Worker", worker_list)
-        with f_col2:
-            site_list = ["All Sites"] + df_logs["installation_id"].unique().tolist()
-            filter_site = st.selectbox("Filter by Site ID", site_list)
-        with f_col3:
-            travel_filter = st.selectbox("Filter by Travel Day", ["All Logs", "Travel Days Only (Yes)", "Local Days Only (No)"])
-
-        filtered_df = df_logs.copy()
-        if filter_worker != "All Workers":
-            filtered_df = filtered_df[filtered_df["worker_name"] == filter_worker]
-        if filter_site != "All Sites":
-            filtered_df = filtered_df[filtered_df["installation_id"] == filter_site]
-        if travel_filter == "Travel Days Only (Yes)":
-            filtered_df = filtered_df[filtered_df["is_travel_day"] == "Yes"]
-        elif travel_filter == "Local Days Only (No)":
-            filtered_df = filtered_df[filtered_df["is_travel_day"] == "No"]
-
-        st.subheader(f"Matching Records ({len(filtered_df)} entries)")
-        st.dataframe(filtered_df, use_container_width=True)
-
-        csv_logs = filtered_df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📥 Export Filtered Logs to CSV",
-            data=csv_logs,
-            file_name=f"Filtered_Field_Logs_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime="text/csv"
-        )
-
-# --- SUPERVISOR: HANDOVER DASHBOARD ---
-elif menu == "Handover Date Dashboard":
-    st.header("📅 Site Handover Date Dashboard")
-    df_sites = read_sheet("Sites_Master")
-
-    if df_sites.empty or "handover_date" not in df_sites.columns:
-        st.info("⚠️ No Installation Sites Created Yet")
-    else:
-        df_sites["handover_date_dt"] = pd.to_datetime(df_sites["handover_date"], errors="coerce")
-        df_sites["days_remaining"] = (df_sites["handover_date_dt"] - datetime.now()).dt.days
-
-        st.subheader("Upcoming Project Handovers")
-        for _, site in df_sites.iterrows():
-            days = site.get("days_remaining", 0)
-            badge_color = COLOR_ACCENT if days > 15 else ("#E6A100" if days >= 0 else "#D32F2F")
-            
-            st.markdown(f"""
-                <div class="card-box">
-                    <h3 style="margin:0;">{site.get('site_name', 'N/A')} ({site.get('installation_id', 'N/A')})</h3>
-                    <p style="margin:5px 0;"><b>City:</b> {site.get('site_city', 'N/A')} | <b>Team Lead:</b> {site.get('team_lead', 'N/A')}</p>
-                    <p style="margin:5px 0;"><b>Target Handover:</b> {site.get('handover_date', 'N/A')}</p>
-                    <p style="margin:5px 0;"><b>Status:</b> <span style="color:{badge_color}; font-weight:bold;">{site.get('status', 'In Progress')} ({days} Days Remaining)</span></p>
-                </div>
-            """, unsafe_allow_html=True)
-
-# --- SUPERVISOR: NEW ORDER ---
-elif menu == "New Installation Order":
-    st.header("Create New Installation Order")
-    
-    if "team_members_count" not in st.session_state:
-        st.session_state.team_members_count = 1
-    if "products_count" not in st.session_state:
-        st.session_state.products_count = 1
-
-    visit_id = f"INST-2026-{os.urandom(2).hex().upper()}"
-    st.info(f"**Automated Visit ID:** {visit_id}")
-
-    col_team, col_dates = st.columns(2)
-
-    with col_team:
-        st.markdown("### 👨‍💼 Team Structure")
-        team_lead_name = st.text_input("Team Lead Name *", placeholder="e.g., Rajeer", key="inst_team_lead")
-        
-        team_helpers = []
-        for i in range(st.session_state.team_members_count):
-            helper = st.text_input("Team Members / Helpers", placeholder="e.g., Parvesh Kumar", key=f"inst_helper_{i}")
-            if helper.strip():
-                team_helpers.append(helper.strip())
-        
-        if st.button("➕ Add Team Member", key="btn_add_team_member"):
-            st.session_state.team_members_count += 1
-            st.rerun()
-
-        city_name = st.text_input("City Name *", value="Mumbai", key="inst_city_name")
-        site_address = st.text_area("Site Address *", placeholder="Full installation site address...", key="inst_site_address")
-
-    with col_dates:
-        st.markdown("### 📅 Order Dates")
-        inst_date = st.date_input("Installation Date (Order Created Date)", value=datetime.now(), key="inst_order_date")
-        site_clearance_date = st.date_input("Site Clearance Date", value=datetime.now(), key="inst_clearance_date")
-        target_handover_date = st.date_input("Target Handover Date", value=datetime.now() + timedelta(days=15), key="inst_handover_date")
-
-    st.divider()
-
-    st.markdown("### 📦 Order Products Details")
-    
-    products_data = []
-    catalog_main_categories = list(PRODUCT_CATALOG.keys())
-
-    for p_idx in range(st.session_state.products_count):
-        st.markdown(f"#### Product #{p_idx + 1}")
-        col_p1, col_p2 = st.columns(2)
-        with col_p1:
-            product_type = st.selectbox(
-                "Select The Product", 
-                catalog_main_categories, 
-                key=f"prod_type_{p_idx}"
-            )
-            dimensions = st.text_input("Dimensions (WxH)", placeholder="e.g., 5330X6000", key=f"prod_dim_{p_idx}")
-        
-        with col_p2:
-            sub_cat_options = PRODUCT_CATALOG.get(product_type, ["Other"])
-            sub_category = st.selectbox(
-                "Select Sub-Category", 
-                sub_cat_options, 
-                key=f"prod_sub_{p_idx}"
-            )
-            quantity = st.number_input("Quantity", min_value=1, value=1, step=1, key=f"prod_qty_{p_idx}")
-        
-        products_data.append({
-            "product_type": product_type,
-            "sub_category": sub_category,
-            "dimensions": dimensions,
-            "quantity": quantity
-        })
-
-    if st.button("➕ Add Another Product", key="btn_add_product"):
-        st.session_state.products_count += 1
-        st.rerun()
-
-    st.write("##")
-    if st.button("💾 Submit Installation Order", use_container_width=True, key="btn_submit_inst_order"):
-        if not team_lead_name or not city_name or not site_address:
-            st.error("Please fill in all mandatory fields (Team Lead Name, City Name, and Site Address).")
-        else:
-            order_data = {
-                "installation_id": visit_id,
-                "team_lead": team_lead_name,
-                "team_members": ", ".join(team_helpers),
-                "site_city": city_name,
-                "site_address": site_address,
-                "order_date": str(inst_date),
-                "site_clearance_date": str(site_clearance_date),
-                "handover_date": str(target_handover_date),
-                "products_summary": str(products_data),
-                "status": "In Progress"
-            }
-            append_to_sheet("Sites_Master", order_data)
-            st.success(f"Installation Order **{visit_id}** recorded successfully in the database!")
-            st.session_state.team_members_count = 1
-            st.session_state.products_count = 1
-
-# --- COMMON: LOG DAILY TASKS ---
-elif menu == "Log Daily Tasks":
-    st.header(f"📝 Log Daily Tasks - {user_name}")
-    render_restricted_work_input(target_worker_name=user_name, is_crew_log=False)
-
-# --- SUPERVISOR: TEAM HEAD DASHBOARD ---
+# --- 7. TEAM HEAD DASHBOARD ---
 elif menu == "Team Head Dashboard":
     st.header("👥 Dual-Tab Team Head Dashboard")
     tab_personal, tab_crew = st.tabs(["👤 Personal Work Log", "👨‍🔧 Crew Task Logging"])
@@ -1111,58 +899,7 @@ elif menu == "Team Head Dashboard":
             st.divider()
             render_restricted_work_input(target_worker_name=selected_crew, is_crew_log=True)
 
-# --- SUPERVISOR: VIEW LOGS & UPDATE ---
-elif menu == "View Logs & Update Status":
-    st.header("🔍 View Daily Logs & Update Status")
-    df_sites = read_sheet("Sites_Master")
-    df_logs = read_sheet("Worker_Daily_Logs")
-
-    if df_sites.empty or "installation_id" not in df_sites.columns:
-        st.info("⚠️ No Installation Sites Available")
-    else:
-        site_list = df_sites["installation_id"].tolist()
-        selected_inst = st.selectbox("Select Installation ID", site_list)
-
-        site_row = df_sites[df_sites["installation_id"] == selected_inst].iloc[0]
-        
-        st.markdown(f"""
-            <div class="card-box">
-                <h3 style="margin:0;">{site_row.get('site_name', 'N/A')} ({site_row.get('installation_id', 'N/A')})</h3>
-                <p style="margin:5px 0;"><b>City:</b> {site_row.get('site_city', 'N/A')} | <b>Team Lead:</b> {site_row.get('team_lead', 'N/A')}</p>
-                <p style="margin:5px 0;"><b>Current Status:</b> <b>{site_row.get('status', 'In Progress')}</b></p>
-            </div>
-        """, unsafe_allow_html=True)
-
-        st.subheader("⚙️ Update Project Status")
-        col_st, col_btn = st.columns([2, 1])
-        with col_st:
-            curr_st = site_row.get("status", "In Progress")
-            st_idx = STATUS_OPTIONS.index(curr_st) if curr_st in STATUS_OPTIONS else 0
-            new_st = st.selectbox("New Status", STATUS_OPTIONS, index=st_idx)
-        with col_btn:
-            st.write(" ")
-            st.write(" ")
-            if st.button("Update Status"):
-                update_sheet_row("Sites_Master", "installation_id", selected_inst, {"status": new_st})
-                st.success(f"Status updated to **{new_st}** in Data Base!")
-                st.rerun()
-
-        st.divider()
-        st.subheader("📜 Submitted Work Logs")
-        p_logs = df_logs[df_logs["installation_id"] == selected_inst] if not df_logs.empty and "installation_id" in df_logs.columns else pd.DataFrame()
-
-        if p_logs.empty:
-            st.info("⚠️ No Logs Recorded for this Site Yet")
-        else:
-            for _, l in p_logs.iterrows():
-                with st.expander(f"📅 Date: {l.get('logged_date')} | Worker: {l.get('worker_name')} | Log ID: {l.get('log_id')}"):
-                    st.write(f"**Task:** {l.get('task_name')} ({l.get('progress_percentage')}% Progress)")
-                    st.write(f"**Time Spent:** {l.get('hours_spent')} hrs {l.get('minutes_spent')} mins")
-                    st.write(f"**Travel Day (TA/DA):** {l.get('is_travel_day')}")
-                    st.write(f"**Photo Attached:** {l.get('site_photo', 'No Photo')}")
-                    st.write(f"**Remarks:** {l.get('site_remarks', 'None')}")
-
-# --- MASTER DATABASE ---
+# --- 8. MASTER DATABASE ---
 elif menu == "Master Database":
     st.header("🗄️ Live Google Sheets Database")
     m_tab1, m_tab2, m_tab3, m_tab4 = st.tabs(["Workers Master", "Sites Master", "Task Assignments", "Worker Daily Logs"])
@@ -1175,3 +912,55 @@ elif menu == "Master Database":
         st.dataframe(read_sheet("Task_Assignments"), use_container_width=True)
     with m_tab4:
         st.dataframe(read_sheet("Worker_Daily_Logs"), use_container_width=True)
+
+# --- EXTRA ADMIN MODULES ---
+elif menu == "My Work History":
+    st.header(f"📜 Work Log History & Audit Trail - {user_name}")
+    df_logs = read_sheet("Worker_Daily_Logs")
+
+    if df_logs.empty or "worker_name" not in df_logs.columns:
+        st.info("⚠️ No Field Logs Recorded Yet")
+    else:
+        my_logs = df_logs[df_logs["worker_name"].astype(str).str.strip().str.lower() == user_name.strip().lower()]
+        if my_logs.empty:
+            st.info("⚠️ You have not submitted any daily work logs yet.")
+        else:
+            disp_cols = [c for c in ["log_id", "logged_date", "installation_id", "task_name", "sub_task_name", "progress_percentage", "hours_spent", "minutes_spent", "is_travel_day", "site_remarks", "site_photo"] if c in my_logs.columns]
+            st.dataframe(my_logs[disp_cols].sort_values(by="logged_date", ascending=False), use_container_width=True)
+
+elif menu == "My Profile & Settings":
+    st.header("👤 Worker Profile & Security")
+    st.markdown(f"**Name:** {user_name} | **Role:** {user_role} | **Base Station:** {user_base_location}")
+
+elif menu == "Admin Analytics Dashboard":
+    st.header("📊 Admin Operations Dashboard")
+    df_logs = read_sheet("Worker_Daily_Logs")
+    df_workers = read_sheet("Workers_Master")
+    df_sites = read_sheet("Sites_Master")
+
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    with kpi1:
+        st.markdown(f'<div class="kpi-card"><div class="kpi-number">{len(df_workers)}</div><div class="kpi-label">Active Team Members</div></div>', unsafe_allow_html=True)
+    with kpi2:
+        st.markdown(f'<div class="kpi-card"><div class="kpi-number">{len(df_sites)}</div><div class="kpi-label">Total Installation Sites</div></div>', unsafe_allow_html=True)
+    with kpi3:
+        tot_hrs = df_logs["hours_spent"].sum() if not df_logs.empty and "hours_spent" in df_logs.columns else 0
+        st.markdown(f'<div class="kpi-card"><div class="kpi-number">{tot_hrs} hrs</div><div class="kpi-label">Total Field Hours Logged</div></div>', unsafe_allow_html=True)
+    with kpi4:
+        trv_days = len(df_logs[df_logs["is_travel_day"] == "Yes"]) if not df_logs.empty and "is_travel_day" in df_logs.columns else 0
+        st.markdown(f'<div class="kpi-card"><div class="kpi-number">{trv_days} Days</div><div class="kpi-label">TA/DA Travel Days Claims</div></div>', unsafe_allow_html=True)
+
+elif menu == "User Management":
+    st.header("👥 User & Access Management")
+    st.dataframe(read_sheet("Workers_Master"), use_container_width=True)
+
+elif menu == "TA/DA Payroll & Travel Summary":
+    st.header("✈️ TA/DA Travel Allowance & Payroll Report")
+    df_logs = read_sheet("Worker_Daily_Logs")
+    if not df_logs.empty and "is_travel_day" in df_logs.columns:
+        st.dataframe(df_logs[df_logs["is_travel_day"] == "Yes"], use_container_width=True)
+
+elif menu == "Advanced Field Logs Inspector":
+    st.header("🔍 Advanced Field Log Inspector & Exporter")
+    df_logs = read_sheet("Worker_Daily_Logs")
+    st.dataframe(df_logs, use_container_width=True)
