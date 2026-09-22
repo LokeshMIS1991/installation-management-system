@@ -17,7 +17,7 @@ st.set_page_config(
 COLOR_PRIMARY = "#10418A"    # Sidharth Deep Blue
 COLOR_ACCENT = "#00A859"     # Vibrant Green Dot
 COLOR_BG_LIGHT = "#EBF3FA"   # Soft Blue Background Tint
-COLOR_DANGER = "#D32F2F"     # Logout Red Accent
+COLOR_LOGOUT = "#9E2A2B"     # Sidharth Crimson Red for Logout
 
 # Apply CSS Inject strictly targeted at UI elements
 st.markdown(f"""
@@ -74,15 +74,38 @@ st.markdown(f"""
         font-weight: 600;
     }}
     
-    /* Sidebar Styling */
+    /* ==========================================
+       SIDEBAR COMPACTION & LOGOUT BUTTON FIX
+       ========================================== */
     section[data-testid="stSidebar"] {{
         background-color: #EBF1F8;
     }}
 
-    /* Sidebar Logout Button Styling (Matches Login Button Quality) */
+    /* Compact Sidebar Elements & Reduce Gaps */
+    section[data-testid="stSidebar"] .block-container {{
+        padding-top: 1.5rem !important;
+        padding-bottom: 1.5rem !important;
+    }}
+
+    section[data-testid="stSidebar"] hr {{
+        margin-top: 0.8rem !important;
+        margin-bottom: 0.8rem !important;
+    }}
+
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label {{
+        padding-top: 2px !important;
+        padding-bottom: 2px !important;
+        margin-bottom: 2px !important;
+    }}
+
+    section[data-testid="stSidebar"] div[role="radiogroup"] {{
+        gap: 4px !important;
+    }}
+
+    /* Distinct Crimson Red Logout Button */
     .sidebar-logout-container button {{
-        background-color: {COLOR_DANGER} !important;
-        background: {COLOR_DANGER} !important;
+        background-color: {COLOR_LOGOUT} !important;
+        background: {COLOR_LOGOUT} !important;
         color: #FFFFFF !important;
         font-weight: 700 !important;
         border-radius: 8px !important;
@@ -90,16 +113,17 @@ st.markdown(f"""
         font-size: 15px !important;
         border: none !important;
         width: 100% !important;
-        margin-top: 20px !important;
-        box-shadow: 0 4px 10px rgba(211, 47, 47, 0.3) !important;
+        margin-top: 10px !important;
+        box-shadow: 0 4px 10px rgba(158, 42, 43, 0.3) !important;
     }}
     .sidebar-logout-container button * {{
         color: #FFFFFF !important;
         font-weight: 700 !important;
     }}
     .sidebar-logout-container button:hover {{
-        background-color: #B71C1C !important;
-        box-shadow: 0 6px 14px rgba(211, 47, 47, 0.45) !important;
+        background-color: #7F1D1D !important;
+        background: #7F1D1D !important;
+        box-shadow: 0 6px 14px rgba(127, 29, 29, 0.45) !important;
     }}
 
     /* ==========================================
@@ -124,13 +148,11 @@ st.markdown(f"""
         font-weight: 500;
     }}
 
-    /* Username & Password Input Labels */
     div[data-testid="stForm"] .stTextInput label {{
         color: {COLOR_PRIMARY} !important;
         font-weight: 700 !important;
     }}
 
-    /* BLUE BORDER ON PURE WHITE INPUT BOXES */
     div[data-testid="stForm"] div[data-baseweb="input"] {{
         border: 2px solid {COLOR_PRIMARY} !important;
         border-radius: 8px !important;
@@ -142,13 +164,11 @@ st.markdown(f"""
         box-shadow: 0 0 6px rgba(0, 168, 89, 0.4) !important;
     }}
 
-    /* Checkbox Styling */
     div[data-testid="stForm"] .stCheckbox label {{
         color: {COLOR_PRIMARY} !important;
         font-weight: 600 !important;
     }}
 
-    /* EMERALD GREEN SUBMIT BUTTON */
     div[data-testid="stFormSubmitButton"] > button {{
         background-color: {COLOR_ACCENT} !important;
         background: {COLOR_ACCENT} !important;
@@ -316,7 +336,7 @@ if os.path.exists(logo_path):
     st.sidebar.image(logo_path, use_container_width=True)
 else:
     st.sidebar.markdown(f"""
-        <div style="text-align: center; padding: 12px; background-color: {COLOR_PRIMARY}; color: white; border-radius: 8px; margin-bottom: 15px;">
+        <div style="text-align: center; padding: 12px; background-color: {COLOR_PRIMARY}; color: white; border-radius: 8px; margin-bottom: 10px;">
             <h2 style="margin:0; font-size: 21px; color: white !important;">SIDHARTH</h2>
             <p style="margin:0; font-size: 11px; letter-spacing: 1.5px; color: {COLOR_ACCENT}; font-weight: bold;">SHUTTER & AUTOMATION</p>
         </div>
@@ -325,7 +345,6 @@ else:
 st.sidebar.markdown(f"**Active User:** {user_name} (`{user_role}`)  \n**Base Station:** {user_base_location}")
 st.sidebar.divider()
 
-# Navigation Mapping based on Google Sheets User Role
 STATUS_OPTIONS = ["In Progress", "Completed", "On Hold", "Pending Inspection"]
 
 if user_role == "Admin":
@@ -351,8 +370,9 @@ else:
 
 menu = st.sidebar.radio("Navigation Menu", menu_options)
 
-# Shifted Logout Button Below Navigation Menu
 st.sidebar.divider()
+
+# Crimson Red Logout Button BELOW Navigation
 st.sidebar.markdown('<div class="sidebar-logout-container">', unsafe_allow_html=True)
 if st.sidebar.button("🚪 LOG OUT", use_container_width=True):
     st.session_state.authenticated_user = None
@@ -360,7 +380,7 @@ if st.sidebar.button("🚪 LOG OUT", use_container_width=True):
 st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
 # ==========================================
-# 5. RESTRICTED LOGGING FORM HELPER (SUPERVISOR/WORKER)
+# 5. RESTRICTED LOGGING FORM HELPER
 # ==========================================
 def render_restricted_work_input(target_worker_name, is_crew_log=False):
     df_sites = read_sheet("Sites_Master")
@@ -433,10 +453,9 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
         st.rerun()
 
 # ==========================================
-# 6. ADMIN & MODULE IMPLEMENTATIONS
+# 6. MODULE IMPLEMENTATIONS
 # ==========================================
 
-# --- ADMIN ANALYTICS DASHBOARD ---
 if menu == "Admin Analytics Dashboard":
     st.header("📊 Admin Operations Dashboard")
     df_logs = read_sheet("Worker_Daily_Logs")
@@ -473,7 +492,6 @@ if menu == "Admin Analytics Dashboard":
         else:
             st.info("No site status data available.")
 
-# --- USER MANAGEMENT ---
 elif menu == "User Management":
     st.header("👥 User & Access Management")
     df_workers = read_sheet("Workers_Master")
@@ -535,7 +553,6 @@ elif menu == "User Management":
                     st.success(f"Updated **{selected_edit_user}** successfully!")
                     st.rerun()
 
-# --- TA/DA PAYROLL & TRAVEL SUMMARY ---
 elif menu == "TA/DA Payroll & Travel Summary":
     st.header("✈️ TA/DA Travel Allowance & Payroll Report")
     st.caption("Automated calculation aggregating travel days (Base Location ≠ Site Location)")
@@ -550,14 +567,12 @@ elif menu == "TA/DA Payroll & Travel Summary":
         if travel_logs.empty:
             st.warning("No travel days logged yet across any project site.")
         else:
-            # Summary Table Grouped by Worker
             st.subheader("Travel Days Summary by Worker")
             summary_df = travel_logs.groupby(["worker_name", "base_location"]).agg(
                 total_travel_days=("is_travel_day", "count"),
                 total_hours_worked=("hours_spent", "sum")
             ).reset_index()
 
-            # Dynamic Allowance Rate Multiplier
             col_rate, _ = st.columns([1, 2])
             with col_rate:
                 ta_rate = st.number_input("Daily TA/DA Allowance Rate (₹)", value=500, step=50)
@@ -569,7 +584,6 @@ elif menu == "TA/DA Payroll & Travel Summary":
             st.subheader("Detailed Travel Log Records")
             st.dataframe(travel_logs[["log_id", "logged_date", "worker_name", "base_location", "site_city", "task_name", "hours_spent", "site_remarks"]], use_container_width=True)
 
-            # CSV Export Button for Payroll
             csv_payroll = summary_df.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="📥 Export TA/DA Payroll Report (CSV)",
@@ -578,7 +592,6 @@ elif menu == "TA/DA Payroll & Travel Summary":
                 mime="text/csv"
             )
 
-# --- ADVANCED FIELD LOGS INSPECTOR ---
 elif menu == "Advanced Field Logs Inspector":
     st.header("🔍 Advanced Field Log Inspector & Exporter")
     df_logs = read_sheet("Worker_Daily_Logs")
@@ -586,7 +599,6 @@ elif menu == "Advanced Field Logs Inspector":
     if df_logs.empty:
         st.info("No field logs recorded in Google Sheets.")
     else:
-        # Multi-filter row
         f_col1, f_col2, f_col3 = st.columns(3)
         with f_col1:
             worker_list = ["All Workers"] + df_logs["worker_name"].unique().tolist()
@@ -597,7 +609,6 @@ elif menu == "Advanced Field Logs Inspector":
         with f_col3:
             travel_filter = st.selectbox("Filter by Travel Day", ["All Logs", "Travel Days Only (Yes)", "Local Days Only (No)"])
 
-        # Apply Filtering
         filtered_df = df_logs.copy()
         if filter_worker != "All Workers":
             filtered_df = filtered_df[filtered_df["worker_name"] == filter_worker]
@@ -611,7 +622,6 @@ elif menu == "Advanced Field Logs Inspector":
         st.subheader(f"Matching Records ({len(filtered_df)} entries)")
         st.dataframe(filtered_df, use_container_width=True)
 
-        # Export Button
         csv_logs = filtered_df.to_csv(index=False).encode('utf-8')
         st.download_button(
             label="📥 Export Filtered Logs to CSV",
@@ -620,7 +630,6 @@ elif menu == "Advanced Field Logs Inspector":
             mime="text/csv"
         )
 
-# --- SUPERVISOR / WORKER MODULES ---
 elif menu == "Active Tasks Dashboard":
     st.header("📋 Active Tasks Dashboard")
     df_tasks = read_sheet("Task_Assignments")
@@ -771,7 +780,6 @@ elif menu == "View Logs & Update Status":
                     st.write(f"**Travel Day (TA/DA):** {l.get('is_travel_day')}")
                     st.write(f"**Remarks:** {l.get('site_remarks', 'None')}")
 
-# --- MASTER DATABASE (AVAILABLE TO ADMIN & SUPERVISOR) ---
 elif menu == "Master Database":
     st.header("🗄️ Live Google Sheets Database")
     m_tab1, m_tab2, m_tab3, m_tab4 = st.tabs(["Workers Master", "Sites Master", "Task Assignments", "Worker Daily Logs"])
