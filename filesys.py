@@ -64,7 +64,7 @@ st.markdown(f"""
     }}
 
     /* ==========================================
-       LOGIN CARD STYLING & VIBRANT GREEN BUTTON
+       LOGIN CARD STYLING & DIRECT FORM BUTTON FIX
        ========================================== */
     div[data-testid="stForm"] {{
         background-color: #FFFFFF;
@@ -95,9 +95,8 @@ st.markdown(f"""
         padding: 10px 14px !important;
     }}
 
-    /* FORCE VIBRANT GREEN BUTTON WITH WHITE TEXT ON LOGIN FORM */
-    div[data-testid="stForm"] button[kind="primaryFormSubmit"], 
-    div[data-testid="stForm"] .stButton>button {{
+    /* FORCE EMERALD GREEN BUTTON WITH WHITE TEXT ON LOGIN FORM */
+    div[data-testid="stFormSubmitButton"] > button {{
         background-color: {COLOR_ACCENT} !important;
         background: {COLOR_ACCENT} !important;
         color: #FFFFFF !important;
@@ -110,16 +109,14 @@ st.markdown(f"""
         margin-top: 15px !important;
         box-shadow: 0 4px 12px rgba(0, 168, 89, 0.35) !important;
     }}
-    
-    /* Ensure white text inside paragraph tags of Streamlit buttons */
-    div[data-testid="stForm"] button[kind="primaryFormSubmit"] p,
-    div[data-testid="stForm"] .stButton>button p {{
+
+    /* Ensure text inside button stays white */
+    div[data-testid="stFormSubmitButton"] > button * {{
         color: #FFFFFF !important;
         font-weight: 700 !important;
     }}
 
-    div[data-testid="stForm"] button[kind="primaryFormSubmit"]:hover,
-    div[data-testid="stForm"] .stButton>button:hover {{
+    div[data-testid="stFormSubmitButton"] > button:hover {{
         background-color: #008747 !important;
         background: #008747 !important;
         color: #FFFFFF !important;
@@ -214,11 +211,10 @@ if not st.session_state.authenticated_user:
     
     with st.form("login_form"):
         # Display Logo Image directly at the top of the card
-        logo_path = "Company Logo.jpeg"  # Update path if saved under a different name (e.g., "logo.png")
+        logo_path = "Company Logo.jpeg"  # Replace with exact filename if different
         if os.path.exists(logo_path):
             st.image(logo_path, use_container_width=True)
         else:
-            # Fallback styled header if logo image file is not found locally
             st.markdown(f"""
                 <div style="text-align: center;">
                     <h1 style="color: {COLOR_PRIMARY}; margin: 0; font-size: 32px;">SIDHARTH</h1>
