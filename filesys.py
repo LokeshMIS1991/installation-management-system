@@ -18,7 +18,7 @@ COLOR_PRIMARY = "#10418A"    # Sidharth Deep Blue
 COLOR_ACCENT = "#00A859"     # Vibrant Green Dot
 COLOR_BG_LIGHT = "#EBF3FA"   # Soft Blue Background Tint
 
-# CSS Injecting targeted directly at st.form elements
+# Apply CSS Inject strictly targeted at st.form
 st.markdown(f"""
     <style>
     /* App background */
@@ -58,7 +58,7 @@ st.markdown(f"""
     }}
 
     /* ==========================================
-       LOGIN FORM & BLUE INPUT OUTLINES
+       PERFECT LOGIN FORM & BLUE INPUT OUTLINES
        ========================================== */
     div[data-testid="stForm"] {{
         background-color: #FFFFFF;
@@ -79,13 +79,13 @@ st.markdown(f"""
         font-weight: 500;
     }}
 
-    /* Username & Password Input Label */
+    /* Username & Password Input Labels */
     div[data-testid="stForm"] .stTextInput label {{
         color: {COLOR_PRIMARY} !important;
         font-weight: 700 !important;
     }}
 
-    /* FORCE BLUE BORDER ON INPUT BOXES */
+    /* BLUE BORDER ON PURE WHITE INPUT BOXES */
     div[data-testid="stForm"] div[data-baseweb="input"] {{
         border: 2px solid {COLOR_PRIMARY} !important;
         border-radius: 8px !important;
@@ -97,13 +97,14 @@ st.markdown(f"""
         box-shadow: 0 0 6px rgba(0, 168, 89, 0.4) !important;
     }}
 
-    /* Checkbox Styling */
+    /* Checkbox Label Styling */
     div[data-testid="stForm"] .stCheckbox label {{
         color: {COLOR_PRIMARY} !important;
         font-weight: 600 !important;
+        font-size: 14px !important;
     }}
 
-    /* EMERALD GREEN SUBMIT BUTTON */
+    /* EMERALD GREEN SUBMIT BUTTON WITH BOLD WHITE TEXT */
     div[data-testid="stFormSubmitButton"] > button {{
         background-color: {COLOR_ACCENT} !important;
         background: {COLOR_ACCENT} !important;
@@ -198,7 +199,7 @@ def update_sheet_row(sheet_name: str, key_col: str, key_val: str, update_dict: d
         return False
 
 # ==========================================
-# 3. AUTHENTICATION (REVERTED TO FORM LAYOUT)
+# 3. AUTHENTICATION (FORM LAYOUT WITH DUAL CHECKBOXES)
 # ==========================================
 if "authenticated_user" not in st.session_state:
     st.session_state.authenticated_user = None
@@ -206,11 +207,14 @@ if "authenticated_user" not in st.session_state:
 if "remembered_username" not in st.session_state:
     st.session_state.remembered_username = ""
 
+if "show_pwd" not in st.session_state:
+    st.session_state.show_pwd = False
+
 if not st.session_state.authenticated_user:
     st.write("##")
     
     with st.form("login_form"):
-        # Logo inside card top
+        # Logo inside top of card
         logo_path = "Company Logo.jpeg"
         if os.path.exists(logo_path):
             st.image(logo_path, use_container_width=True)
@@ -227,12 +231,14 @@ if not st.session_state.authenticated_user:
         # 1. Username
         username_input = st.text_input("Username / Name", value=st.session_state.remembered_username, placeholder="e.g. Admin User or Vishak")
         
-        # 2. Password Field (Contains built-in eye icon toggle natively)
+        # 2. Password Field (Natively masked with builtin eye toggle)
         password_input = st.text_input("Password / PIN", type="password", placeholder="Enter password")
 
-        # 3. Checkboxes placed strictly BELOW Password field
+        # 3. Side-by-Side Checkboxes BELOW Password field
         col_chk1, col_chk2 = st.columns(2)
         with col_chk1:
+            show_pass = st.checkbox("Show Password")
+        with col_chk2:
             remember_me = st.checkbox("Remember Me", value=bool(st.session_state.remembered_username))
 
         submit_button = st.form_submit_button("🔑 LOGIN TO DASHBOARD", use_container_width=True)
