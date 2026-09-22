@@ -14,12 +14,11 @@ st.set_page_config(
     page_icon="⚙️"
 )
 
-# Color Palette derived from Sidharth Shutter & Automation Logo
 COLOR_PRIMARY = "#10418A"    # Sidharth Deep Blue
 COLOR_ACCENT = "#00A859"     # Vibrant Green Dot
 COLOR_BG_LIGHT = "#EBF3FA"   # Soft Blue Background Tint
 
-# Apply Global CSS Inject
+# CSS Injecting targeted directly at st.form elements
 st.markdown(f"""
     <style>
     /* App background */
@@ -42,11 +41,6 @@ st.markdown(f"""
         font-weight: 600 !important;
         transition: all 0.3s ease !important;
     }}
-    .stButton>button:hover {{ 
-        background-color: {COLOR_ACCENT} !important; 
-        color: #FFFFFF !important; 
-        box-shadow: 0 4px 10px rgba(0, 168, 89, 0.3) !important;
-    }}
     
     /* Card Boxes & Dashboard Containers */
     .card-box {{ 
@@ -64,9 +58,9 @@ st.markdown(f"""
     }}
 
     /* ==========================================
-       LOGIN CARD STYLING (PURE WHITE BOXES + BLUE BORDER)
+       LOGIN FORM & BLUE INPUT OUTLINES
        ========================================== */
-    .login-card {{
+    div[data-testid="stForm"] {{
         background-color: #FFFFFF;
         border: 2px solid {COLOR_PRIMARY};
         border-radius: 16px;
@@ -85,37 +79,32 @@ st.markdown(f"""
         font-weight: 500;
     }}
 
-    /* Text Input Field Styling (White Background + Blue Border) */
-    .stTextInput label {{
+    /* Username & Password Input Label */
+    div[data-testid="stForm"] .stTextInput label {{
         color: {COLOR_PRIMARY} !important;
         font-weight: 700 !important;
     }}
-    
-    .stTextInput div[data-baseweb="input"] {{
-        background-color: #FFFFFF !important;
+
+    /* FORCE BLUE BORDER ON INPUT BOXES */
+    div[data-testid="stForm"] div[data-baseweb="input"] {{
         border: 2px solid {COLOR_PRIMARY} !important;
         border-radius: 8px !important;
-    }}
-    
-    .stTextInput input {{
         background-color: #FFFFFF !important;
-        color: #1A1A1A !important;
     }}
     
-    .stTextInput div[data-baseweb="input"]:focus-within {{
+    div[data-testid="stForm"] div[data-baseweb="input"]:focus-within {{
         border-color: {COLOR_ACCENT} !important;
         box-shadow: 0 0 6px rgba(0, 168, 89, 0.4) !important;
     }}
 
-    /* Checkbox Label Styling */
-    .stCheckbox label {{
+    /* Checkbox Styling */
+    div[data-testid="stForm"] .stCheckbox label {{
         color: {COLOR_PRIMARY} !important;
         font-weight: 600 !important;
-        font-size: 14px !important;
     }}
 
-    /* FORCE EMERALD GREEN BUTTON WITH WHITE TEXT ON LOGIN FORM */
-    .login-btn-container button {{
+    /* EMERALD GREEN SUBMIT BUTTON */
+    div[data-testid="stFormSubmitButton"] > button {{
         background-color: {COLOR_ACCENT} !important;
         background: {COLOR_ACCENT} !important;
         color: #FFFFFF !important;
@@ -129,12 +118,12 @@ st.markdown(f"""
         box-shadow: 0 4px 12px rgba(0, 168, 89, 0.35) !important;
     }}
 
-    .login-btn-container button * {{
+    div[data-testid="stFormSubmitButton"] > button * {{
         color: #FFFFFF !important;
         font-weight: 700 !important;
     }}
 
-    .login-btn-container button:hover {{
+    div[data-testid="stFormSubmitButton"] > button:hover {{
         background-color: #008747 !important;
         background: #008747 !important;
         color: #FFFFFF !important;
@@ -153,7 +142,6 @@ SCOPES = [
 
 @st.cache_resource
 def get_gspread_client():
-    """Authenticate with Google Sheets API using Streamlit secrets."""
     credentials = Credentials.from_service_account_info(
         st.secrets["gcp_service_account"],
         scopes=SCOPES
@@ -166,7 +154,6 @@ def get_workbook():
     return client.open_by_url(sheet_url)
 
 def read_sheet(sheet_name: str) -> pd.DataFrame:
-    """Reads a tab from the live Google Sheet and returns a DataFrame."""
     try:
         wb = get_workbook()
         sheet = wb.worksheet(sheet_name)
@@ -177,38 +164,30 @@ def read_sheet(sheet_name: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 def append_to_sheet(sheet_name: str, row_data_dict: dict):
-    """Appends a row into the specified tab in Google Sheets."""
     try:
         wb = get_workbook()
         sheet = wb.worksheet(sheet_name)
         headers = sheet.row_values(1)
-        
         if not headers:
             headers = list(row_data_dict.keys())
             sheet.append_row(headers)
-            
         row_values = [str(row_data_dict.get(h, "")) for h in headers]
         sheet.append_row(row_values)
     except Exception as e:
         st.error(f"Error writing to tab '{sheet_name}': {e}")
 
 def update_sheet_row(sheet_name: str, key_col: str, key_val: str, update_dict: dict) -> bool:
-    """Updates specific cell values in a matching row in Google Sheets."""
     try:
         wb = get_workbook()
         sheet = wb.worksheet(sheet_name)
         df = pd.DataFrame(sheet.get_all_records())
-        
         if df.empty or key_col not in df.columns:
             return False
-            
         match_idx = df[df[key_col].astype(str) == str(key_val)].index
         if match_idx.empty:
             return False
-            
-        row_num = match_idx[0] + 2  # 1-indexed + header row
+        row_num = match_idx[0] + 2
         headers = sheet.row_values(1)
-
         for col_name, new_val in update_dict.items():
             if col_name in headers:
                 col_num = headers.index(col_name) + 1
@@ -219,7 +198,7 @@ def update_sheet_row(sheet_name: str, key_col: str, key_val: str, update_dict: d
         return False
 
 # ==========================================
-# 3. AUTHENTICATION (CENTERED LOGO CARD LOGIN)
+# 3. AUTHENTICATION (REVERTED TO FORM LAYOUT)
 # ==========================================
 if "authenticated_user" not in st.session_state:
     st.session_state.authenticated_user = None
@@ -230,13 +209,8 @@ if "remembered_username" not in st.session_state:
 if not st.session_state.authenticated_user:
     st.write("##")
     
-    # Outer layout container
-    col_l, col_main, col_r = st.columns([1, 2, 1])
-    
-    with col_main:
-        st.markdown('<div class="login-card">', unsafe_allow_html=True)
-        
-        # Display Logo Image directly at top of card
+    with st.form("login_form"):
+        # Logo inside card top
         logo_path = "Company Logo.jpeg"
         if os.path.exists(logo_path):
             st.image(logo_path, use_container_width=True)
@@ -250,24 +224,18 @@ if not st.session_state.authenticated_user:
 
         st.markdown('<div class="login-caption">Enterprise Operations & Field Portal</div>', unsafe_allow_html=True)
 
-        # Pre-fill username if "Remember Me" was toggled
-        username_input = st.text_input("Username / Name", value=st.session_state.remembered_username, placeholder="e.g. Admin User or Vishak", key="login_user")
+        # 1. Username
+        username_input = st.text_input("Username / Name", value=st.session_state.remembered_username, placeholder="e.g. Admin User or Vishak")
         
-        # Checkbox Row: Show Password + Remember Me
+        # 2. Password Field (Contains built-in eye icon toggle natively)
+        password_input = st.text_input("Password / PIN", type="password", placeholder="Enter password")
+
+        # 3. Checkboxes placed strictly BELOW Password field
         col_chk1, col_chk2 = st.columns(2)
         with col_chk1:
-            show_password = st.checkbox("Show Password", value=False)
-        with col_chk2:
             remember_me = st.checkbox("Remember Me", value=bool(st.session_state.remembered_username))
 
-        # Dynamic Password Field Type (toggles between dots and visible text)
-        pwd_type = "default" if show_password else "password"
-        password_input = st.text_input("Password / PIN", type=pwd_type, placeholder="Enter password", key="login_pwd")
-
-        # Submit Button
-        st.markdown('<div class="login-btn-container">', unsafe_allow_html=True)
-        submit_button = st.button("🔑 LOGIN TO DASHBOARD", use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+        submit_button = st.form_submit_button("🔑 LOGIN TO DASHBOARD", use_container_width=True)
 
         if submit_button:
             if not username_input or not password_input:
@@ -291,9 +259,6 @@ if not st.session_state.authenticated_user:
                         st.error("Invalid Username or Password.")
                 else:
                     st.error("Unable to load user database. Verify Google Sheets setup.")
-                    
-        st.markdown('</div>', unsafe_allow_html=True)
-        
     st.stop()
 
 # ==========================================
@@ -304,7 +269,6 @@ user_name = user.get("name", "User")
 user_role = user.get("role", "Worker")
 user_base_location = user.get("base_location", "Jaipur")
 
-# Render Sidebar Branding
 logo_path = "Company Logo.jpeg"
 if os.path.exists(logo_path):
     st.sidebar.image(logo_path, use_container_width=True)
@@ -323,7 +287,6 @@ if st.sidebar.button("🚪 Logout", use_container_width=True):
 
 st.sidebar.divider()
 
-# Navigation Mapping based on Google Sheets User Role
 STATUS_OPTIONS = ["In Progress", "Completed", "On Hold", "Pending Inspection"]
 
 if user_role in ["Admin", "Supervisor"]:
@@ -362,7 +325,6 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
     site_info = df_sites[df_sites["installation_id"] == selected_site_id].iloc[0]
     site_city = site_info.get("site_city", "Jaipur")
 
-    # Dynamic TA/DA Travel Calculation
     target_base = user_base_location
     if is_crew_log:
         df_w = read_sheet("Workers_Master")
@@ -419,7 +381,6 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 # 6. MODULE IMPLEMENTATIONS
 # ==========================================
 
-# --- ACTIVE TASKS DASHBOARD ---
 if menu == "Active Tasks Dashboard":
     st.header("📋 Active Tasks Dashboard")
     df_tasks = read_sheet("Task_Assignments")
@@ -443,7 +404,6 @@ if menu == "Active Tasks Dashboard":
 
         st.dataframe(filtered_tasks, use_container_width=True)
 
-# --- HANDOVER DATE DASHBOARD ---
 elif menu == "Handover Date Dashboard":
     st.header("📅 Site Handover Date Dashboard")
     df_sites = read_sheet("Sites_Master")
@@ -468,7 +428,6 @@ elif menu == "Handover Date Dashboard":
                 </div>
             """, unsafe_allow_html=True)
 
-# --- NEW INSTALLATION ORDER ---
 elif menu == "New Installation Order":
     st.header("🆕 Create New Installation Order")
     with st.form("new_order_form"):
@@ -499,12 +458,10 @@ elif menu == "New Installation Order":
                 append_to_sheet("Sites_Master", new_site)
                 st.success(f"Installation Order **{inst_id}** recorded in Google Sheets!")
 
-# --- LOG DAILY TASKS ---
 elif menu == "Log Daily Tasks":
     st.header(f"📝 Log Daily Tasks - {user_name}")
     render_restricted_work_input(target_worker_name=user_name, is_crew_log=False)
 
-# --- TEAM HEAD DASHBOARD ---
 elif menu == "Team Head Dashboard":
     st.header("👥 Dual-Tab Team Head Dashboard")
     tab_personal, tab_crew = st.tabs(["👤 Personal Work Log", "👨‍🔧 Crew Task Logging"])
@@ -525,7 +482,6 @@ elif menu == "Team Head Dashboard":
             st.divider()
             render_restricted_work_input(target_worker_name=selected_crew, is_crew_log=True)
 
-# --- VIEW LOGS & UPDATE STATUS ---
 elif menu == "View Logs & Update Status":
     st.header("🔍 View Daily Logs & Update Status")
     df_sites = read_sheet("Sites_Master")
@@ -575,7 +531,6 @@ elif menu == "View Logs & Update Status":
                     st.write(f"**Travel Day (TA/DA):** {l.get('is_travel_day')}")
                     st.write(f"**Remarks:** {l.get('site_remarks', 'None')}")
 
-# --- MASTER DATABASE ---
 elif menu == "Master Database":
     st.header("🗄️ Live Google Sheets Database")
     m_tab1, m_tab2, m_tab3, m_tab4 = st.tabs(["Workers Master", "Sites Master", "Task Assignments", "Worker Daily Logs"])
