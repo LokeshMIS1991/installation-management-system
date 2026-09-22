@@ -17,8 +17,9 @@ st.set_page_config(
 COLOR_PRIMARY = "#10418A"    # Sidharth Deep Blue
 COLOR_ACCENT = "#00A859"     # Vibrant Green Dot
 COLOR_BG_LIGHT = "#EBF3FA"   # Soft Blue Background Tint
+COLOR_DANGER = "#D32F2F"     # Logout Red Accent
 
-# Apply CSS Inject strictly targeted at st.form
+# Apply CSS Inject strictly targeted at UI elements
 st.markdown(f"""
     <style>
     /* App background */
@@ -51,14 +52,58 @@ st.markdown(f"""
         margin-bottom: 15px; 
         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
     }}
+
+    .kpi-card {{
+        background-color: #FFFFFF;
+        border: 2px solid {COLOR_PRIMARY};
+        border-radius: 10px;
+        padding: 15px;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }}
+
+    .kpi-number {{
+        font-size: 28px;
+        font-weight: bold;
+        color: {COLOR_PRIMARY};
+    }}
+
+    .kpi-label {{
+        font-size: 13px;
+        color: #6C757D;
+        font-weight: 600;
+    }}
     
     /* Sidebar Styling */
     section[data-testid="stSidebar"] {{
         background-color: #EBF1F8;
     }}
 
+    /* Sidebar Logout Button Styling (Matches Login Button Quality) */
+    .sidebar-logout-container button {{
+        background-color: {COLOR_DANGER} !important;
+        background: {COLOR_DANGER} !important;
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+        border-radius: 8px !important;
+        padding: 10px 0px !important;
+        font-size: 15px !important;
+        border: none !important;
+        width: 100% !important;
+        margin-top: 20px !important;
+        box-shadow: 0 4px 10px rgba(211, 47, 47, 0.3) !important;
+    }}
+    .sidebar-logout-container button * {{
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+    }}
+    .sidebar-logout-container button:hover {{
+        background-color: #B71C1C !important;
+        box-shadow: 0 6px 14px rgba(211, 47, 47, 0.45) !important;
+    }}
+
     /* ==========================================
-       PERFECT LOGIN FORM & BLUE INPUT OUTLINES
+       LOGIN FORM & BLUE INPUT OUTLINES
        ========================================== */
     div[data-testid="stForm"] {{
         background-color: #FFFFFF;
@@ -97,14 +142,13 @@ st.markdown(f"""
         box-shadow: 0 0 6px rgba(0, 168, 89, 0.4) !important;
     }}
 
-    /* Checkbox Label Styling */
+    /* Checkbox Styling */
     div[data-testid="stForm"] .stCheckbox label {{
         color: {COLOR_PRIMARY} !important;
         font-weight: 600 !important;
-        font-size: 14px !important;
     }}
 
-    /* EMERALD GREEN SUBMIT BUTTON WITH BOLD WHITE TEXT */
+    /* EMERALD GREEN SUBMIT BUTTON */
     div[data-testid="stFormSubmitButton"] > button {{
         background-color: {COLOR_ACCENT} !important;
         background: {COLOR_ACCENT} !important;
@@ -199,7 +243,7 @@ def update_sheet_row(sheet_name: str, key_col: str, key_val: str, update_dict: d
         return False
 
 # ==========================================
-# 3. AUTHENTICATION (FORM LAYOUT WITH DUAL CHECKBOXES)
+# 3. AUTHENTICATION (FORM LAYOUT)
 # ==========================================
 if "authenticated_user" not in st.session_state:
     st.session_state.authenticated_user = None
@@ -207,14 +251,10 @@ if "authenticated_user" not in st.session_state:
 if "remembered_username" not in st.session_state:
     st.session_state.remembered_username = ""
 
-if "show_pwd" not in st.session_state:
-    st.session_state.show_pwd = False
-
 if not st.session_state.authenticated_user:
     st.write("##")
     
     with st.form("login_form"):
-        # Logo inside top of card
         logo_path = "Company Logo.jpeg"
         if os.path.exists(logo_path):
             st.image(logo_path, use_container_width=True)
@@ -228,13 +268,9 @@ if not st.session_state.authenticated_user:
 
         st.markdown('<div class="login-caption">Enterprise Operations & Field Portal</div>', unsafe_allow_html=True)
 
-        # 1. Username
         username_input = st.text_input("Username / Name", value=st.session_state.remembered_username, placeholder="e.g. Admin User or Vishak")
-        
-        # 2. Password Field (Natively masked with builtin eye toggle)
         password_input = st.text_input("Password / PIN", type="password", placeholder="Enter password")
 
-        # 3. Side-by-Side Checkboxes BELOW Password field
         col_chk1, col_chk2 = st.columns(2)
         with col_chk1:
             show_pass = st.checkbox("Show Password")
@@ -286,16 +322,21 @@ else:
         </div>
     """, unsafe_allow_html=True)
 
-st.sidebar.markdown(f"**Active User:** {user_name} (`{user_role}`)  \n**Base Location:** {user_base_location}")
-if st.sidebar.button("🚪 Logout", use_container_width=True):
-    st.session_state.authenticated_user = None
-    st.rerun()
-
+st.sidebar.markdown(f"**Active User:** {user_name} (`{user_role}`)  \n**Base Station:** {user_base_location}")
 st.sidebar.divider()
 
+# Navigation Mapping based on Google Sheets User Role
 STATUS_OPTIONS = ["In Progress", "Completed", "On Hold", "Pending Inspection"]
 
-if user_role in ["Admin", "Supervisor"]:
+if user_role == "Admin":
+    menu_options = [
+        "Admin Analytics Dashboard", 
+        "User Management", 
+        "TA/DA Payroll & Travel Summary", 
+        "Advanced Field Logs Inspector", 
+        "Master Database"
+    ]
+elif user_role == "Supervisor":
     menu_options = [
         "Active Tasks Dashboard", 
         "Handover Date Dashboard", 
@@ -310,8 +351,16 @@ else:
 
 menu = st.sidebar.radio("Navigation Menu", menu_options)
 
+# Shifted Logout Button Below Navigation Menu
+st.sidebar.divider()
+st.sidebar.markdown('<div class="sidebar-logout-container">', unsafe_allow_html=True)
+if st.sidebar.button("🚪 LOG OUT", use_container_width=True):
+    st.session_state.authenticated_user = None
+    st.rerun()
+st.sidebar.markdown('</div>', unsafe_allow_html=True)
+
 # ==========================================
-# 5. RESTRICTED LOGGING FORM HELPER
+# 5. RESTRICTED LOGGING FORM HELPER (SUPERVISOR/WORKER)
 # ==========================================
 def render_restricted_work_input(target_worker_name, is_crew_log=False):
     df_sites = read_sheet("Sites_Master")
@@ -384,10 +433,195 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
         st.rerun()
 
 # ==========================================
-# 6. MODULE IMPLEMENTATIONS
+# 6. ADMIN & MODULE IMPLEMENTATIONS
 # ==========================================
 
-if menu == "Active Tasks Dashboard":
+# --- ADMIN ANALYTICS DASHBOARD ---
+if menu == "Admin Analytics Dashboard":
+    st.header("📊 Admin Operations Dashboard")
+    df_logs = read_sheet("Worker_Daily_Logs")
+    df_workers = read_sheet("Workers_Master")
+    df_sites = read_sheet("Sites_Master")
+
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    with kpi1:
+        st.markdown(f'<div class="kpi-card"><div class="kpi-number">{len(df_workers)}</div><div class="kpi-label">Active Team Members</div></div>', unsafe_allow_html=True)
+    with kpi2:
+        st.markdown(f'<div class="kpi-card"><div class="kpi-number">{len(df_sites)}</div><div class="kpi-label">Total Installation Sites</div></div>', unsafe_allow_html=True)
+    with kpi3:
+        tot_hrs = df_logs["hours_spent"].sum() if not df_logs.empty and "hours_spent" in df_logs.columns else 0
+        st.markdown(f'<div class="kpi-card"><div class="kpi-number">{tot_hrs} hrs</div><div class="kpi-label">Total Field Hours Logged</div></div>', unsafe_allow_html=True)
+    with kpi4:
+        trv_days = len(df_logs[df_logs["is_travel_day"] == "Yes"]) if not df_logs.empty and "is_travel_day" in df_logs.columns else 0
+        st.markdown(f'<div class="kpi-card"><div class="kpi-number">{trv_days} Days</div><div class="kpi-label">TA/DA Travel Days Claims</div></div>', unsafe_allow_html=True)
+
+    st.write("##")
+    col_chart1, col_chart2 = st.columns(2)
+    with col_chart1:
+        st.subheader("Field Hours per Worker")
+        if not df_logs.empty and "worker_name" in df_logs.columns:
+            hrs_df = df_logs.groupby("worker_name")["hours_spent"].sum().reset_index()
+            st.bar_chart(hrs_df.set_index("worker_name"))
+        else:
+            st.info("No work logs available for charts.")
+
+    with col_chart2:
+        st.subheader("Site Status Distribution")
+        if not df_sites.empty and "status" in df_sites.columns:
+            st_counts = df_sites["status"].value_counts()
+            st.bar_chart(st_counts)
+        else:
+            st.info("No site status data available.")
+
+# --- USER MANAGEMENT ---
+elif menu == "User Management":
+    st.header("👥 User & Access Management")
+    df_workers = read_sheet("Workers_Master")
+
+    tab_add, tab_edit = st.tabs(["➕ Add New Team Member", "✏️ Edit Existing User & Role"])
+
+    with tab_add:
+        st.subheader("Add Worker / Supervisor to System")
+        with st.form("add_user_form"):
+            c1, c2 = st.columns(2)
+            with c1:
+                new_w_id = st.text_input("Worker ID", value=f"W{len(df_workers)+1:03d}")
+                new_name = st.text_input("Full Name")
+                new_pin = st.text_input("4-Digit PIN / Password", type="password")
+            with c2:
+                new_role = st.selectbox("System Role", ["Worker", "Supervisor", "Admin"])
+                new_base = st.text_input("Base Station / City", value="Jaipur")
+
+            submit_new_user = st.form_submit_button("Create User & Sync to Google Sheets", type="primary")
+            if submit_new_user:
+                if not new_name or not new_pin:
+                    st.error("Please enter Full Name and PIN.")
+                else:
+                    user_dict = {
+                        "worker_id": new_w_id,
+                        "name": new_name,
+                        "pin": str(new_pin),
+                        "role": new_role,
+                        "base_location": new_base
+                    }
+                    append_to_sheet("Workers_Master", user_dict)
+                    st.success(f"User **{new_name}** successfully added!")
+                    st.rerun()
+
+    with tab_edit:
+        st.subheader("Update User Profile, Role & PIN")
+        if df_workers.empty or "name" not in df_workers.columns:
+            st.info("No users available in Workers_Master.")
+        else:
+            selected_edit_user = st.selectbox("Select User to Edit", df_workers["name"].tolist())
+            user_data = df_workers[df_workers["name"] == selected_edit_user].iloc[0]
+
+            with st.form("edit_user_form"):
+                e_col1, e_col2 = st.columns(2)
+                with e_col1:
+                    e_role = st.selectbox("Update Role", ["Worker", "Supervisor", "Admin"], index=["Worker", "Supervisor", "Admin"].index(user_data.get("role", "Worker")))
+                    e_pin = st.text_input("Update PIN", value=str(user_data.get("pin", "")))
+                with e_col2:
+                    e_base = st.text_input("Update Base Location", value=str(user_data.get("base_location", "Jaipur")))
+
+                submit_edit = st.form_submit_button("Update Profile in Google Sheets", type="primary")
+                if submit_edit:
+                    updates = {
+                        "role": e_role,
+                        "pin": e_pin,
+                        "base_location": e_base
+                    }
+                    update_sheet_row("Workers_Master", "name", selected_edit_user, updates)
+                    st.success(f"Updated **{selected_edit_user}** successfully!")
+                    st.rerun()
+
+# --- TA/DA PAYROLL & TRAVEL SUMMARY ---
+elif menu == "TA/DA Payroll & Travel Summary":
+    st.header("✈️ TA/DA Travel Allowance & Payroll Report")
+    st.caption("Automated calculation aggregating travel days (Base Location ≠ Site Location)")
+
+    df_logs = read_sheet("Worker_Daily_Logs")
+
+    if df_logs.empty or "is_travel_day" not in df_logs.columns:
+        st.info("No travel log records found.")
+    else:
+        travel_logs = df_logs[df_logs["is_travel_day"] == "Yes"]
+
+        if travel_logs.empty:
+            st.warning("No travel days logged yet across any project site.")
+        else:
+            # Summary Table Grouped by Worker
+            st.subheader("Travel Days Summary by Worker")
+            summary_df = travel_logs.groupby(["worker_name", "base_location"]).agg(
+                total_travel_days=("is_travel_day", "count"),
+                total_hours_worked=("hours_spent", "sum")
+            ).reset_index()
+
+            # Dynamic Allowance Rate Multiplier
+            col_rate, _ = st.columns([1, 2])
+            with col_rate:
+                ta_rate = st.number_input("Daily TA/DA Allowance Rate (₹)", value=500, step=50)
+
+            summary_df["Estimated Allowance (₹)"] = summary_df["total_travel_days"] * ta_rate
+            st.dataframe(summary_df, use_container_width=True)
+
+            st.divider()
+            st.subheader("Detailed Travel Log Records")
+            st.dataframe(travel_logs[["log_id", "logged_date", "worker_name", "base_location", "site_city", "task_name", "hours_spent", "site_remarks"]], use_container_width=True)
+
+            # CSV Export Button for Payroll
+            csv_payroll = summary_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Export TA/DA Payroll Report (CSV)",
+                data=csv_payroll,
+                file_name=f"TADA_Payroll_Report_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            )
+
+# --- ADVANCED FIELD LOGS INSPECTOR ---
+elif menu == "Advanced Field Logs Inspector":
+    st.header("🔍 Advanced Field Log Inspector & Exporter")
+    df_logs = read_sheet("Worker_Daily_Logs")
+
+    if df_logs.empty:
+        st.info("No field logs recorded in Google Sheets.")
+    else:
+        # Multi-filter row
+        f_col1, f_col2, f_col3 = st.columns(3)
+        with f_col1:
+            worker_list = ["All Workers"] + df_logs["worker_name"].unique().tolist()
+            filter_worker = st.selectbox("Filter by Worker", worker_list)
+        with f_col2:
+            site_list = ["All Sites"] + df_logs["installation_id"].unique().tolist()
+            filter_site = st.selectbox("Filter by Site ID", site_list)
+        with f_col3:
+            travel_filter = st.selectbox("Filter by Travel Day", ["All Logs", "Travel Days Only (Yes)", "Local Days Only (No)"])
+
+        # Apply Filtering
+        filtered_df = df_logs.copy()
+        if filter_worker != "All Workers":
+            filtered_df = filtered_df[filtered_df["worker_name"] == filter_worker]
+        if filter_site != "All Sites":
+            filtered_df = filtered_df[filtered_df["installation_id"] == filter_site]
+        if travel_filter == "Travel Days Only (Yes)":
+            filtered_df = filtered_df[filtered_df["is_travel_day"] == "Yes"]
+        elif travel_filter == "Local Days Only (No)":
+            filtered_df = filtered_df[filtered_df["is_travel_day"] == "No"]
+
+        st.subheader(f"Matching Records ({len(filtered_df)} entries)")
+        st.dataframe(filtered_df, use_container_width=True)
+
+        # Export Button
+        csv_logs = filtered_df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📥 Export Filtered Logs to CSV",
+            data=csv_logs,
+            file_name=f"Filtered_Field_Logs_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv"
+        )
+
+# --- SUPERVISOR / WORKER MODULES ---
+elif menu == "Active Tasks Dashboard":
     st.header("📋 Active Tasks Dashboard")
     df_tasks = read_sheet("Task_Assignments")
     df_sites = read_sheet("Sites_Master")
@@ -537,6 +771,7 @@ elif menu == "View Logs & Update Status":
                     st.write(f"**Travel Day (TA/DA):** {l.get('is_travel_day')}")
                     st.write(f"**Remarks:** {l.get('site_remarks', 'None')}")
 
+# --- MASTER DATABASE (AVAILABLE TO ADMIN & SUPERVISOR) ---
 elif menu == "Master Database":
     st.header("🗄️ Live Google Sheets Database")
     m_tab1, m_tab2, m_tab3, m_tab4 = st.tabs(["Workers Master", "Sites Master", "Task Assignments", "Worker Daily Logs"])
