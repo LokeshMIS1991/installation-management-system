@@ -4,6 +4,8 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
+import streamlit as st
+import plotly.express as px
 
 # ==========================================
 # 0. OFFICIAL PRODUCT CATALOGUE DATA
@@ -760,6 +762,48 @@ elif menu == "Advanced Field Logs Inspector":
             mime="text/csv"
         )
 
+# Admin : Worker Dashboard
+def render_employee_analytics(df_logs, df_workers):
+    st.title("👤 Employee Analytics & Performance Report")
+    
+    # 1. Employee Selection Dropdown
+    worker_list = df_workers['name'].tolist()
+    selected_worker = st.selectbox("Select Employee:", worker_list, index=worker_list.index("Parvesh Kumar") if "Parvesh Kumar" in worker_list else 0)
+    
+    # Filter Data for Selected Worker
+    worker_logs = df_logs[df_logs['worker_name'] == selected_worker]
+    
+    # 2. Filtering Options
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        selected_site = st.multiselect("Filter by Site:", options=worker_logs['installation_id'].unique())
+    with col_f2:
+        date_range = st.date_input("Select Date Range:", [])
+        
+    if selected_site:
+        worker_logs = worker_logs[worker_logs['installation_id'].isin(selected_site)]
+
+    # 3. KPI Summary
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Hours Logged", f"{worker_logs['hours_spent'].sum()} hrs")
+    c2.metric("Sites Worked", worker_logs['installation_id'].nunique())
+    c3.metric("Travel Days", worker_logs[worker_logs['is_travel_day'] == 'Yes'].shape[0])
+
+    # 4. Interactive Graphs
+    st.subheader(f"📊 Work Trend: {selected_worker}")
+    fig = px.bar(
+        worker_logs, 
+        x='logged_date', 
+        y='hours_spent', 
+        color='installation_id',
+        title="Daily Logged Hours per Site"
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # 5. Data Table
+    st.subheader("📋 Detailed Task Logs")
+    st.dataframe(worker_logs[['logged_date', 'installation_id', 'task_name', 'hours_spent', 'site_remarks']])
+    
 # --- SUPERVISOR: ACTIVE TASKS ---
 elif menu == "Active Tasks Dashboard":
     st.header("📋 Active Tasks Dashboard")
