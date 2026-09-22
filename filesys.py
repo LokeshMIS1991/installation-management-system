@@ -15,10 +15,10 @@ st.set_page_config(
 )
 
 COLOR_PRIMARY = "#10418A"    # Sidharth Deep Blue
-COLOR_ACCENT = "#00A859"     # Vibrant Green (Same as Login Page)
+COLOR_ACCENT = "#00A859"     # Vibrant Green
 COLOR_BG_LIGHT = "#EBF3FA"   # Soft Blue Background Tint
 
-# Apply CSS Inject strictly targeted at UI elements
+# Apply High-Specificity Global CSS Inject
 st.markdown(f"""
     <style>
     /* App background */
@@ -36,10 +36,15 @@ st.markdown(f"""
     .stButton>button {{ 
         background-color: {COLOR_PRIMARY} !important; 
         color: #FFFFFF !important; 
-        border-radius: 6px !important;
+        border-radius: 8px !important;
         border: none !important;
         font-weight: 600 !important;
         transition: all 0.3s ease !important;
+    }}
+    .stButton>button:hover {{ 
+        background-color: {COLOR_ACCENT} !important; 
+        color: #FFFFFF !important; 
+        box-shadow: 0 4px 12px rgba(0, 168, 89, 0.35) !important;
     }}
     
     /* Card Boxes & Dashboard Containers */
@@ -74,13 +79,12 @@ st.markdown(f"""
     }}
     
     /* ==========================================
-       SIDEBAR COMPACTION & GREEN LOGOUT BUTTON FIX
+       SIDEBAR COMPACTION & GREEN LOGOUT BUTTON
        ========================================== */
     section[data-testid="stSidebar"] {{
         background-color: #EBF1F8;
     }}
 
-    /* Compact Sidebar Elements & Reduce Gaps */
     section[data-testid="stSidebar"] .block-container {{
         padding-top: 1.5rem !important;
         padding-bottom: 1.5rem !important;
@@ -101,7 +105,6 @@ st.markdown(f"""
         gap: 4px !important;
     }}
 
-    /* DIRECT TARGET FOR LOGOUT BUTTON IN SIDEBAR - MATCHES LOGIN GREEN */
     section[data-testid="stSidebar"] div.stButton > button {{
         background-color: {COLOR_ACCENT} !important;
         background: {COLOR_ACCENT} !important;
@@ -129,16 +132,61 @@ st.markdown(f"""
     }}
 
     /* ==========================================
-       LOGIN FORM & BLUE INPUT OUTLINES
+       GLOBAL INPUT & FORM STYLING FIX
        ========================================== */
+    /* All Text Inputs & Selectboxes inside Forms */
+    div[data-testid="stForm"] div[data-baseweb="input"],
+    div[data-testid="stForm"] div[data-baseweb="select"] > div {{
+        border: 2px solid {COLOR_PRIMARY} !important;
+        border-radius: 8px !important;
+        background-color: #FFFFFF !important;
+    }}
+
+    div[data-testid="stForm"] label {{
+        color: {COLOR_PRIMARY} !important;
+        font-weight: 700 !important;
+    }}
+
+    /* Container Box for Inner Admin Forms */
     div[data-testid="stForm"] {{
         background-color: #FFFFFF;
         border: 2px solid {COLOR_PRIMARY};
         border-radius: 16px;
-        padding: 30px 25px;
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
-        max-width: 480px;
-        margin: 0 auto;
+        padding: 28px 24px;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
+    }}
+
+    /* Form Submit Button Refinement (Fixes Text Truncation & Sizing) */
+    div[data-testid="stFormSubmitButton"] > button {{
+        background-color: {COLOR_ACCENT} !important;
+        background: {COLOR_ACCENT} !important;
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+        border-radius: 8px !important;
+        padding: 12px 20px !important;
+        font-size: 15px !important;
+        border: none !important;
+        width: 100% !important;
+        min-height: 48px !important;
+        margin-top: 15px !important;
+        box-shadow: 0 4px 12px rgba(0, 168, 89, 0.3) !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }}
+
+    div[data-testid="stFormSubmitButton"] > button * {{
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+        font-size: 15px !important;
+        white-space: nowrap !important;
+    }}
+
+    div[data-testid="stFormSubmitButton"] > button:hover {{
+        background-color: #008747 !important;
+        background: #008747 !important;
+        color: #FFFFFF !important;
+        box-shadow: 0 6px 15px rgba(0, 168, 89, 0.45) !important;
     }}
 
     .login-caption {{
@@ -148,53 +196,6 @@ st.markdown(f"""
         margin-top: 10px;
         margin-bottom: 20px;
         font-weight: 500;
-    }}
-
-    div[data-testid="stForm"] .stTextInput label {{
-        color: {COLOR_PRIMARY} !important;
-        font-weight: 700 !important;
-    }}
-
-    div[data-testid="stForm"] div[data-baseweb="input"] {{
-        border: 2px solid {COLOR_PRIMARY} !important;
-        border-radius: 8px !important;
-        background-color: #FFFFFF !important;
-    }}
-    
-    div[data-testid="stForm"] div[data-baseweb="input"]:focus-within {{
-        border-color: {COLOR_ACCENT} !important;
-        box-shadow: 0 0 6px rgba(0, 168, 89, 0.4) !important;
-    }}
-
-    div[data-testid="stForm"] .stCheckbox label {{
-        color: {COLOR_PRIMARY} !important;
-        font-weight: 600 !important;
-    }}
-
-    div[data-testid="stFormSubmitButton"] > button {{
-        background-color: {COLOR_ACCENT} !important;
-        background: {COLOR_ACCENT} !important;
-        color: #FFFFFF !important;
-        font-weight: 700 !important;
-        border-radius: 8px !important;
-        padding: 12px 0px !important;
-        font-size: 16px !important;
-        border: none !important;
-        width: 100% !important;
-        margin-top: 15px !important;
-        box-shadow: 0 4px 12px rgba(0, 168, 89, 0.35) !important;
-    }}
-
-    div[data-testid="stFormSubmitButton"] > button * {{
-        color: #FFFFFF !important;
-        font-weight: 700 !important;
-    }}
-
-    div[data-testid="stFormSubmitButton"] > button:hover {{
-        background-color: #008747 !important;
-        background: #008747 !important;
-        color: #FFFFFF !important;
-        box-shadow: 0 6px 15px rgba(0, 168, 89, 0.5) !important;
     }}
     </style>
 """, unsafe_allow_html=True)
@@ -276,53 +277,55 @@ if "remembered_username" not in st.session_state:
 if not st.session_state.authenticated_user:
     st.write("##")
     
-    with st.form("login_form"):
-        logo_path = "Company Logo.jpeg"
-        if os.path.exists(logo_path):
-            st.image(logo_path, use_container_width=True)
-        else:
-            st.markdown(f"""
-                <div style="text-align: center;">
-                    <h1 style="color: {COLOR_PRIMARY}; margin: 0; font-size: 32px;">SIDHARTH</h1>
-                    <p style="color: {COLOR_ACCENT}; font-weight: bold; margin: 0; font-size: 14px; letter-spacing: 2px;">SHUTTER & AUTOMATION</p>
-                </div>
-            """, unsafe_allow_html=True)
-
-        st.markdown('<div class="login-caption">Enterprise Operations & Field Portal</div>', unsafe_allow_html=True)
-
-        username_input = st.text_input("Username / Name", value=st.session_state.remembered_username, placeholder="e.g. Admin User or Vishak")
-        password_input = st.text_input("Password / PIN", type="password", placeholder="Enter password")
-
-        col_chk1, col_chk2 = st.columns(2)
-        with col_chk1:
-            show_pass = st.checkbox("Show Password")
-        with col_chk2:
-            remember_me = st.checkbox("Remember Me", value=bool(st.session_state.remembered_username))
-
-        submit_button = st.form_submit_button("🔑 LOGIN TO DASHBOARD", use_container_width=True)
-
-        if submit_button:
-            if not username_input or not password_input:
-                st.error("Please fill in both Username and Password.")
+    col_l, col_center, col_r = st.columns([1, 2, 1])
+    with col_center:
+        with st.form("login_form"):
+            logo_path = "Company Logo.jpeg"
+            if os.path.exists(logo_path):
+                st.image(logo_path, use_container_width=True)
             else:
-                df_workers = read_sheet("Workers_Master")
-                if not df_workers.empty:
-                    user_row = df_workers[
-                        (df_workers["name"].astype(str).str.strip().str.lower() == username_input.strip().lower()) & 
-                        (df_workers["pin"].astype(str) == str(password_input).strip())
-                    ]
-                    if not user_row.empty:
-                        st.session_state.authenticated_user = user_row.iloc[0].to_dict()
-                        if remember_me:
-                            st.session_state.remembered_username = username_input.strip()
-                        else:
-                            st.session_state.remembered_username = ""
-                        st.success("Authentication Successful!")
-                        st.rerun()
-                    else:
-                        st.error("Invalid Username or Password.")
+                st.markdown(f"""
+                    <div style="text-align: center;">
+                        <h1 style="color: {COLOR_PRIMARY}; margin: 0; font-size: 32px;">SIDHARTH</h1>
+                        <p style="color: {COLOR_ACCENT}; font-weight: bold; margin: 0; font-size: 14px; letter-spacing: 2px;">SHUTTER & AUTOMATION</p>
+                    </div>
+                """, unsafe_allow_html=True)
+
+            st.markdown('<div class="login-caption">Enterprise Operations & Field Portal</div>', unsafe_allow_html=True)
+
+            username_input = st.text_input("Username / Name", value=st.session_state.remembered_username, placeholder="e.g. Admin User or Vishak")
+            password_input = st.text_input("Password / PIN", type="password", placeholder="Enter password")
+
+            col_chk1, col_chk2 = st.columns(2)
+            with col_chk1:
+                show_pass = st.checkbox("Show Password")
+            with col_chk2:
+                remember_me = st.checkbox("Remember Me", value=bool(st.session_state.remembered_username))
+
+            submit_button = st.form_submit_button("🔑 LOGIN TO DASHBOARD", use_container_width=True)
+
+            if submit_button:
+                if not username_input or not password_input:
+                    st.error("Please fill in both Username and Password.")
                 else:
-                    st.error("Data Base")
+                    df_workers = read_sheet("Workers_Master")
+                    if not df_workers.empty:
+                        user_row = df_workers[
+                            (df_workers["name"].astype(str).str.strip().str.lower() == username_input.strip().lower()) & 
+                            (df_workers["pin"].astype(str) == str(password_input).strip())
+                        ]
+                        if not user_row.empty:
+                            st.session_state.authenticated_user = user_row.iloc[0].to_dict()
+                            if remember_me:
+                                st.session_state.remembered_username = username_input.strip()
+                            else:
+                                st.session_state.remembered_username = ""
+                            st.success("Authentication Successful!")
+                            st.rerun()
+                        else:
+                            st.error("Invalid Username or Password.")
+                    else:
+                        st.error("Data Base")
     st.stop()
 
 # ==========================================
@@ -500,31 +503,33 @@ elif menu == "User Management":
 
     with tab_add:
         st.subheader("Add Worker / Supervisor to System")
-        with st.form("add_user_form"):
-            c1, c2 = st.columns(2)
-            with c1:
-                new_w_id = st.text_input("Worker ID", value=f"W{len(df_workers)+1:03d}")
-                new_name = st.text_input("Full Name")
-                new_pin = st.text_input("4-Digit PIN / Password", type="password")
-            with c2:
-                new_role = st.selectbox("System Role", ["Worker", "Supervisor", "Admin"])
-                new_base = st.text_input("Base Station / City", value="Jaipur")
+        col_l, col_center, col_r = st.columns([1, 2, 1])
+        with col_center:
+            with st.form("add_user_form"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    new_w_id = st.text_input("Worker ID", value=f"W{len(df_workers)+1:03d}")
+                    new_name = st.text_input("Full Name")
+                    new_pin = st.text_input("4-Digit PIN / Password", type="password")
+                with c2:
+                    new_role = st.selectbox("System Role", ["Worker", "Supervisor", "Admin"])
+                    new_base = st.text_input("Base Station / City", value="Jaipur")
 
-            submit_new_user = st.form_submit_button("Create User & Sync to Data Base", type="primary")
-            if submit_new_user:
-                if not new_name or not new_pin:
-                    st.error("Please enter Full Name and PIN.")
-                else:
-                    user_dict = {
-                        "worker_id": new_w_id,
-                        "name": new_name,
-                        "pin": str(new_pin),
-                        "role": new_role,
-                        "base_location": new_base
-                    }
-                    append_to_sheet("Workers_Master", user_dict)
-                    st.success(f"User **{new_name}** successfully added!")
-                    st.rerun()
+                submit_new_user = st.form_submit_button("Create User & Sync to Data Base", use_container_width=True)
+                if submit_new_user:
+                    if not new_name or not new_pin:
+                        st.error("Please enter Full Name and PIN.")
+                    else:
+                        user_dict = {
+                            "worker_id": new_w_id,
+                            "name": new_name,
+                            "pin": str(new_pin),
+                            "role": new_role,
+                            "base_location": new_base
+                        }
+                        append_to_sheet("Workers_Master", user_dict)
+                        st.success(f"User **{new_name}** successfully added!")
+                        st.rerun()
 
     with tab_edit:
         st.subheader("Update User Profile, Role & PIN")
@@ -534,24 +539,26 @@ elif menu == "User Management":
             selected_edit_user = st.selectbox("Select User to Edit", df_workers["name"].tolist())
             user_data = df_workers[df_workers["name"] == selected_edit_user].iloc[0]
 
-            with st.form("edit_user_form"):
-                e_col1, e_col2 = st.columns(2)
-                with e_col1:
-                    e_role = st.selectbox("Update Role", ["Worker", "Supervisor", "Admin"], index=["Worker", "Supervisor", "Admin"].index(user_data.get("role", "Worker")))
-                    e_pin = st.text_input("Update PIN", value=str(user_data.get("pin", "")))
-                with e_col2:
-                    e_base = st.text_input("Update Base Location", value=str(user_data.get("base_location", "Jaipur")))
+            col_l, col_center, col_r = st.columns([1, 2, 1])
+            with col_center:
+                with st.form("edit_user_form"):
+                    e_col1, e_col2 = st.columns(2)
+                    with e_col1:
+                        e_role = st.selectbox("Update Role", ["Worker", "Supervisor", "Admin"], index=["Worker", "Supervisor", "Admin"].index(user_data.get("role", "Worker")))
+                        e_pin = st.text_input("Update PIN", value=str(user_data.get("pin", "")))
+                    with e_col2:
+                        e_base = st.text_input("Update Base Location", value=str(user_data.get("base_location", "Jaipur")))
 
-                submit_edit = st.form_submit_button("Update Profile in Data Base", type="primary")
-                if submit_edit:
-                    updates = {
-                        "role": e_role,
-                        "pin": e_pin,
-                        "base_location": e_base
-                    }
-                    update_sheet_row("Workers_Master", "name", selected_edit_user, updates)
-                    st.success(f"Updated **{selected_edit_user}** successfully!")
-                    st.rerun()
+                    submit_edit = st.form_submit_button("Update Profile in Data Base", use_container_width=True)
+                    if submit_edit:
+                        updates = {
+                            "role": e_role,
+                            "pin": e_pin,
+                            "base_location": e_base
+                        }
+                        update_sheet_row("Workers_Master", "name", selected_edit_user, updates)
+                        st.success(f"Updated **{selected_edit_user}** successfully!")
+                        st.rerun()
 
 elif menu == "TA/DA Payroll & Travel Summary":
     st.header("✈️ TA/DA Travel Allowance & Payroll Report")
