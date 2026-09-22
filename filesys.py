@@ -6,6 +6,20 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 
 # ==========================================
+# 0. OFFICIAL PRODUCT CATALOGUE DATA
+# ==========================================
+PRODUCT_CATALOG = {
+    "Rolling Shutters": ["Motorized Rolling Shutter", "Gear Rolling Shutter", "Manual Rolling Shutter"],
+    "Dock Leveler": ["Hydraulic Doclevller", "Hydraulic Dock Edge", "Manual Dock Edge"],
+    "Gates": ["Sliding Gate", "Telescopic Gate", "L-Folding Gate", "Swing Gate", "Retractable Gate"],
+    "Doors": ["High Speed Door", "Fire Door", "HMPS Door", "GPD Door", "Overhead Sectional Door"],
+    "Boom Barrier": ["Automatic Traffic Barrier", "Heavy-Duty Traffic Barrier"],
+    "Dock Shelter": ["Retractable Dock Shelter", "Inflatable Dock Shelter"],
+    "Dock Bumper": ["Heavy Rubber Bumper", "Moulded Bumper"],
+    "Other": ["Other"]
+}
+
+# ==========================================
 # 1. PAGE CONFIG & GLOBAL THEME
 # ==========================================
 st.set_page_config(
@@ -32,19 +46,26 @@ st.markdown(f"""
         font-weight: 700 !important; 
     }}
     
-    /* Standard Buttons */
+    /* Standard Buttons (Global Green Override) */
     .stButton>button {{ 
-        background-color: {COLOR_PRIMARY} !important; 
+        background-color: {COLOR_ACCENT} !important; 
+        background: {COLOR_ACCENT} !important; 
         color: #FFFFFF !important; 
         border-radius: 8px !important;
         border: none !important;
-        font-weight: 600 !important;
+        font-weight: 700 !important;
         transition: all 0.3s ease !important;
+        box-shadow: 0 4px 12px rgba(0, 168, 89, 0.3) !important;
+    }}
+    .stButton>button * {{
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
     }}
     .stButton>button:hover {{ 
-        background-color: {COLOR_ACCENT} !important; 
+        background-color: #008747 !important; 
+        background: #008747 !important; 
         color: #FFFFFF !important; 
-        box-shadow: 0 4px 12px rgba(0, 168, 89, 0.35) !important;
+        box-shadow: 0 6px 15px rgba(0, 168, 89, 0.45) !important;
     }}
     
     /* Card Boxes & Dashboard Containers */
@@ -439,7 +460,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 
     site_remarks = st.text_area("Site Remarks / Delays", placeholder="Note any motor issues, power availability, or structural delays...", key=f"rem_{target_worker_name}_{is_crew_log}")
 
-    if st.button(f"💾 Sync Daily Log to Data Base ({target_worker_name})", type="primary", key=f"btn_{target_worker_name}_{is_crew_log}"):
+    if st.button(f"💾 Sync Daily Log to Data Base ({target_worker_name})", key=f"btn_{target_worker_name}_{is_crew_log}"):
         log_id = f"LOG-{datetime.now().strftime('%Y%m%d%H%M%S')}"
         log_entry = {
             "log_id": log_id,
@@ -465,7 +486,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 # 6. MODULE IMPLEMENTATIONS
 # ==========================================
 
-# --- WORKER: MY WORK HISTORY (FULL TRANSPARENCY) ---
+# --- WORKER: MY WORK HISTORY ---
 if menu == "My Work History":
     st.header(f"📜 Work Log History & Audit Trail - {user_name}")
     st.caption("Complete transparency of all logged daily tasks, progress increments, and travel allowances.")
@@ -480,7 +501,6 @@ if menu == "My Work History":
         if my_logs.empty:
             st.info("⚠️ You have not submitted any daily work logs yet.")
         else:
-            # Summary Statistics Cards for Worker Transparency
             tot_my_hrs = my_logs["hours_spent"].sum() if "hours_spent" in my_logs.columns else 0
             tot_my_trv = len(my_logs[my_logs["is_travel_day"] == "Yes"]) if "is_travel_day" in my_logs.columns else 0
             tot_sites = my_logs["installation_id"].nunique() if "installation_id" in my_logs.columns else 0
@@ -495,7 +515,6 @@ if menu == "My Work History":
 
             st.write("##")
             
-            # Interactive Search & Filter Box
             search_query = st.text_input("🔍 Search Logs by Site ID, Task Name, or Date", "")
             
             filtered_logs = my_logs.copy()
@@ -519,7 +538,7 @@ elif menu == "My Profile & Settings":
                 <p style="margin:5px 0;"><b>Role:</b> {user_role}</p>
                 <p style="margin:5px 0;"><b>Worker ID:</b> {user.get('worker_id', 'N/A')}</p>
                 <p style="margin:5px 0;"><b>Base Station:</b> {user_base_location}</p>
-                <p style="margin:5px 0;"><b>Aadhaar No:</b> {user.get('aadhaar_no', 'N/A')}</p>
+                <p style="margin:5px 0;"><b>Aadhaar No:</b> [Aadhaar Redacted]</p>
             </div>
         """, unsafe_allow_html=True)
 
@@ -643,7 +662,7 @@ elif menu == "User Management":
             col_l, col_center, col_r = st.columns([1, 2, 1])
             with col_center:
                 with st.form("edit_user_form"):
-                    st.text_input("Aadhaar Number (Unique ID - Uneditable)", value=str(user_data.get("aadhaar_no", "N/A")), disabled=True)
+                    st.text_input("Aadhaar Number (Unique ID - Uneditable)", value="[Aadhaar Redacted]", disabled=True)
                     e_col1, e_col2 = st.columns(2)
                     with e_col1:
                         e_role = st.selectbox("Update Role", ["Worker", "Supervisor", "Admin"], index=["Worker", "Supervisor", "Admin"].index(user_data.get("role", "Worker")))
@@ -794,13 +813,13 @@ elif menu == "Handover Date Dashboard":
 elif menu == "New Installation Order":
     st.header("Create New Installation Order")
     
-    # Session state initialization for dynamic dynamic team members and products
+    # Session state initialization for dynamic team members and products
     if "team_members_count" not in st.session_state:
         st.session_state.team_members_count = 1
     if "products_count" not in st.session_state:
         st.session_state.products_count = 1
 
-    visit_id = f"INST-2026-F8HLQ"
+    visit_id = "INST-2026-F8HLQ"
     st.info(f"**Automated Visit ID:** {visit_id}")
 
     col_team, col_dates = st.columns(2)
@@ -832,18 +851,31 @@ elif menu == "New Installation Order":
 
     st.divider()
 
-    # 📦 Order Products Details Section
+    # 📦 Order Products Details Section (Dynamic Catalogue Lookup)
     st.markdown("### 📦 Order Products Details")
     
     products_data = []
+    catalog_main_categories = list(PRODUCT_CATALOG.keys())
+
     for p_idx in range(st.session_state.products_count):
         st.markdown(f"#### Product #{p_idx + 1}")
         col_p1, col_p2 = st.columns(2)
         with col_p1:
-            product_type = st.selectbox("Select The Product", ["Rolling Shutters", "Sliding Gates", "Boom Barriers", "Automation Motors"], key=f"prod_type_{p_idx}")
+            product_type = st.selectbox(
+                "Select The Product", 
+                catalog_main_categories, 
+                key=f"prod_type_{p_idx}"
+            )
             dimensions = st.text_input("Dimensions (WxH)", placeholder="e.g., 5330X6000", key=f"prod_dim_{p_idx}")
+        
         with col_p2:
-            sub_category = st.selectbox("Select Sub-Category", ["Manual Rolling Shutter", "Motorized Rolling Shutter", "High Speed Shutter"], key=f"prod_sub_{p_idx}")
+            # Dynamically fetch relevant sub-categories based on product_type selection
+            sub_cat_options = PRODUCT_CATALOG.get(product_type, ["Other"])
+            sub_category = st.selectbox(
+                "Select Sub-Category", 
+                sub_cat_options, 
+                key=f"prod_sub_{p_idx}"
+            )
             quantity = st.number_input("Quantity", min_value=1, value=1, step=1, key=f"prod_qty_{p_idx}")
         
         products_data.append({
@@ -858,7 +890,7 @@ elif menu == "New Installation Order":
         st.rerun()
 
     st.write("##")
-    if st.button("💾 Submit Installation Order", type="primary", use_container_width=True, key="btn_submit_inst_order"):
+    if st.button("💾 Submit Installation Order", use_container_width=True, key="btn_submit_inst_order"):
         if not team_lead_name or not city_name or not site_address:
             st.error("Please fill in all mandatory fields (Team Lead Name, City Name, and Site Address).")
         else:
@@ -876,7 +908,6 @@ elif menu == "New Installation Order":
             }
             append_to_sheet("Sites_Master", order_data)
             st.success(f"Installation Order **{visit_id}** recorded successfully in the database!")
-            # Reset counters
             st.session_state.team_members_count = 1
             st.session_state.products_count = 1
 
@@ -937,7 +968,7 @@ elif menu == "View Logs & Update Status":
         with col_btn:
             st.write(" ")
             st.write(" ")
-            if st.button("Update Status", type="primary"):
+            if st.button("Update Status"):
                 update_sheet_row("Sites_Master", "installation_id", selected_inst, {"status": new_st})
                 st.success(f"Status updated to **{new_st}** in Data Base!")
                 st.rerun()
