@@ -1,5 +1,6 @@
 import os
 import re
+import io
 import streamlit as st
 import pandas as pd
 import gspread
@@ -479,8 +480,84 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 # 6. MODULE IMPLEMENTATIONS
 # ==========================================
 
+# --- SUPERVISOR: ACTIVE TASKS (UPDATED WITH PROGRESS TRACK & CSV EXPORT) ---
+if menu == "Active Tasks Dashboard":
+    st.header("📋 Active Tasks Dashboard")
+    st.caption("Track site installation progress, monitor individual task statuses, and export site reports.")
+
+    df_tasks = read_sheet("Task_Assignments")
+    df_sites = read_sheet("Sites_Master")
+
+    if df_tasks.empty:
+        st.info("⚠️ No Active Tasks Found")
+    else:
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            site_options = ["All Sites"] + (df_sites["installation_id"].tolist() if not df_sites.empty and "installation_id" in df_sites.columns else [])
+            site_filter = st.selectbox("Filter by Site", site_options)
+        with col_f2:
+            status_filter = st.selectbox("Filter by Task Status", ["All Statuses", "In Progress", "Pending", "Completed"])
+
+        filtered_tasks = df_tasks.copy()
+        if site_filter != "All Sites" and "installation_id" in filtered_tasks.columns:
+            filtered_tasks = filtered_tasks[filtered_tasks["installation_id"] == site_filter]
+        if status_filter != "All Statuses" and "status" in filtered_tasks.columns:
+            filtered_tasks = filtered_tasks[filtered_tasks["status"] == status_filter]
+
+        # --- SITE PROGRESS TRACKER & METRICS ---
+        st.write("##")
+        if site_filter != "All Sites":
+            site_task_subset = df_tasks[df_tasks["installation_id"] == site_filter] if "installation_id" in df_tasks.columns else pd.DataFrame()
+            
+            tot_site_tasks = len(site_task_subset)
+            completed_tasks = len(site_task_subset[site_task_subset["status"] == "Completed"]) if "status" in site_task_subset.columns else 0
+            in_prog_tasks = len(site_task_subset[site_task_subset["status"] == "In Progress"]) if "status" in site_task_subset.columns else 0
+            pending_tasks = len(site_task_subset[site_task_subset["status"] == "Pending"]) if "status" in site_task_subset.columns else 0
+            
+            overall_pct = int((completed_tasks / tot_site_tasks) * 100) if tot_site_tasks > 0 else 0
+
+            st.subheader(f"📊 Site Progress Tracker — {site_filter}")
+            st.progress(overall_pct / 100)
+
+            k1, k2, k3, k4 = st.columns(4)
+            with k1:
+                st.markdown(f'<div class="kpi-card"><div class="kpi-number">{overall_pct}%</div><div class="kpi-label">Overall Completion</div></div>', unsafe_allow_html=True)
+            with k2:
+                st.markdown(f'<div class="kpi-card"><div class="kpi-number">{tot_site_tasks}</div><div class="kpi-label">Total Site Tasks</div></div>', unsafe_allow_html=True)
+            with k3:
+                st.markdown(f'<div class="kpi-card"><div class="kpi-number">{in_prog_tasks}</div><div class="kpi-label">In Progress</div></div>', unsafe_allow_html=True)
+            with k4:
+                st.markdown(f'<div class="kpi-card"><div class="kpi-number">{completed_tasks}</div><div class="kpi-label">Completed</div></div>', unsafe_allow_html=True)
+
+            st.divider()
+
+            # --- CSV EXPORT GENERATOR ---
+            metrics_df = pd.DataFrame([{
+                "Site ID": site_filter,
+                "Overall Completion (%)": f"{overall_pct}%",
+                "Total Tasks": tot_site_tasks,
+                "Completed Tasks": completed_tasks,
+                "In Progress Tasks": in_prog_tasks,
+                "Pending Tasks": pending_tasks
+            }])
+
+            csv_buffer = io.StringIO()
+            metrics_df.to_csv(csv_buffer, index=False)
+            csv_buffer.write("\n--- Detailed Task List ---\n")
+            filtered_tasks.to_csv(csv_buffer, index=False)
+
+            st.download_button(
+                label=f"📥 Export {site_filter} Progress Report (CSV)",
+                data=csv_buffer.getvalue(),
+                file_name=f"{site_filter}_Progress_Report_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            )
+
+        st.subheader(f"Task List ({len(filtered_tasks)} Records)")
+        st.dataframe(filtered_tasks, use_container_width=True)
+
 # --- PAGE: EMPLOYEE ANALYTICS & REPORTS ---
-if menu == "Employee Analytics & Reports":
+elif menu == "Employee Analytics & Reports":
     st.header("👤 Employee Deep Dive & Individual Analytics")
     st.caption("Select any worker to isolate their performance, daily progress graphs, and travel logs.")
 
@@ -885,30 +962,6 @@ elif menu == "Advanced Field Logs Inspector":
             file_name=f"Filtered_Field_Logs_{datetime.now().strftime('%Y%m%d')}.csv",
             mime="text/csv"
         )
-
-# --- SUPERVISOR: ACTIVE TASKS ---
-elif menu == "Active Tasks Dashboard":
-    st.header("📋 Active Tasks Dashboard")
-    df_tasks = read_sheet("Task_Assignments")
-    df_sites = read_sheet("Sites_Master")
-
-    if df_tasks.empty:
-        st.info("⚠️ No Active Tasks Found")
-    else:
-        col_f1, col_f2 = st.columns(2)
-        with col_f1:
-            site_options = ["All Sites"] + (df_sites["installation_id"].tolist() if not df_sites.empty and "installation_id" in df_sites.columns else [])
-            site_filter = st.selectbox("Filter by Site", site_options)
-        with col_f2:
-            status_filter = st.selectbox("Filter by Task Status", ["All Statuses", "In Progress", "Pending", "Completed"])
-
-        filtered_tasks = df_tasks.copy()
-        if site_filter != "All Sites" and "installation_id" in filtered_tasks.columns:
-            filtered_tasks = filtered_tasks[filtered_tasks["installation_id"] == site_filter]
-        if status_filter != "All Statuses" and "status" in filtered_tasks.columns:
-            filtered_tasks = filtered_tasks[filtered_tasks["status"] == status_filter]
-
-        st.dataframe(filtered_tasks, use_container_width=True)
 
 # --- SUPERVISOR: HANDOVER DASHBOARD ---
 elif menu == "Handover Date Dashboard":
