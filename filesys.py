@@ -132,9 +132,8 @@ st.markdown(f"""
     }}
 
     /* ==========================================
-       GLOBAL INPUT & FORM STYLING FIX
+       GLOBAL INPUT & FORM STYLING
        ========================================== */
-    /* All Text Inputs & Selectboxes inside Forms */
     div[data-testid="stForm"] div[data-baseweb="input"],
     div[data-testid="stForm"] div[data-baseweb="select"] > div {{
         border: 2px solid {COLOR_PRIMARY} !important;
@@ -147,7 +146,6 @@ st.markdown(f"""
         font-weight: 700 !important;
     }}
 
-    /* Container Box for Inner Admin Forms */
     div[data-testid="stForm"] {{
         background-color: #FFFFFF;
         border: 2px solid {COLOR_PRIMARY};
@@ -156,7 +154,6 @@ st.markdown(f"""
         box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
     }}
 
-    /* Form Submit Button Refinement (Fixes Text Truncation & Sizing) */
     div[data-testid="stFormSubmitButton"] > button {{
         background-color: {COLOR_ACCENT} !important;
         background: {COLOR_ACCENT} !important;
@@ -325,7 +322,7 @@ if not st.session_state.authenticated_user:
                         else:
                             st.error("Invalid Username or Password.")
                     else:
-                        st.error("Data Base")
+                        st.error("⚠️ Database Unreachable — Verify Google Sheets setup.")
     st.stop()
 
 # ==========================================
@@ -391,7 +388,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 
     site_options = df_sites["installation_id"].tolist() if not df_sites.empty and "installation_id" in df_sites.columns else []
     if not site_options:
-        st.warning("Data Base")
+        st.warning("⚠️ No Installation Sites Created Yet — Create orders to log tasks.")
         return
 
     c_site, c_date = st.columns(2)
@@ -481,11 +478,11 @@ if menu == "Admin Analytics Dashboard":
     col_chart1, col_chart2 = st.columns(2)
     with col_chart1:
         st.subheader("Field Hours per Worker")
-        if not df_logs.empty and "worker_name" in df_logs.columns:
+        if not df_logs.empty and "worker_name" in df_logs.columns and df_logs["hours_spent"].sum() > 0:
             hrs_df = df_logs.groupby("worker_name")["hours_spent"].sum().reset_index()
             st.bar_chart(hrs_df.set_index("worker_name"))
         else:
-            st.info("Data Base")
+            st.info("⚠️ No Field Hours Logged Yet — Chart will generate automatically when workers submit logs.")
 
     with col_chart2:
         st.subheader("Site Status Distribution")
@@ -493,7 +490,7 @@ if menu == "Admin Analytics Dashboard":
             st_counts = df_sites["status"].value_counts()
             st.bar_chart(st_counts)
         else:
-            st.info("Data Base")
+            st.info("⚠️ No Installation Sites Created Yet — Create orders to view status distribution.")
 
 elif menu == "User Management":
     st.header("👥 User & Access Management")
@@ -510,31 +507,45 @@ elif menu == "User Management":
                 with c1:
                     new_w_id = st.text_input("Worker ID", value=f"W{len(df_workers)+1:03d}")
                     new_name = st.text_input("Full Name")
-                    new_pin = st.text_input("4-Digit PIN / Password", type="password")
+                    new_aadhaar = st.text_input("12-Digit Aadhaar Number", max_chars=12, placeholder="e.g. 123456789012")
                 with c2:
+                    new_pin = st.text_input("4-Digit PIN / Password", type="password")
                     new_role = st.selectbox("System Role", ["Worker", "Supervisor", "Admin"])
                     new_base = st.text_input("Base Station / City", value="Jaipur")
 
                 submit_new_user = st.form_submit_button("Create User & Sync to Data Base", use_container_width=True)
                 if submit_new_user:
-                    if not new_name or not new_pin:
-                        st.error("Please enter Full Name and PIN.")
+                    clean_aadhaar = str(new_aadhaar).strip()
+                    
+                    if not new_name or not new_pin or not clean_aadhaar:
+                        st.error("Please enter Full Name, Aadhaar Number, and PIN.")
+                    elif len(clean_aadhaar) != 12 or not clean_aadhaar.isdigit():
+                        st.error("Invalid Aadhaar Number! Must be exactly 12 numeric digits.")
                     else:
+                        # DUPLICATE AADHAAR CHECK
+                        if not df_workers.empty and "aadhaar_no" in df_workers.columns:
+                            existing_aadhaars = df_workers["aadhaar_no"].astype(str).str.strip().tolist()
+                            if clean_aadhaar in existing_aadhaars:
+                                matched_user = df_workers[df_workers["aadhaar_no"].astype(str).str.strip() == clean_aadhaar].iloc[0].get("name", "Unknown")
+                                st.error(f"❌ Duplicate Entry! Worker with this Aadhaar Number already exists (**{matched_user}**).")
+                                st.stop()
+
                         user_dict = {
                             "worker_id": new_w_id,
                             "name": new_name,
+                            "aadhaar_no": clean_aadhaar,
                             "pin": str(new_pin),
                             "role": new_role,
                             "base_location": new_base
                         }
                         append_to_sheet("Workers_Master", user_dict)
-                        st.success(f"User **{new_name}** successfully added!")
+                        st.success(f"User **{new_name}** successfully registered and synced!")
                         st.rerun()
 
     with tab_edit:
         st.subheader("Update User Profile, Role & PIN")
         if df_workers.empty or "name" not in df_workers.columns:
-            st.info("Data Base")
+            st.info("⚠️ No Users Registered in Master Database")
         else:
             selected_edit_user = st.selectbox("Select User to Edit", df_workers["name"].tolist())
             user_data = df_workers[df_workers["name"] == selected_edit_user].iloc[0]
@@ -542,6 +553,7 @@ elif menu == "User Management":
             col_l, col_center, col_r = st.columns([1, 2, 1])
             with col_center:
                 with st.form("edit_user_form"):
+                    st.text_input("Aadhaar Number (Unique ID - Uneditable)", value=str(user_data.get("aadhaar_no", "N/A")), disabled=True)
                     e_col1, e_col2 = st.columns(2)
                     with e_col1:
                         e_role = st.selectbox("Update Role", ["Worker", "Supervisor", "Admin"], index=["Worker", "Supervisor", "Admin"].index(user_data.get("role", "Worker")))
@@ -567,12 +579,12 @@ elif menu == "TA/DA Payroll & Travel Summary":
     df_logs = read_sheet("Worker_Daily_Logs")
 
     if df_logs.empty or "is_travel_day" not in df_logs.columns:
-        st.info("Data Base")
+        st.info("⚠️ No Travel Days Claimed Yet (Base Location = Site Location)")
     else:
         travel_logs = df_logs[df_logs["is_travel_day"] == "Yes"]
 
         if travel_logs.empty:
-            st.warning("Data Base")
+            st.warning("⚠️ No Travel Days Claimed Yet (Base Location = Site Location)")
         else:
             st.subheader("Travel Days Summary by Worker")
             summary_df = travel_logs.groupby(["worker_name", "base_location"]).agg(
@@ -604,7 +616,7 @@ elif menu == "Advanced Field Logs Inspector":
     df_logs = read_sheet("Worker_Daily_Logs")
 
     if df_logs.empty:
-        st.info("Data Base")
+        st.info("⚠️ No Field Logs Recorded Yet")
     else:
         f_col1, f_col2, f_col3 = st.columns(3)
         with f_col1:
@@ -643,7 +655,7 @@ elif menu == "Active Tasks Dashboard":
     df_sites = read_sheet("Sites_Master")
 
     if df_tasks.empty:
-        st.info("Data Base")
+        st.info("⚠️ No Active Tasks Found")
     else:
         col_f1, col_f2 = st.columns(2)
         with col_f1:
@@ -665,7 +677,7 @@ elif menu == "Handover Date Dashboard":
     df_sites = read_sheet("Sites_Master")
 
     if df_sites.empty or "handover_date" not in df_sites.columns:
-        st.info("Data Base")
+        st.info("⚠️ No Installation Sites Created Yet")
     else:
         df_sites["handover_date_dt"] = pd.to_datetime(df_sites["handover_date"], errors="coerce")
         df_sites["days_remaining"] = (df_sites["handover_date_dt"] - datetime.now()).dt.days
@@ -732,7 +744,7 @@ elif menu == "Team Head Dashboard":
         crew_members = df_workers[df_workers["role"] == "Worker"]["name"].tolist() if not df_workers.empty and "role" in df_workers.columns else []
 
         if not crew_members:
-            st.info("Data Base")
+            st.info("⚠️ No Active Crew Members Found")
         else:
             selected_crew = st.selectbox("Select Worker to Log For", crew_members)
             st.divider()
@@ -744,7 +756,7 @@ elif menu == "View Logs & Update Status":
     df_logs = read_sheet("Worker_Daily_Logs")
 
     if df_sites.empty or "installation_id" not in df_sites.columns:
-        st.info("Data Base")
+        st.info("⚠️ No Installation Sites Available")
     else:
         site_list = df_sites["installation_id"].tolist()
         selected_inst = st.selectbox("Select Installation ID", site_list)
@@ -778,7 +790,7 @@ elif menu == "View Logs & Update Status":
         p_logs = df_logs[df_logs["installation_id"] == selected_inst] if not df_logs.empty and "installation_id" in df_logs.columns else pd.DataFrame()
 
         if p_logs.empty:
-            st.info("Data Base")
+            st.info("⚠️ No Logs Recorded for this Site Yet")
         else:
             for _, l in p_logs.iterrows():
                 with st.expander(f"📅 Date: {l.get('logged_date')} | Worker: {l.get('worker_name')} | Log ID: {l.get('log_id')}"):
