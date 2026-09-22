@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 import gspread
@@ -35,7 +36,7 @@ st.markdown(f"""
     /* Standard Buttons */
     .stButton>button {{ 
         background-color: {COLOR_PRIMARY} !important; 
-        color: white !important; 
+        color: #FFFFFF !important; 
         border-radius: 6px !important;
         border: none !important;
         font-weight: 600 !important;
@@ -43,7 +44,7 @@ st.markdown(f"""
     }}
     .stButton>button:hover {{ 
         background-color: {COLOR_ACCENT} !important; 
-        color: white !important; 
+        color: #FFFFFF !important; 
         box-shadow: 0 4px 10px rgba(0, 168, 89, 0.3) !important;
     }}
     
@@ -63,7 +64,7 @@ st.markdown(f"""
     }}
 
     /* ==========================================
-       LOGIN CARD STYLING (MATCHING CUSTOM UI)
+       LOGIN CARD STYLING & VIBRANT GREEN BUTTON
        ========================================== */
     div[data-testid="stForm"] {{
         background-color: #FFFFFF;
@@ -75,27 +76,13 @@ st.markdown(f"""
         margin: 0 auto;
     }}
 
-    .login-title {{
-        color: {COLOR_PRIMARY};
-        font-weight: 800;
-        text-align: center;
-        font-size: 28px;
-        margin-bottom: 0px;
-        letter-spacing: 1px;
-    }}
-    .login-subtitle {{
-        color: {COLOR_ACCENT};
-        font-weight: 700;
-        text-align: center;
-        font-size: 13px;
-        letter-spacing: 2px;
-        margin-bottom: 6px;
-    }}
     .login-caption {{
         color: #6C757D;
         text-align: center;
         font-size: 13px;
+        margin-top: 10px;
         margin-bottom: 25px;
+        font-weight: 500;
     }}
 
     div[data-testid="stForm"] .stTextInput label {{
@@ -108,9 +95,12 @@ st.markdown(f"""
         padding: 10px 14px !important;
     }}
 
+    /* FORCE VIBRANT GREEN BUTTON WITH WHITE TEXT ON LOGIN FORM */
+    div[data-testid="stForm"] button[kind="primaryFormSubmit"], 
     div[data-testid="stForm"] .stButton>button {{
         background-color: {COLOR_ACCENT} !important;
-        color: white !important;
+        background: {COLOR_ACCENT} !important;
+        color: #FFFFFF !important;
         font-weight: 700 !important;
         border-radius: 8px !important;
         padding: 12px 0px !important;
@@ -118,11 +108,22 @@ st.markdown(f"""
         border: none !important;
         width: 100% !important;
         margin-top: 15px !important;
-        box-shadow: 0 4px 12px rgba(0, 168, 89, 0.3) !important;
+        box-shadow: 0 4px 12px rgba(0, 168, 89, 0.35) !important;
     }}
+    
+    /* Ensure white text inside paragraph tags of Streamlit buttons */
+    div[data-testid="stForm"] button[kind="primaryFormSubmit"] p,
+    div[data-testid="stForm"] .stButton>button p {{
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+    }}
+
+    div[data-testid="stForm"] button[kind="primaryFormSubmit"]:hover,
     div[data-testid="stForm"] .stButton>button:hover {{
         background-color: #008747 !important;
-        box-shadow: 0 6px 15px rgba(0, 168, 89, 0.4) !important;
+        background: #008747 !important;
+        color: #FFFFFF !important;
+        box-shadow: 0 6px 15px rgba(0, 168, 89, 0.5) !important;
     }}
     </style>
 """, unsafe_allow_html=True)
@@ -203,18 +204,28 @@ def update_sheet_row(sheet_name: str, key_col: str, key_val: str, update_dict: d
         return False
 
 # ==========================================
-# 3. AUTHENTICATION (CENTERED CARD LOGIN)
+# 3. AUTHENTICATION (CENTERED LOGO CARD LOGIN)
 # ==========================================
 if "authenticated_user" not in st.session_state:
     st.session_state.authenticated_user = None
 
 if not st.session_state.authenticated_user:
     st.write("##")
-    st.write("##")
     
     with st.form("login_form"):
-        st.markdown('<div class="login-title">SIDHARTH</div>', unsafe_allow_html=True)
-        st.markdown('<div class="login-subtitle">SHUTTER & AUTOMATION</div>', unsafe_allow_html=True)
+        # Display Logo Image directly at the top of the card
+        logo_path = "Company Logo.jpeg"  # Update path if saved under a different name (e.g., "logo.png")
+        if os.path.exists(logo_path):
+            st.image(logo_path, use_container_width=True)
+        else:
+            # Fallback styled header if logo image file is not found locally
+            st.markdown(f"""
+                <div style="text-align: center;">
+                    <h1 style="color: {COLOR_PRIMARY}; margin: 0; font-size: 32px;">SIDHARTH</h1>
+                    <p style="color: {COLOR_ACCENT}; font-weight: bold; margin: 0; font-size: 14px; letter-spacing: 2px;">SHUTTER & AUTOMATION</p>
+                </div>
+            """, unsafe_allow_html=True)
+
         st.markdown('<div class="login-caption">Enterprise Operations & Field Portal</div>', unsafe_allow_html=True)
 
         username_input = st.text_input("Username / Name", placeholder="e.g. Admin User or Vishak")
@@ -251,12 +262,16 @@ user_role = user.get("role", "Worker")
 user_base_location = user.get("base_location", "Jaipur")
 
 # Render Sidebar Branding
-st.sidebar.markdown(f"""
-    <div style="text-align: center; padding: 12px; background-color: {COLOR_PRIMARY}; color: white; border-radius: 8px; margin-bottom: 15px;">
-        <h2 style="margin:0; font-size: 21px; color: white !important;">SIDHARTH</h2>
-        <p style="margin:0; font-size: 11px; letter-spacing: 1.5px; color: {COLOR_ACCENT}; font-weight: bold;">SHUTTER & AUTOMATION</p>
-    </div>
-""", unsafe_allow_html=True)
+logo_path = "Company Logo.jpeg"
+if os.path.exists(logo_path):
+    st.sidebar.image(logo_path, use_container_width=True)
+else:
+    st.sidebar.markdown(f"""
+        <div style="text-align: center; padding: 12px; background-color: {COLOR_PRIMARY}; color: white; border-radius: 8px; margin-bottom: 15px;">
+            <h2 style="margin:0; font-size: 21px; color: white !important;">SIDHARTH</h2>
+            <p style="margin:0; font-size: 11px; letter-spacing: 1.5px; color: {COLOR_ACCENT}; font-weight: bold;">SHUTTER & AUTOMATION</p>
+        </div>
+    """, unsafe_allow_html=True)
 
 st.sidebar.markdown(f"**Active User:** {user_name} (`{user_role}`)  \n**Base Location:** {user_base_location}")
 if st.sidebar.button("🚪 Logout", use_container_width=True):
