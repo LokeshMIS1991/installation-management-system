@@ -942,8 +942,7 @@ elif menu == "New Installation Order":
         st.session_state.team_members_count = 1
     if "products_count" not in st.session_state:
         st.session_state.products_count = 1
-
-    visit_id = f"INST-2026-{os.urandom(2.hex().upper() if hasattr(os, 'urandom') else 'F8HLQ'}"
+    visit_id = f"INST-2026-{os.urandom(2).hex().upper()}"
     st.info(f"**Automated Visit ID:** {visit_id}")
 
     col_team, col_dates = st.columns(2)
