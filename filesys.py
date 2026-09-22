@@ -5,7 +5,7 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 
 # ==========================================
-# 1. PAGE CONFIG & BRANDING THEME (SIDHARTH SHUTTER & AUTOMATION)
+# 1. PAGE CONFIG & GLOBAL THEME
 # ==========================================
 st.set_page_config(
     page_title="Sidharth Shutter & Automation - Portal", 
@@ -13,26 +13,26 @@ st.set_page_config(
     page_icon="⚙️"
 )
 
-# Brand Color Palette extracted from Logo
+# Color Palette derived from Sidharth Shutter & Automation Logo
 COLOR_PRIMARY = "#10418A"    # Sidharth Deep Blue
 COLOR_ACCENT = "#00A859"     # Vibrant Green Dot
-COLOR_BG_LIGHT = "#EBF3FA"   # Soft Blue Tint for Cards
-COLOR_HOVER = "#0D3570"      # Darker Blue Hover State
+COLOR_BG_LIGHT = "#EBF3FA"   # Soft Blue Background Tint
 
+# Apply Global CSS Inject
 st.markdown(f"""
     <style>
-    /* Global Styling */
+    /* App background */
     .stApp {{
-        background-color: #FAFCFF;
+        background-color: #F4F7FC;
     }}
     
     /* Headers */
-    h1, h2, h3, .main-header {{ 
+    h1, h2, h3 {{ 
         color: {COLOR_PRIMARY} !important; 
         font-weight: 700 !important; 
     }}
     
-    /* Buttons */
+    /* Standard Buttons */
     .stButton>button {{ 
         background-color: {COLOR_PRIMARY} !important; 
         color: white !important; 
@@ -47,7 +47,7 @@ st.markdown(f"""
         box-shadow: 0 4px 10px rgba(0, 168, 89, 0.3) !important;
     }}
     
-    /* Card Boxes & Containers */
+    /* Card Boxes & Dashboard Containers */
     .card-box {{ 
         background-color: {COLOR_BG_LIGHT}; 
         border-left: 6px solid {COLOR_PRIMARY}; 
@@ -57,15 +57,72 @@ st.markdown(f"""
         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
     }}
     
-    /* Accent Badge Highlights */
-    .accent-badge {{
-        color: {COLOR_ACCENT};
-        font-weight: bold;
-    }}
-    
     /* Sidebar Styling */
     section[data-testid="stSidebar"] {{
-        background-color: #F0F4F8;
+        background-color: #EBF1F8;
+    }}
+
+    /* ==========================================
+       LOGIN CARD STYLING (MATCHING CUSTOM UI)
+       ========================================== */
+    div[data-testid="stForm"] {{
+        background-color: #FFFFFF;
+        border: 2px solid {COLOR_PRIMARY};
+        border-radius: 16px;
+        padding: 35px 30px;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+        max-width: 480px;
+        margin: 0 auto;
+    }}
+
+    .login-title {{
+        color: {COLOR_PRIMARY};
+        font-weight: 800;
+        text-align: center;
+        font-size: 28px;
+        margin-bottom: 0px;
+        letter-spacing: 1px;
+    }}
+    .login-subtitle {{
+        color: {COLOR_ACCENT};
+        font-weight: 700;
+        text-align: center;
+        font-size: 13px;
+        letter-spacing: 2px;
+        margin-bottom: 6px;
+    }}
+    .login-caption {{
+        color: #6C757D;
+        text-align: center;
+        font-size: 13px;
+        margin-bottom: 25px;
+    }}
+
+    div[data-testid="stForm"] .stTextInput label {{
+        color: {COLOR_PRIMARY} !important;
+        font-weight: 700 !important;
+    }}
+    div[data-testid="stForm"] .stTextInput input {{
+        border-radius: 8px !important;
+        border: 1px solid {COLOR_PRIMARY} !important;
+        padding: 10px 14px !important;
+    }}
+
+    div[data-testid="stForm"] .stButton>button {{
+        background-color: {COLOR_ACCENT} !important;
+        color: white !important;
+        font-weight: 700 !important;
+        border-radius: 8px !important;
+        padding: 12px 0px !important;
+        font-size: 16px !important;
+        border: none !important;
+        width: 100% !important;
+        margin-top: 15px !important;
+        box-shadow: 0 4px 12px rgba(0, 168, 89, 0.3) !important;
+    }}
+    div[data-testid="stForm"] .stButton>button:hover {{
+        background-color: #008747 !important;
+        box-shadow: 0 6px 15px rgba(0, 168, 89, 0.4) !important;
     }}
     </style>
 """, unsafe_allow_html=True)
@@ -146,58 +203,60 @@ def update_sheet_row(sheet_name: str, key_col: str, key_val: str, update_dict: d
         return False
 
 # ==========================================
-# 3. AUTHENTICATION & SIDEBAR BRANDING
+# 3. AUTHENTICATION (CENTERED CARD LOGIN)
 # ==========================================
 if "authenticated_user" not in st.session_state:
     st.session_state.authenticated_user = None
 
-def render_sidebar_header():
-    st.sidebar.markdown(f"""
-        <div style="text-align: center; padding: 12px; background-color: {COLOR_PRIMARY}; color: white; border-radius: 8px; margin-bottom: 15px;">
-            <h2 style="margin:0; font-size: 21px; color: white !important;">SIDHARTH</h2>
-            <p style="margin:0; font-size: 11px; letter-spacing: 1.5px; color: {COLOR_ACCENT}; font-weight: bold;">SHUTTER & AUTOMATION</p>
-        </div>
-    """, unsafe_allow_html=True)
-
-render_sidebar_header()
-
-# Authentication Screen
 if not st.session_state.authenticated_user:
-    st.title("🔐 Authentication Portal")
-    st.caption("Sidharth Shutter & Automation Field Operations System")
+    st.write("##")
+    st.write("##")
     
-    df_workers = read_sheet("Workers_Master")
-    
-    if df_workers.empty:
-        st.error("Unable to load workers from Google Sheets. Check tab 'Workers_Master' and API permissions.")
-        st.stop()
+    with st.form("login_form"):
+        st.markdown('<div class="login-title">SIDHARTH</div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-subtitle">SHUTTER & AUTOMATION</div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-caption">Enterprise Operations & Field Portal</div>', unsafe_allow_html=True)
 
-    worker_names = df_workers["name"].tolist() if "name" in df_workers.columns else []
+        username_input = st.text_input("Username / Name", placeholder="e.g. Admin User or Vishak")
+        password_input = st.text_input("Password / PIN", type="password", placeholder="Enter password")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        selected_name = st.selectbox("Select Your Name", worker_names)
-    with col2:
-        entered_pin = st.text_input("Enter 4-Digit PIN", type="password", max_chars=10)
+        submit_button = st.form_submit_button("🔑 Login to Dashboard", use_container_width=True)
 
-    if st.button("Authenticate", type="primary", use_container_width=True):
-        user_row = df_workers[
-            (df_workers["name"] == selected_name) & 
-            (df_workers["pin"].astype(str) == str(entered_pin))
-        ]
-        if not user_row.empty:
-            st.session_state.authenticated_user = user_row.iloc[0].to_dict()
-            st.success(f"Authenticated as **{selected_name}**!")
-            st.rerun()
-        else:
-            st.error("Invalid PIN / Password. Please check credentials in Google Sheets.")
+        if submit_button:
+            if not username_input or not password_input:
+                st.error("Please fill in both Username and Password.")
+            else:
+                df_workers = read_sheet("Workers_Master")
+                if not df_workers.empty:
+                    user_row = df_workers[
+                        (df_workers["name"].astype(str).str.strip().str.lower() == username_input.strip().lower()) & 
+                        (df_workers["pin"].astype(str) == str(password_input).strip())
+                    ]
+                    if not user_row.empty:
+                        st.session_state.authenticated_user = user_row.iloc[0].to_dict()
+                        st.success("Authentication Successful!")
+                        st.rerun()
+                    else:
+                        st.error("Invalid Username or Password.")
+                else:
+                    st.error("Unable to load user database. Verify Google Sheets setup.")
     st.stop()
 
-# Active Session Metadata
+# ==========================================
+# 4. ACTIVE SESSION & SIDEBAR NAVIGATION
+# ==========================================
 user = st.session_state.authenticated_user
 user_name = user.get("name", "User")
 user_role = user.get("role", "Worker")
 user_base_location = user.get("base_location", "Jaipur")
+
+# Render Sidebar Branding
+st.sidebar.markdown(f"""
+    <div style="text-align: center; padding: 12px; background-color: {COLOR_PRIMARY}; color: white; border-radius: 8px; margin-bottom: 15px;">
+        <h2 style="margin:0; font-size: 21px; color: white !important;">SIDHARTH</h2>
+        <p style="margin:0; font-size: 11px; letter-spacing: 1.5px; color: {COLOR_ACCENT}; font-weight: bold;">SHUTTER & AUTOMATION</p>
+    </div>
+""", unsafe_allow_html=True)
 
 st.sidebar.markdown(f"**Active User:** {user_name} (`{user_role}`)  \n**Base Location:** {user_base_location}")
 if st.sidebar.button("🚪 Logout", use_container_width=True):
@@ -206,20 +265,10 @@ if st.sidebar.button("🚪 Logout", use_container_width=True):
 
 st.sidebar.divider()
 
-# Navigation Mapping based on Role
+# Navigation Mapping based on Google Sheets User Role
 STATUS_OPTIONS = ["In Progress", "Completed", "On Hold", "Pending Inspection"]
 
-if user_role == "Admin":
-    menu_options = [
-        "Active Tasks Dashboard", 
-        "Handover Date Dashboard", 
-        "New Installation Order", 
-        "Log Daily Tasks", 
-        "Team Head Dashboard", 
-        "View Logs & Update Status", 
-        "Master Database"
-    ]
-elif user_role == "Supervisor":
+if user_role in ["Admin", "Supervisor"]:
     menu_options = [
         "Active Tasks Dashboard", 
         "Handover Date Dashboard", 
@@ -235,7 +284,7 @@ else:
 menu = st.sidebar.radio("Navigation Menu", menu_options)
 
 # ==========================================
-# 4. RESTRICTED LOGGING FORM HELPER
+# 5. RESTRICTED LOGGING FORM HELPER
 # ==========================================
 def render_restricted_work_input(target_worker_name, is_crew_log=False):
     df_sites = read_sheet("Sites_Master")
@@ -309,7 +358,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
         st.rerun()
 
 # ==========================================
-# 5. MODULE IMPLEMENTATIONS
+# 6. MODULE IMPLEMENTATIONS
 # ==========================================
 
 # --- ACTIVE TASKS DASHBOARD ---
@@ -390,7 +439,7 @@ elif menu == "New Installation Order":
                     "handover_date": str(handover_date)
                 }
                 append_to_sheet("Sites_Master", new_site)
-                st.success(f"Installation Order **{inst_id}** recorded!")
+                st.success(f"Installation Order **{inst_id}** recorded in Google Sheets!")
 
 # --- LOG DAILY TASKS ---
 elif menu == "Log Daily Tasks":
@@ -451,7 +500,7 @@ elif menu == "View Logs & Update Status":
             st.write(" ")
             if st.button("Update Status", type="primary"):
                 update_sheet_row("Sites_Master", "installation_id", selected_inst, {"status": new_st})
-                st.success(f"Status updated to **{new_st}**!")
+                st.success(f"Status updated to **{new_st}** in Google Sheets!")
                 st.rerun()
 
         st.divider()
