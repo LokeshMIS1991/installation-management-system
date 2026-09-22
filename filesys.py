@@ -412,11 +412,21 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
         st.warning("⚠️ No Installation Sites Created Yet — Create orders to log tasks.")
         return
 
+    # Container for dynamic site header updates
+    header_placeholder = st.empty()
+
     c_site, c_date = st.columns(2)
     with c_site:
-        selected_site_id = st.selectbox(f"Select Site for {target_worker_name}", site_options, key=f"site_{target_worker_name}_{is_crew_log}")
+        selected_site_id = st.selectbox(
+            f"Current Logging for :", 
+            site_options, 
+            key=f"site_{target_worker_name}_{is_crew_log}"
+        )
     with c_date:
         log_date = st.date_input("Date of Work", value=datetime.now(), key=f"date_{target_worker_name}_{is_crew_log}")
+
+    # Render dynamic title using selected site ID
+    header_placeholder.markdown(f"## 📝 Log Daily Tasks - {selected_site_id}")
 
     site_info = df_sites[df_sites["installation_id"] == selected_site_id].iloc[0]
     site_city = site_info.get("site_city", "Jaipur")
@@ -1060,7 +1070,6 @@ elif menu == "New Installation Order":
 
 # --- COMMON: LOG DAILY TASKS ---
 elif menu == "Log Daily Tasks":
-    st.header(f"📝 Log Daily Tasks - {user_name}")
     render_restricted_work_input(target_worker_name=user_name, is_crew_log=False)
 
 # --- SUPERVISOR: TEAM HEAD DASHBOARD ---
