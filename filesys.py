@@ -15,9 +15,8 @@ st.set_page_config(
 )
 
 COLOR_PRIMARY = "#10418A"    # Sidharth Deep Blue
-COLOR_ACCENT = "#00A859"     # Vibrant Green Dot
+COLOR_ACCENT = "#00A859"     # Vibrant Green (Same as Login Page)
 COLOR_BG_LIGHT = "#EBF3FA"   # Soft Blue Background Tint
-COLOR_LOGOUT = "#9E2A2B"     # Sidharth Crimson Red for Logout
 
 # Apply CSS Inject strictly targeted at UI elements
 st.markdown(f"""
@@ -75,7 +74,7 @@ st.markdown(f"""
     }}
     
     /* ==========================================
-       SIDEBAR COMPACTION & LOGOUT BUTTON FIX
+       SIDEBAR COMPACTION & GREEN LOGOUT BUTTON FIX
        ========================================== */
     section[data-testid="stSidebar"] {{
         background-color: #EBF1F8;
@@ -102,10 +101,10 @@ st.markdown(f"""
         gap: 4px !important;
     }}
 
-    /* Distinct Crimson Red Logout Button */
-    .sidebar-logout-container button {{
-        background-color: {COLOR_LOGOUT} !important;
-        background: {COLOR_LOGOUT} !important;
+    /* DIRECT TARGET FOR LOGOUT BUTTON IN SIDEBAR - MATCHES LOGIN GREEN */
+    section[data-testid="stSidebar"] div.stButton > button {{
+        background-color: {COLOR_ACCENT} !important;
+        background: {COLOR_ACCENT} !important;
         color: #FFFFFF !important;
         font-weight: 700 !important;
         border-radius: 8px !important;
@@ -114,16 +113,19 @@ st.markdown(f"""
         border: none !important;
         width: 100% !important;
         margin-top: 10px !important;
-        box-shadow: 0 4px 10px rgba(158, 42, 43, 0.3) !important;
+        box-shadow: 0 4px 10px rgba(0, 168, 89, 0.35) !important;
     }}
-    .sidebar-logout-container button * {{
+
+    section[data-testid="stSidebar"] div.stButton > button * {{
         color: #FFFFFF !important;
         font-weight: 700 !important;
     }}
-    .sidebar-logout-container button:hover {{
-        background-color: #7F1D1D !important;
-        background: #7F1D1D !important;
-        box-shadow: 0 6px 14px rgba(127, 29, 29, 0.45) !important;
+
+    section[data-testid="stSidebar"] div.stButton > button:hover {{
+        background-color: #008747 !important;
+        background: #008747 !important;
+        color: #FFFFFF !important;
+        box-shadow: 0 6px 14px rgba(0, 168, 89, 0.5) !important;
     }}
 
     /* ==========================================
@@ -320,7 +322,7 @@ if not st.session_state.authenticated_user:
                     else:
                         st.error("Invalid Username or Password.")
                 else:
-                    st.error("Unable to load user database. Verify Google Sheets setup.")
+                    st.error("Data Base")
     st.stop()
 
 # ==========================================
@@ -372,12 +374,10 @@ menu = st.sidebar.radio("Navigation Menu", menu_options)
 
 st.sidebar.divider()
 
-# Crimson Red Logout Button BELOW Navigation
-st.sidebar.markdown('<div class="sidebar-logout-container">', unsafe_allow_html=True)
+# Green Logout Button BELOW Navigation Menu
 if st.sidebar.button("🚪 LOG OUT", use_container_width=True):
     st.session_state.authenticated_user = None
     st.rerun()
-st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
 # ==========================================
 # 5. RESTRICTED LOGGING FORM HELPER
@@ -388,7 +388,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 
     site_options = df_sites["installation_id"].tolist() if not df_sites.empty and "installation_id" in df_sites.columns else []
     if not site_options:
-        st.warning("No installation sites found in Google Sheets 'Sites_Master'.")
+        st.warning("Data Base")
         return
 
     c_site, c_date = st.columns(2)
@@ -430,7 +430,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 
     site_remarks = st.text_area("Site Remarks / Delays", placeholder="Note any motor issues, power availability, or structural delays...", key=f"rem_{target_worker_name}_{is_crew_log}")
 
-    if st.button(f"💾 Sync Daily Log to Google Sheets ({target_worker_name})", type="primary", key=f"btn_{target_worker_name}_{is_crew_log}"):
+    if st.button(f"💾 Sync Daily Log to Data Base ({target_worker_name})", type="primary", key=f"btn_{target_worker_name}_{is_crew_log}"):
         log_id = f"LOG-{datetime.now().strftime('%Y%m%d%H%M%S')}"
         log_entry = {
             "log_id": log_id,
@@ -482,7 +482,7 @@ if menu == "Admin Analytics Dashboard":
             hrs_df = df_logs.groupby("worker_name")["hours_spent"].sum().reset_index()
             st.bar_chart(hrs_df.set_index("worker_name"))
         else:
-            st.info("No work logs available for charts.")
+            st.info("Data Base")
 
     with col_chart2:
         st.subheader("Site Status Distribution")
@@ -490,7 +490,7 @@ if menu == "Admin Analytics Dashboard":
             st_counts = df_sites["status"].value_counts()
             st.bar_chart(st_counts)
         else:
-            st.info("No site status data available.")
+            st.info("Data Base")
 
 elif menu == "User Management":
     st.header("👥 User & Access Management")
@@ -510,7 +510,7 @@ elif menu == "User Management":
                 new_role = st.selectbox("System Role", ["Worker", "Supervisor", "Admin"])
                 new_base = st.text_input("Base Station / City", value="Jaipur")
 
-            submit_new_user = st.form_submit_button("Create User & Sync to Google Sheets", type="primary")
+            submit_new_user = st.form_submit_button("Create User & Sync to Data Base", type="primary")
             if submit_new_user:
                 if not new_name or not new_pin:
                     st.error("Please enter Full Name and PIN.")
@@ -529,7 +529,7 @@ elif menu == "User Management":
     with tab_edit:
         st.subheader("Update User Profile, Role & PIN")
         if df_workers.empty or "name" not in df_workers.columns:
-            st.info("No users available in Workers_Master.")
+            st.info("Data Base")
         else:
             selected_edit_user = st.selectbox("Select User to Edit", df_workers["name"].tolist())
             user_data = df_workers[df_workers["name"] == selected_edit_user].iloc[0]
@@ -542,7 +542,7 @@ elif menu == "User Management":
                 with e_col2:
                     e_base = st.text_input("Update Base Location", value=str(user_data.get("base_location", "Jaipur")))
 
-                submit_edit = st.form_submit_button("Update Profile in Google Sheets", type="primary")
+                submit_edit = st.form_submit_button("Update Profile in Data Base", type="primary")
                 if submit_edit:
                     updates = {
                         "role": e_role,
@@ -560,12 +560,12 @@ elif menu == "TA/DA Payroll & Travel Summary":
     df_logs = read_sheet("Worker_Daily_Logs")
 
     if df_logs.empty or "is_travel_day" not in df_logs.columns:
-        st.info("No travel log records found.")
+        st.info("Data Base")
     else:
         travel_logs = df_logs[df_logs["is_travel_day"] == "Yes"]
 
         if travel_logs.empty:
-            st.warning("No travel days logged yet across any project site.")
+            st.warning("Data Base")
         else:
             st.subheader("Travel Days Summary by Worker")
             summary_df = travel_logs.groupby(["worker_name", "base_location"]).agg(
@@ -597,7 +597,7 @@ elif menu == "Advanced Field Logs Inspector":
     df_logs = read_sheet("Worker_Daily_Logs")
 
     if df_logs.empty:
-        st.info("No field logs recorded in Google Sheets.")
+        st.info("Data Base")
     else:
         f_col1, f_col2, f_col3 = st.columns(3)
         with f_col1:
@@ -636,7 +636,7 @@ elif menu == "Active Tasks Dashboard":
     df_sites = read_sheet("Sites_Master")
 
     if df_tasks.empty:
-        st.info("No active tasks found in Google Sheets.")
+        st.info("Data Base")
     else:
         col_f1, col_f2 = st.columns(2)
         with col_f1:
@@ -658,7 +658,7 @@ elif menu == "Handover Date Dashboard":
     df_sites = read_sheet("Sites_Master")
 
     if df_sites.empty or "handover_date" not in df_sites.columns:
-        st.info("No site handover records found in Google Sheets.")
+        st.info("Data Base")
     else:
         df_sites["handover_date_dt"] = pd.to_datetime(df_sites["handover_date"], errors="coerce")
         df_sites["days_remaining"] = (df_sites["handover_date_dt"] - datetime.now()).dt.days
@@ -705,7 +705,7 @@ elif menu == "New Installation Order":
                     "handover_date": str(handover_date)
                 }
                 append_to_sheet("Sites_Master", new_site)
-                st.success(f"Installation Order **{inst_id}** recorded in Google Sheets!")
+                st.success(f"Installation Order **{inst_id}** recorded in Data Base!")
 
 elif menu == "Log Daily Tasks":
     st.header(f"📝 Log Daily Tasks - {user_name}")
@@ -725,7 +725,7 @@ elif menu == "Team Head Dashboard":
         crew_members = df_workers[df_workers["role"] == "Worker"]["name"].tolist() if not df_workers.empty and "role" in df_workers.columns else []
 
         if not crew_members:
-            st.info("No workers registered in Google Sheets Workers_Master.")
+            st.info("Data Base")
         else:
             selected_crew = st.selectbox("Select Worker to Log For", crew_members)
             st.divider()
@@ -737,7 +737,7 @@ elif menu == "View Logs & Update Status":
     df_logs = read_sheet("Worker_Daily_Logs")
 
     if df_sites.empty or "installation_id" not in df_sites.columns:
-        st.info("No sites available in Google Sheets.")
+        st.info("Data Base")
     else:
         site_list = df_sites["installation_id"].tolist()
         selected_inst = st.selectbox("Select Installation ID", site_list)
@@ -763,7 +763,7 @@ elif menu == "View Logs & Update Status":
             st.write(" ")
             if st.button("Update Status", type="primary"):
                 update_sheet_row("Sites_Master", "installation_id", selected_inst, {"status": new_st})
-                st.success(f"Status updated to **{new_st}** in Google Sheets!")
+                st.success(f"Status updated to **{new_st}** in Data Base!")
                 st.rerun()
 
         st.divider()
@@ -771,7 +771,7 @@ elif menu == "View Logs & Update Status":
         p_logs = df_logs[df_logs["installation_id"] == selected_inst] if not df_logs.empty and "installation_id" in df_logs.columns else pd.DataFrame()
 
         if p_logs.empty:
-            st.info("No logs recorded for this site yet.")
+            st.info("Data Base")
         else:
             for _, l in p_logs.iterrows():
                 with st.expander(f"📅 Date: {l.get('logged_date')} | Worker: {l.get('worker_name')} | Log ID: {l.get('log_id')}"):
