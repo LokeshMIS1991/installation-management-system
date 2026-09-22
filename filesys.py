@@ -363,13 +363,13 @@ if user_role == "Admin":
     ]
 elif user_role == "Supervisor":
     menu_options = [
-        "Active Tasks Dashboard",
-        "Employee Analytics & Reports",
-        "Handover Date Dashboard", 
         "New Installation Order", 
         "Log Daily Tasks", 
-        "Team Head Dashboard", 
         "View Logs & Update Status", 
+        "Handover Date Dashboard", 
+        "Active Tasks Dashboard",
+        "Employee Analytics & Reports",
+        "Team Head Dashboard", 
         "Master Database"
     ]
 else:
@@ -809,7 +809,7 @@ elif menu == "User Management":
                     clean_id = str(new_id_num).strip()
                     
                     if not new_name or not new_pin or not clean_id:
-                        st.error("Please enter Full Name, ID Number, and PIN.")
+                        st.error("Please fill in Full Name, ID Number, and PIN.")
                     elif len(clean_id) != 12 or not clean_id.isdigit():
                         st.error("Invalid ID Number! Must be exactly 12 numeric digits.")
                     else:
