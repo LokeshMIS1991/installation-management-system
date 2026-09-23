@@ -316,20 +316,25 @@ if "remembered_username" not in st.session_state:
 if not st.session_state.authenticated_user:
     st.write("##")
     
-    col_l, col_center, col_r = st.columns([0.1, 0.8, 0.1])
+    # Adjusted column ratios to make the form narrower (Center column is ~35-40% width instead of 80%)
+    col_l, col_center, col_r = st.columns([1, 1.2, 1])
+    
     with col_center:
+        # Added a max-width container wrapper for extra desktop compactness
+        st.markdown('<div style="max-width: 420px; margin: 0 auto;">', unsafe_allow_html=True)
+        
         with st.form("login_form"):
             if LOGO_PATH.exists():
                 st.image(str(LOGO_PATH), use_container_width=True)
             else:
                 st.markdown(f"""
                     <div style="text-align: center;">
-                        <h1 style="color: {COLOR_PRIMARY}; margin: 0; font-size: 32px;">SIDHARTH</h1>
-                        <p style="color: {COLOR_ACCENT}; font-weight: bold; margin: 0; font-size: 14px; letter-spacing: 2px;">SHUTTER & AUTOMATION</p>
+                        <h1 style="color: {COLOR_PRIMARY}; margin: 0; font-size: 26px;">SIDHARTH</h1>
+                        <p style="color: {COLOR_ACCENT}; font-weight: bold; margin: 0; font-size: 12px; letter-spacing: 2px;">SHUTTER & AUTOMATION</p>
                     </div>
                 """, unsafe_allow_html=True)
 
-            st.markdown('<div class="login-caption">Enterprise Operations & Field Portal</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-caption" style="margin-bottom: 12px;">Enterprise Operations & Field Portal</div>', unsafe_allow_html=True)
 
             username_input = st.text_input("Username / Name", value=st.session_state.remembered_username, placeholder="e.g. Parvesh Kumar or Vishak")
             password_input = st.text_input("Password / PIN", type="password", placeholder="Enter password")
@@ -364,6 +369,8 @@ if not st.session_state.authenticated_user:
                             st.error("Invalid Username or Password.")
                     else:
                         st.error("⚠️ Database Unreachable — Verify Google Sheets setup.")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
 # ==========================================
