@@ -412,6 +412,9 @@ if st.sidebar.button("🚪 LOG OUT", use_container_width=True):
 # ==========================================
 # 6. DYNAMIC MULTI-TASK WORK INPUT HELPER
 # ==========================================
+# ==========================================
+# DYNAMIC MULTI-TASK WORK INPUT HELPER
+# ==========================================
 def render_restricted_work_input(target_worker_name, is_crew_log=False):
     df_sites = read_sheet("Sites_Master")
     df_workers = read_sheet("Workers_Master")
@@ -427,26 +430,26 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
         st.warning("⚠️ No Installation Sites Created Yet — Create orders to log tasks.")
         return
 
-    # Placeholder for dynamic title rendering
+    # Dynamic site header placeholder
     header_placeholder = st.empty()
 
     c_site, c_date = st.columns(2)
     with c_site:
         selected_site_id = st.selectbox(
-            f"Current Logging for :", 
+            "Current Logging for :", 
             site_options, 
             key=f"site_{target_worker_name}_{is_crew_log}"
         )
     with c_date:
         log_date = st.date_input("Date of Work", value=datetime.now(), key=f"date_{target_worker_name}_{is_crew_log}")
 
-    # Render dynamic title based on selected Site ID
+    # Render dynamic title using selected site ID
     header_placeholder.markdown(f"## 📝 Log Daily Tasks - {selected_site_id}")
 
     site_info = df_sites[df_sites["installation_id"] == selected_site_id].iloc[0]
     site_city = site_info.get("site_city", "Jaipur")
 
-    # Team Assignment via Clean Dropdowns
+    # 1. Crew Selection (Team Lead & Helpers)
     st.markdown("### 👥 Crew & Team Assignment")
     col_lead, col_helpers = st.columns(2)
 
@@ -467,18 +470,8 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
             key=f"helpers_{target_worker_name}_{is_crew_log}"
         )
 
-    target_base = user_base_location
-    if is_crew_log and not df_workers.empty:
-        match = df_workers[df_workers["name"] == target_worker_name]
-        if not match.empty:
-            target_base = match.iloc[0].get("base_location", "Jaipur")
-
-    is_travel = str(target_base).strip().lower() != str(site_city).strip().lower()
-
-    if is_travel:
-        st.warning(f"✈️ **Travel Day Detected (TA/DA Triggered)**: Base ({target_base}) ≠ Site Location ({site_city})")
-    else:
-        st.info(f"🏠 **Local Site**: Base ({target_base}) matches Site Location ({site_city})")
+    # Active Crew scope strictly restricted to Lead + Helpers
+    active_crew = [team_lead_selected] + team_helpers_selected
 
     st.write("##")
     st.markdown("### 🛠️ Tasks Completed Today")
@@ -491,7 +484,9 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 
     for i in range(st.session_state[task_count_key]):
         st.caption(f"**Task Line #{i+1}**")
-        col_cat, col_desc, col_hrs, col_min = st.columns([3, 4, 1.5, 1.5])
+        
+        # Grid layout including "Task Assigned To" restricted to selected crew
+        col_cat, col_desc, col_assigned, col_hrs, col_min = st.columns([2.5, 3, 2.5, 1.2, 1.2])
 
         with col_cat:
             cat = st.selectbox(
@@ -502,8 +497,15 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
         with col_desc:
             desc = st.text_input(
                 f"Task #{i+1} Description",
-                placeholder="e.g., Track Leveling or 2 shutters installed",
+                placeholder="e.g., Track Leveling",
                 key=f"desc_{target_worker_name}_{is_crew_log}_{i}"
+            )
+        with col_assigned:
+            assigned_worker = st.selectbox(
+                f"Assigned To #{i+1}",
+                options=active_crew,
+                key=f"assigned_{target_worker_name}_{is_crew_log}_{i}",
+                help="Select from the active crew members assigned to this site today."
             )
         with col_hrs:
             hrs = st.number_input(f"Hours", min_value=0, max_value=24, value=2, step=1, key=f"hrs_{target_worker_name}_{is_crew_log}_{i}")
@@ -513,6 +515,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
         task_entries.append({
             "category": cat,
             "description": desc,
+            "assigned_worker": assigned_worker,
             "hours": hrs,
             "minutes": mins
         })
@@ -523,12 +526,23 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 
     st.divider()
 
+    # 2. Site Delays Dropdown & Remarks Section
     st.markdown("### ⚠️ Site Remarks / Delays")
-    site_remarks = st.text_area(
-        "Site Remarks / Cause of Delay",
-        placeholder="Document site issues, missing power supply, civil delays, or client holds...",
-        key=f"rem_{target_worker_name}_{is_crew_log}"
-    )
+    col_delay_cat, col_delay_notes = st.columns([1, 2])
+    
+    with col_delay_cat:
+        delay_reason = st.selectbox(
+            "Primary Delay Category",
+            options=DELAY_REASONS,
+            key=f"delay_reason_{target_worker_name}_{is_crew_log}"
+        )
+        
+    with col_delay_notes:
+        site_remarks = st.text_area(
+            "Specific Site Notes / Remarks",
+            placeholder="Provide additional details regarding the delay or site notes...",
+            key=f"rem_{target_worker_name}_{is_crew_log}"
+        )
 
     st.markdown("### 📷 Site Photo Documentation")
     uploaded_photo = st.file_uploader(
@@ -542,54 +556,53 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 
     st.write("##")
 
+    # 3. Database Syncing Logic
     if st.button("💾 Sync Daily Log to Database", key=f"btn_sync_{target_worker_name}_{is_crew_log}", use_container_width=True):
         photo_filename = uploaded_photo.name if uploaded_photo is not None else "No Photo"
         records_saved = 0
-
-        full_crew = [team_lead_selected] + team_helpers_selected
 
         for idx, t in enumerate(task_entries):
             if not t["description"].strip():
                 continue
 
-            for worker in full_crew:
-                w_base = target_base
-                if not df_workers.empty:
-                    m = df_workers[df_workers["name"] == worker]
-                    if not m.empty:
-                        w_base = m.iloc[0].get("base_location", "Jaipur")
+            worker = t["assigned_worker"]
+            w_base = "Jaipur"
+            if not df_workers.empty:
+                m = df_workers[df_workers["name"] == worker]
+                if not m.empty:
+                    w_base = m.iloc[0].get("base_location", "Jaipur")
 
-                w_is_travel = str(w_base).strip().lower() != str(site_city).strip().lower()
+            w_is_travel = str(w_base).strip().lower() != str(site_city).strip().lower()
 
-                log_id = f"LOG-{datetime.now().strftime('%Y%m%d%H%M%S')}-{idx+1}"
-                log_entry = {
-                    "log_id": log_id,
-                    "installation_id": selected_site_id,
-                    "logged_date": str(log_date),
-                    "worker_name": worker,
-                    "worker_role": "Team Lead" if worker == team_lead_selected else "Helper",
-                    "team_lead_name": team_lead_selected,
-                    "task_category": t["category"],
-                    "task_name": t["description"],
-                    "hours_spent": t["hours"],
-                    "minutes_spent": t["minutes"],
-                    "base_location": w_base,
-                    "site_city": site_city,
-                    "is_travel_day": "Yes" if w_is_travel else "No",
-                    "site_remarks": site_remarks,
-                    "site_photo": photo_filename,
-                    "logged_by": user_name
-                }
-                append_to_sheet("Worker_Daily_Logs", log_entry)
-                records_saved += 1
+            log_id = f"LOG-{datetime.now().strftime('%Y%m%d%H%M%S')}-{idx+1}"
+            log_entry = {
+                "log_id": log_id,
+                "installation_id": selected_site_id,
+                "logged_date": str(log_date),
+                "worker_name": worker,                           # Selected assigned worker for this task
+                "worker_role": "Team Lead" if worker == team_lead_selected else "Helper",
+                "team_lead_name": team_lead_selected,
+                "task_category": t["category"],
+                "task_name": t["description"],
+                "hours_spent": t["hours"],
+                "minutes_spent": t["minutes"],
+                "base_location": w_base,
+                "site_city": site_city,
+                "is_travel_day": "Yes" if w_is_travel else "No",
+                "delay_category": delay_reason,                  # Categorized delay reason
+                "site_remarks": site_remarks,
+                "site_photo": photo_filename,
+                "logged_by": user_name
+            }
+            append_to_sheet("Worker_Daily_Logs", log_entry)
+            records_saved += 1
 
         if records_saved > 0:
-            st.success(f"Successfully recorded logs for {len(full_crew)} crew member(s) across {records_saved} entry/entries!")
+            st.success(f"Successfully recorded {records_saved} task log(s) for crew members!")
             st.session_state[task_count_key] = 1
             st.rerun()
         else:
             st.error("Please fill in at least one Task Description before submitting.")
-
 # ==========================================
 # 7. ROUTING & MODULE IMPLEMENTATION
 # ==========================================
