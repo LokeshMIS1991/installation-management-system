@@ -305,7 +305,7 @@ def parse_raw_worker_string(raw_str):
     return parsed_workers
 
 # ==========================================
-# 4. AUTHENTICATION (FORM LAYOUT)
+# 4. AUTHENTICATION (COMPACT FORM LAYOUT)
 # ==========================================
 if "authenticated_user" not in st.session_state:
     st.session_state.authenticated_user = None
@@ -316,13 +316,10 @@ if "remembered_username" not in st.session_state:
 if not st.session_state.authenticated_user:
     st.write("##")
     
-    # Adjusted column ratios to make the form narrower (Center column is ~35-40% width instead of 80%)
+    # Balanced column ratios to make the login box compact
     col_l, col_center, col_r = st.columns([1, 1.2, 1])
-    
     with col_center:
-        # Added a max-width container wrapper for extra desktop compactness
         st.markdown('<div style="max-width: 420px; margin: 0 auto;">', unsafe_allow_html=True)
-        
         with st.form("login_form"):
             if LOGO_PATH.exists():
                 st.image(str(LOGO_PATH), use_container_width=True)
@@ -369,7 +366,6 @@ if not st.session_state.authenticated_user:
                             st.error("Invalid Username or Password.")
                     else:
                         st.error("⚠️ Database Unreachable — Verify Google Sheets setup.")
-        
         st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
@@ -414,10 +410,11 @@ elif user_role == "Supervisor":
         "Team Head Dashboard", 
         "Master Database"
     ]
-else:
+else: # Worker Options
     menu_options = [
+        "My Work Dashboard", 
         "Log Daily Tasks", 
-        "My Work History", 
+        "My Work History & Performance", 
         "My Profile & Settings"
     ]
 
@@ -643,9 +640,200 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 # 7. ROUTING & MODULE IMPLEMENTATION
 # ==========================================
 
+# --- WORKER: MY WORK DASHBOARD (NEW WORKSPACE & PIPELINE) ---
+if menu == "My Work Dashboard":
+    st.header(f"⚡ Daily Workspace & Task Pipeline — {user_name}")
+    st.caption("Track your assigned site duties, update live task progress, and view performance metrics.")
+
+    # Load master sheets
+    df_tasks = read_sheet("Task_Assignments")
+    df_sites = read_sheet("Sites_Master")
+    df_logs = read_sheet("Worker_Daily_Logs")
+
+    # --- SECTION A: PERFORMANCE METRICS OVERVIEW ---
+    st.markdown("### 🏆 Performance & Metrics Scorecard")
+    
+    # Filter worker logs
+    my_logs = pd.DataFrame()
+    if not df_logs.empty and "worker_name" in df_logs.columns:
+        my_logs = df_logs[df_logs["worker_name"].astype(str).str.strip().str.lower() == user_name.strip().lower()]
+
+    days_worked = my_logs["logged_date"].nunique() if not my_logs.empty and "logged_date" in my_logs.columns else 0
+    days_travelled = len(my_logs[my_logs["is_travel_day"] == "Yes"]) if not my_logs.empty and "is_travel_day" in my_logs.columns else 0
+    total_hours = my_logs["hours_spent"].sum() if not my_logs.empty and "hours_spent" in my_logs.columns else 0
+
+    # Calculate Site Handover Metric for sites worker lead/participated in
+    avg_handover_days = "N/A"
+    if not df_sites.empty and "installation_id" in df_sites.columns:
+        my_site_ids = my_logs["installation_id"].unique() if not my_logs.empty else []
+        my_sites = df_sites[df_sites["installation_id"].isin(my_site_ids)].copy()
+        
+        if not my_sites.empty and "order_date" in my_sites.columns and "handover_date" in my_sites.columns:
+            my_sites["order_dt"] = pd.to_datetime(my_sites["order_date"], errors="coerce")
+            my_sites["handover_dt"] = pd.to_datetime(my_sites["handover_date"], errors="coerce")
+            my_sites["duration"] = (my_sites["handover_dt"] - my_sites["order_dt"]).dt.days
+            valid_durations = my_sites["duration"].dropna()
+            if not valid_durations.empty:
+                avg_handover_days = f"{round(valid_durations.mean(), 1)} Days"
+
+    # Performance Score Formula: (Hours * 2) + (Travel Days * 15) + (Days Worked * 10)
+    perf_score = int((total_hours * 2) + (days_travelled * 15) + (days_worked * 10))
+
+    k1, k2, k3, k4, k5 = st.columns(5)
+    with k1:
+        st.markdown(f'<div class="kpi-card"><div class="kpi-number">{days_worked}</div><div class="kpi-label">Days Worked</div></div>', unsafe_allow_html=True)
+    with k2:
+        st.markdown(f'<div class="kpi-card"><div class="kpi-number">{days_travelled}</div><div class="kpi-label">Travel Days</div></div>', unsafe_allow_html=True)
+    with k3:
+        st.markdown(f'<div class="kpi-card"><div class="kpi-number">{total_hours} hrs</div><div class="kpi-label">Total Hours</div></div>', unsafe_allow_html=True)
+    with k4:
+        st.markdown(f'<div class="kpi-card"><div class="kpi-number">{avg_handover_days}</div><div class="kpi-label">Avg Handover Speed</div></div>', unsafe_allow_html=True)
+    with k5:
+        st.markdown(f'<div class="kpi-card"><div class="kpi-number" style="color: #00A859;">{perf_score} pts</div><div class="kpi-label">Performance Score</div></div>', unsafe_allow_html=True)
+
+    st.divider()
+
+    # --- SECTION B: DYNAMIC WORK ASSIGNMENTS ("WHAT IS NEXT") ---
+    st.markdown("### 📋 Assigned Work Pipeline")
+
+    # Filter tasks assigned specifically to this worker
+    my_tasks = pd.DataFrame()
+    if not df_tasks.empty and "assigned_worker" in df_tasks.columns:
+        my_tasks = df_tasks[df_tasks["assigned_worker"].astype(str).str.strip().str.lower() == user_name.strip().lower()]
+
+    if my_tasks.empty:
+        st.info("ℹ️ No direct task assignments found in `Task_Assignments`. Check your assigned site daily logs below or log new progress.")
+    else:
+        pending_tasks = my_tasks[my_tasks["status"].astype(str).str.lower().isin(["pending", "in progress"])]
+        completed_tasks = my_tasks[my_tasks["status"].astype(str).str.lower() == "completed"]
+
+        t_tab1, t_tab2 = st.tabs([f"⏳ Active & Pending Tasks ({len(pending_tasks)})", f"✅ Completed Tasks ({len(completed_tasks)})"])
+
+        with t_tab1:
+            if pending_tasks.empty:
+                st.success("🎉 You are all caught up! No active pending tasks.")
+            else:
+                for idx, t_row in pending_tasks.iterrows():
+                    t_id = t_row.get("task_id", f"TSK-{idx}")
+                    site_id = t_row.get("installation_id", "N/A")
+                    t_name = t_row.get("task_name", "Unassigned Task")
+                    t_status = t_row.get("status", "Pending")
+
+                    # Fetch matching site details
+                    site_detail = "N/A"
+                    if not df_sites.empty and "installation_id" in df_sites.columns:
+                        match = df_sites[df_sites["installation_id"] == site_id]
+                        if not match.empty:
+                            site_detail = f"{match.iloc[0].get('site_city', '')} - {match.iloc[0].get('site_address', '')}"
+
+                    with st.expander(f"📍 Site: {site_id} | Task: {t_name} [{t_status}]", expanded=True):
+                        st.write(f"**Location / Address:** {site_detail}")
+                        st.write(f"**Category:** {t_row.get('task_category', 'General')}")
+                        st.write(f"**Target Completion:** {t_row.get('target_date', 'Asap')}")
+
+                        c_act1, c_act2 = st.columns([2, 1])
+                        with c_act1:
+                            new_status = st.selectbox("Update Status:", ["Pending", "In Progress", "Completed"], index=["Pending", "In Progress", "Completed"].index(t_status) if t_status in ["Pending", "In Progress", "Completed"] else 0, key=f"status_select_{t_id}")
+                        with c_act2:
+                            st.write(" ")
+                            st.write(" ")
+                            if st.button("Update Task Status", key=f"btn_upd_{t_id}"):
+                                update_sheet_row("Task_Assignments", "task_id", t_id, {"status": new_status})
+                                st.success(f"Task status updated to {new_status}!")
+                                st.rerun()
+
+        with t_tab2:
+            if completed_tasks.empty:
+                st.info("No completed tasks recorded yet.")
+            else:
+                disp_cols = [c for c in ["task_id", "installation_id", "task_category", "task_name", "status", "completed_date"] if c in completed_tasks.columns]
+                st.dataframe(completed_tasks[disp_cols], use_container_width=True)
+
 # --- COMMON: LOG DAILY TASKS ---
-if menu == "Log Daily Tasks":
+elif menu == "Log Daily Tasks":
     render_restricted_work_input(target_worker_name=user_name, is_crew_log=False)
+
+# --- WORKER: MY WORK HISTORY & PERFORMANCE REPORT ---
+elif menu == "My Work History & Performance":
+    st.header(f"📊 Detailed Performance Report — {user_name}")
+    
+    df_logs = read_sheet("Worker_Daily_Logs")
+    df_sites = read_sheet("Sites_Master")
+
+    if df_logs.empty or "worker_name" not in df_logs.columns:
+        st.info("⚠️ No Field Logs Recorded Yet")
+    else:
+        my_logs = df_logs[df_logs["worker_name"].astype(str).str.strip().str.lower() == user_name.strip().lower()]
+        
+        if my_logs.empty:
+            st.info("⚠️ You have not submitted any daily work logs yet.")
+        else:
+            # Analytics Visualizations
+            st.subheader("📈 Execution Breakdown")
+            c_g1, c_g2 = st.columns(2)
+            
+            with c_g1:
+                fig_hrs = px.bar(
+                    my_logs,
+                    x="logged_date",
+                    y="hours_spent",
+                    color="installation_id",
+                    title="Daily Hours Logged per Site",
+                    labels={"logged_date": "Date", "hours_spent": "Hours Logged"}
+                )
+                st.plotly_chart(fig_hrs, use_container_width=True)
+
+            with c_g2:
+                if "task_category" in my_logs.columns:
+                    fig_pie = px.pie(
+                        my_logs,
+                        names="task_category",
+                        values="hours_spent",
+                        title="Time Distribution by Task Category"
+                    )
+                    st.plotly_chart(fig_pie, use_container_width=True)
+
+            st.divider()
+            st.subheader(f"📜 Submitted Work Logs ({len(my_logs)} Entries)")
+            disp_cols = [c for c in ["log_id", "logged_date", "installation_id", "worker_role", "team_lead_name", "task_category", "task_name", "hours_spent", "minutes_spent", "is_travel_day", "site_remarks"] if c in my_logs.columns]
+            st.dataframe(my_logs[disp_cols].sort_values(by="logged_date", ascending=False), use_container_width=True)
+
+# --- WORKER: MY PROFILE & SETTINGS ---
+elif menu == "My Profile & Settings":
+    st.header("👤 Worker Profile & Security")
+    
+    col_l, col_center, col_r = st.columns([0.1, 0.8, 0.1])
+    with col_center:
+        st.markdown(f"""
+            <div class="card-box">
+                <h3 style="margin:0;">{user_name}</h3>
+                <p style="margin:5px 0;"><b>Role:</b> {user_role}</p>
+                <p style="margin:5px 0;"><b>Worker ID:</b> {user.get('worker_id', 'N/A')}</p>
+                <p style="margin:5px 0;"><b>Base Station:</b> {user_base_location}</p>
+            </div>
+        """, unsafe_allow_html=True)
+
+        st.subheader("🔑 Change Security PIN")
+        with st.form("change_pin_form"):
+            curr_pin = st.text_input("Current PIN", type="password")
+            new_pin1 = st.text_input("New 4-Digit PIN", type="password", max_chars=4)
+            new_pin2 = st.text_input("Confirm New PIN", type="password", max_chars=4)
+
+            update_pin_btn = st.form_submit_button("Update Security PIN", use_container_width=True)
+
+            if update_pin_btn:
+                if str(curr_pin).strip() != str(user.get("pin", "")).strip():
+                    st.error("Incorrect current PIN!")
+                elif not new_pin1 or len(new_pin1) < 4:
+                    st.error("New PIN must be at least 4 digits.")
+                elif new_pin1 != new_pin2:
+                    st.error("New PINs do not match!")
+                else:
+                    success = update_sheet_row("Workers_Master", "name", user_name, {"pin": new_pin1.strip()})
+                    if success:
+                        st.session_state.authenticated_user["pin"] = new_pin1.strip()
+                        st.success("PIN updated successfully!")
+                        st.rerun()
 
 # --- SUPERVISOR: TEAM HEAD DASHBOARD ---
 elif menu == "Team Head Dashboard":
@@ -818,82 +1006,6 @@ elif menu == "Employee Analytics & Reports":
                 st.subheader(f"📋 Detailed Work Logs ({len(filtered_emp_logs)} Records)")
                 disp_cols = [c for c in ["log_id", "logged_date", "installation_id", "worker_role", "team_lead_name", "task_category", "task_name", "hours_spent", "minutes_spent", "is_travel_day", "site_remarks", "site_photo"] if c in filtered_emp_logs.columns]
                 st.dataframe(filtered_emp_logs[disp_cols].sort_values(by="logged_date", ascending=False), use_container_width=True)
-
-# --- WORKER: MY WORK HISTORY ---
-elif menu == "My Work History":
-    st.header(f"📜 Work Log History & Audit Trail - {user_name}")
-    st.caption("Complete transparency of all logged daily tasks, progress increments, and travel allowances.")
-    
-    df_logs = read_sheet("Worker_Daily_Logs")
-
-    if df_logs.empty or "worker_name" not in df_logs.columns:
-        st.info("⚠️ No Field Logs Recorded Yet")
-    else:
-        my_logs = df_logs[df_logs["worker_name"].astype(str).str.strip().str.lower() == user_name.strip().lower()]
-        
-        if my_logs.empty:
-            st.info("⚠️ You have not submitted any daily work logs yet.")
-        else:
-            tot_my_hrs = my_logs["hours_spent"].sum() if "hours_spent" in my_logs.columns else 0
-            tot_my_trv = len(my_logs[my_logs["is_travel_day"] == "Yes"]) if "is_travel_day" in my_logs.columns else 0
-            tot_sites = my_logs["installation_id"].nunique() if "installation_id" in my_logs.columns else 0
-
-            k1, k2, k3 = st.columns(3)
-            with k1:
-                st.markdown(f'<div class="kpi-card"><div class="kpi-number">{tot_my_hrs} hrs</div><div class="kpi-label">Total Hours Logged</div></div>', unsafe_allow_html=True)
-            with k2:
-                st.markdown(f'<div class="kpi-card"><div class="kpi-number">{tot_my_trv} Days</div><div class="kpi-label">Travel Days (TA/DA Claimed)</div></div>', unsafe_allow_html=True)
-            with k3:
-                st.markdown(f'<div class="kpi-card"><div class="kpi-number">{tot_sites}</div><div class="kpi-label">Sites Worked On</div></div>', unsafe_allow_html=True)
-
-            st.write("##")
-            search_query = st.text_input("🔍 Search Logs by Site ID, Category, Task Name, or Date", "")
-            
-            filtered_logs = my_logs.copy()
-            if search_query:
-                mask = filtered_logs.astype(str).apply(lambda row: row.str.contains(search_query, case=False).any(), axis=1)
-                filtered_logs = filtered_logs[mask]
-
-            st.subheader(f"Submitted Log Entries ({len(filtered_logs)} Records)")
-            disp_cols = [c for c in ["log_id", "logged_date", "installation_id", "worker_role", "team_lead_name", "task_category", "task_name", "hours_spent", "minutes_spent", "is_travel_day", "site_remarks", "site_photo"] if c in filtered_logs.columns]
-            st.dataframe(filtered_logs[disp_cols].sort_values(by="logged_date", ascending=False), use_container_width=True)
-
-# --- WORKER: MY PROFILE & SETTINGS ---
-elif menu == "My Profile & Settings":
-    st.header("👤 Worker Profile & Security")
-    
-    col_l, col_center, col_r = st.columns([0.1, 0.8, 0.1])
-    with col_center:
-        st.markdown(f"""
-            <div class="card-box">
-                <h3 style="margin:0;">{user_name}</h3>
-                <p style="margin:5px 0;"><b>Role:</b> {user_role}</p>
-                <p style="margin:5px 0;"><b>Worker ID:</b> {user.get('worker_id', 'N/A')}</p>
-                <p style="margin:5px 0;"><b>Base Station:</b> {user_base_location}</p>
-            </div>
-        """, unsafe_allow_html=True)
-
-        st.subheader("🔑 Change Security PIN")
-        with st.form("change_pin_form"):
-            curr_pin = st.text_input("Current PIN", type="password")
-            new_pin1 = st.text_input("New 4-Digit PIN", type="password", max_chars=4)
-            new_pin2 = st.text_input("Confirm New PIN", type="password", max_chars=4)
-
-            update_pin_btn = st.form_submit_button("Update Security PIN", use_container_width=True)
-
-            if update_pin_btn:
-                if str(curr_pin).strip() != str(user.get("pin", "")).strip():
-                    st.error("Incorrect current PIN!")
-                elif not new_pin1 or len(new_pin1) < 4:
-                    st.error("New PIN must be at least 4 digits.")
-                elif new_pin1 != new_pin2:
-                    st.error("New PINs do not match!")
-                else:
-                    success = update_sheet_row("Workers_Master", "name", user_name, {"pin": new_pin1.strip()})
-                    if success:
-                        st.session_state.authenticated_user["pin"] = new_pin1.strip()
-                        st.success("PIN updated successfully!")
-                        st.rerun()
 
 # --- ADMIN: ANALYTICS DASHBOARD ---
 elif menu == "Admin Analytics Dashboard":
