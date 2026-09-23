@@ -495,7 +495,101 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
         st.rerun()
 
     st.divider()
+def render_team_task_input():
+    # 1. Fetch Workers & Sites from Google Sheets
+    df_sites = read_sheet("Sites_Master")
+    df_workers = read_sheet("Workers_Master")
 
+    if df_sites.empty or df_workers.empty:
+        st.error("⚠️ Unable to load Sites or Workers list. Check Google Sheets connection.")
+        return
+
+    site_options = df_sites["installation_id"].tolist()
+    
+    # Filter active workers to avoid invalid names
+    worker_list = sorted(df_workers["name"].str.strip().unique().tolist())
+
+    st.markdown("## 📝 Log Daily Team Tasks")
+    st.write("---")
+
+    # 2. Site & Date Selection
+    col_site, col_date = st.columns(2)
+    with col_site:
+        selected_site_id = st.selectbox("Select Installation Site *", site_options)
+    with col_date:
+        log_date = st.date_input("Date of Work *", value=datetime.now())
+
+    st.markdown("### 👥 Team Assignment")
+    
+    # 3. Dynamic Dropdowns for Team Lead & Helpers
+    col_lead, col_team = st.columns(2)
+    
+    with col_lead:
+        # Defaults to the currently logged in user if they are in the database
+        default_idx = worker_list.index(user_name) if user_name in worker_list else 0
+        team_lead_name = st.selectbox(
+            "Team Lead Name *", 
+            options=worker_list, 
+            index=default_idx,
+            help="Select the responsible supervisor or lead on site."
+        )
+
+    with col_team:
+        # Multi-select dropdown for team members/helpers excluding the team lead
+        available_helpers = [w for w in worker_list if w != team_lead_name]
+        team_helpers = st.multiselect(
+            "Team Members / Helpers", 
+            options=available_helpers,
+            help="Select all helpers/workers present with the lead today."
+        )
+
+    st.markdown("### 🛠️ Work Completed")
+    
+    task_cat = st.selectbox("Task Category *", TASK_CATEGORIES)
+    task_desc = st.text_input("Task Description *", placeholder="e.g., Track Leveling and Panel Erection")
+    
+    col_h, col_m = st.columns(2)
+    with col_h:
+        hrs = st.number_input("Hours Spent Per Worker *", min_value=0, max_value=24, value=8)
+    with col_m:
+        mins = st.selectbox("Minutes Spent", [0, 15, 30, 45])
+        
+    site_remarks = st.text_area("Site Remarks / Delays", placeholder="Optional site delay or progress notes...")
+
+    # 4. Processing & Individual Database Logging
+    if st.button("💾 Sync Team Daily Log to Database", use_container_width=True):
+        if not task_desc.strip():
+            st.error("Please enter a valid Task Description before submitting.")
+            return
+
+        # Build full crew list (Lead + Selected Helpers)
+        full_crew = [team_lead_name] + team_helpers
+        log_timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+
+        # Save an independent row for EVERY team member for accurate individual worker reports
+        for idx, worker in enumerate(full_crew):
+            log_id = f"LOG-{log_timestamp}-{idx+1:02d}"
+            role_in_entry = "Team Lead" if worker == team_lead_name else "Helper / Team Member"
+            
+            log_entry = {
+                "log_id": log_id,
+                "installation_id": selected_site_id,
+                "logged_date": str(log_date),
+                "worker_name": worker,                 # Clean standard dropdown name
+                "worker_role_on_site": role_in_entry,   # Distinguishes Lead vs Helper
+                "team_lead_name": team_lead_name,       # Preserves crew lead reference
+                "task_category": task_cat,
+                "task_name": task_desc,
+                "hours_spent": hrs,
+                "minutes_spent": mins,
+                "site_remarks": site_remarks,
+                "logged_by": user_name
+            }
+            
+            append_to_sheet("Worker_Daily_Logs", log_entry)
+
+        st.success(f"Successfully logged task for {len(full_crew)} crew members: {', '.join(full_crew)}")
+        
     # --- REMARKS & DELAYS SELECTION ---
     st.markdown("### ⚠️ Site Remarks / Delays & Root Cause Analysis")
     site_remarks = st.text_area(
