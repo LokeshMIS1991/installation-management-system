@@ -225,31 +225,17 @@ def get_workbook():
     sheet_url = st.secrets.get("spreadsheet_url", "https://docs.google.com/spreadsheets/d/19rQC3aNtosjhSwyctKAk9ojUt0c8gyOPH-Q8trW5q5s/edit")
     return client.open_by_url(sheet_url)
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=60)     
 def read_sheet(sheet_name: str) -> pd.DataFrame:
-    """
-    Reads a tab from Google Sheets with a 60-second Streamlit cache 
-    to prevent Google API 429 quota errors.
-    """
+        """    Reads a tab from Google Sheets with a 60-second Streamlit cache to prevent Google API 429 quota errors.    """
     try:
-        # Replace this block with your actual Google Sheets connection logic
-        # Example using gspread or st.connection:
-        worksheet = conn.open_by_key(SPREADSHEET_ID).worksheet(sheet_name)
-        data = worksheet.get_all_records()
+        wb = get_workbook()
+        sheet = wb.worksheet(sheet_name)
+        data = sheet.get_all_records()
         return pd.DataFrame(data)
     except Exception as e:
         st.error(f"Error reading tab '{sheet_name}': {e}")
         return pd.DataFrame()
-        
-# def read_sheet(sheet_name: str) -> pd.DataFrame:
-#     try:
-#         wb = get_workbook()
-#         sheet = wb.worksheet(sheet_name)
-#         data = sheet.get_all_records()
-#         return pd.DataFrame(data)
-#     except Exception as e:
-#         st.error(f"Error reading tab '{sheet_name}': {e}")
-#         return pd.DataFrame()
 
 def append_to_sheet(sheet_name: str, row_data_dict: dict):
     try:
