@@ -305,9 +305,6 @@ if "authenticated_user" not in st.session_state:
 if "remembered_username" not in st.session_state:
     st.session_state.remembered_username = ""
 
-if "punch_status" not in st.session_state:
-    st.session_state.punch_status = "Punched Out"
-
 if not st.session_state.authenticated_user:
     st.write("##")
     col_l, col_center, col_r = st.columns([1, 1.2, 1])
@@ -381,32 +378,6 @@ else:
     """, unsafe_allow_html=True)
 
 st.sidebar.markdown(f"**Active User:** {user_name} (`{user_role}`)  \n**Base Station:** {user_base_location}")
-st.sidebar.divider()
-
-# --- FEATURE 1: PUNCH IN / PUNCH OUT ATTENDANCE TRACKER ---
-st.sidebar.markdown("### ⏱️ Attendance Punch")
-col_p1, col_p2 = st.columns(2)
-with col_p1:
-    if st.sidebar.button("🟢 Punch In"):
-        st.session_state.punch_status = "Punched In"
-        append_to_sheet("Attendance_Logs", {
-            "worker_name": user_name,
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "action": "Punch In"
-        })
-        st.sidebar.success("Punched In!")
-
-with col_p2:
-    if st.sidebar.button("🔴 Punch Out"):
-        st.session_state.punch_status = "Punched Out"
-        append_to_sheet("Attendance_Logs", {
-            "worker_name": user_name,
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "action": "Punch Out"
-        })
-        st.sidebar.info("Punched Out!")
-
-st.sidebar.caption(f"Status: **{st.session_state.punch_status}**")
 st.sidebar.divider()
 
 if user_role == "Admin":
@@ -727,7 +698,6 @@ elif menu == "My Work History & Performance":
         if my_logs.empty:
             st.info("⚠️ You have not submitted any daily work logs yet.")
         else:
-            # Excel Report Exporter
             excel_bytes = generate_excel_download(my_logs, f"{user_name}_Performance_Report.xlsx")
             st.download_button("📥 Download Performance Excel Report", data=excel_bytes, file_name=f"{user_name}_Performance_Report.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             
