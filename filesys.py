@@ -9,6 +9,71 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 import plotly.express as px
 
+
+def render_view_logs_and_update_status():
+    st.markdown("## 🔍 View Daily Logs & Update Status")
+
+    # 1. Fetch data from Google Sheets
+    df_sites = read_sheet("Sites_Master")
+    if df_sites.empty:
+        st.warning("No installation records found.")
+        return
+
+    # 2. Standardize column headers for reliable lookup
+    df_sites.columns = [str(col).strip().lower().replace(" ", "_") for col in df_sites.columns]
+
+    site_map = {}
+    site_data = {}
+
+    # 3. Process each site record
+    for _, s in df_sites.iterrows():
+        site_id = str(s.get("installation_id", "")).strip()
+        if not site_id:
+            continue
+
+        c_name = str(s.get("client_name") or s.get("client") or s.get("company_name") or "N/A").strip()
+        c_phone = str(s.get("client_phone") or s.get("mobile_no") or s.get("phone") or "N/A").strip()
+        city = str(s.get("site_city") or s.get("city") or "N/A").strip()
+        lead = str(s.get("team_lead") or s.get("lead") or "N/A").strip()
+        status = str(s.get("status") or "In Progress").strip().title()
+
+        # Build dropdown option label: "INST-2026-39B4 — recky industries"
+        display_label = f"{site_id} — {c_name}" if c_name != "N/A" else site_id
+        
+        site_map[display_label] = site_id
+        site_data[site_id] = {
+            "client_name": c_name,
+            "client_phone": c_phone,
+            "city": city,
+            "team_lead": lead,
+            "status": status
+        }
+
+    if not site_map:
+        st.warning("No valid site records found.")
+        return
+
+    # 4. Render selectbox with formatted display labels
+    selected_label = st.selectbox(
+        "Select Installation ID", 
+        options=list(site_map.keys()),
+        key="view_logs_site_select"
+    )
+    
+    # Map back selected label to pure installation ID
+    selected_id = site_map[selected_label]
+    info = site_data[selected_id]
+
+    # 5. Display Installation Card Details
+    st.markdown(f"""
+        <div style="background-color: #f0f4f8; padding: 20px; border-radius: 10px; border-left: 5px solid #1E3A8A; margin-top: 15px; margin-bottom: 20px;">
+            <h2 style="color: #1E3A8A; margin-top: 0; margin-bottom: 10px;">{selected_id}</h2>
+            <p style="margin: 5px 0;"><strong>Client Name:</strong> {info['client_name']} | <strong>Client Mobile:</strong> {info['client_phone']}</p>
+            <p style="margin: 5px 0;"><strong>City:</strong> {info['city']} | <strong>Team Lead:</strong> {info['team_lead']}</p>
+            <p style="margin: 5px 0;"><strong>Current Status:</strong> {info['status']}</p>
+        </div>
+    """, unsafe_allow_html=True)
+    
 # ==========================================
 # 0. CROSS-PLATFORM PATH MANAGEMENT
 # ==========================================
