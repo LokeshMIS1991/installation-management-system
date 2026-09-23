@@ -413,8 +413,34 @@ if st.sidebar.button("🚪 LOG OUT", use_container_width=True):
 # 6. DYNAMIC MULTI-TASK WORK INPUT HELPER
 # ==========================================
 # ==========================================
+# 1. CONSTANTS & CATEGORIES
+# ==========================================
+TASK_CATEGORIES = [
+    "Civil & Mounting Work",
+    "Track Leveling",
+    "Wiring & Electrical",
+    "Commissioning & Testing",
+    "Site Survey",
+    "Travel / Transit",
+    "Other"
+]
+
+# Add DELAY_REASONS here before it is used in the function below
+DELAY_REASONS = [
+    "No Delay",
+    "Power Supply Issue",
+    "Civil Work Delay",
+    "Client Hold",
+    "Material Missing",
+    "Weather Delay",
+    "Other"
+]
+
+
+# ==========================================
 # DYNAMIC MULTI-TASK WORK INPUT HELPER
 # ==========================================
+
 def render_restricted_work_input(target_worker_name, is_crew_log=False):
     df_sites = read_sheet("Sites_Master")
     df_workers = read_sheet("Workers_Master")
