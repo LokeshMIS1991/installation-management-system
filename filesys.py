@@ -49,7 +49,7 @@ DELAY_REASONS = [
     "Other"
 ]
 
-STATUS_OPTIONS = ["In Progress", "Completed", "On Hold", "Pending Inspection", "Handovered"]
+STATUS_OPTIONS = ["In Progress", "Completed", "On Hold", "Pending Inspection"]
 
 # ==========================================
 # 2. PAGE CONFIG & RESPONSIVE GLOBAL THEME
@@ -58,13 +58,14 @@ st.set_page_config(
     page_title="Sidharth Shutter & Automation - Portal", 
     layout="wide", 
     page_icon="⚙️",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="auto"
 )
 
 COLOR_PRIMARY = "#10418A"    # Sidharth Deep Blue
 COLOR_ACCENT = "#00A859"     # Vibrant Green
 COLOR_BG_LIGHT = "#EBF3FA"   # Soft Blue Background Tint
 
+# Apply High-Specificity Cross-Platform CSS Inject
 st.markdown(f"""
     <style>
     .stApp {{
@@ -132,6 +133,31 @@ st.markdown(f"""
         margin-top: 0.8rem !important;
         margin-bottom: 0.8rem !important;
     }}
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label {{
+        padding-top: 2px !important;
+        padding-bottom: 2px !important;
+        margin-bottom: 2px !important;
+    }}
+    section[data-testid="stSidebar"] div[role="radiogroup"] {{
+        gap: 4px !important;
+    }}
+    section[data-testid="stSidebar"] div.stButton > button {{
+        background-color: {COLOR_ACCENT} !important;
+        background: {COLOR_ACCENT} !important;
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+        border-radius: 8px !important;
+        padding: 10px 0px !important;
+        font-size: 15px !important;
+        border: none !important;
+        width: 100% !important;
+        margin-top: 10px !important;
+        box-shadow: 0 4px 10px rgba(0, 168, 89, 0.35) !important;
+    }}
+    section[data-testid="stSidebar"] div.stButton > button * {{
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+    }}
     div[data-testid="stForm"] div[data-baseweb="input"],
     div[data-testid="stForm"] div[data-baseweb="select"] > div {{
         border: 2px solid {COLOR_PRIMARY} !important;
@@ -148,6 +174,29 @@ st.markdown(f"""
         border-radius: 16px;
         padding: 24px 18px;
         box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
+    }}
+    div[data-testid="stFormSubmitButton"] > button {{
+        background-color: {COLOR_ACCENT} !important;
+        background: {COLOR_ACCENT} !important;
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+        border-radius: 8px !important;
+        padding: 12px 20px !important;
+        font-size: 15px !important;
+        border: none !important;
+        width: 100% !important;
+        min-height: 48px !important;
+        margin-top: 15px !important;
+        box-shadow: 0 4px 12px rgba(0, 168, 89, 0.3) !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }}
+    div[data-testid="stFormSubmitButton"] > button * {{
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+        font-size: 15px !important;
+        white-space: nowrap !important;
     }}
     .login-caption {{
         color: #6C757D;
@@ -187,6 +236,7 @@ def get_workbook():
 
 @st.cache_data(ttl=60)
 def read_sheet(sheet_name: str) -> pd.DataFrame:
+    """Reads a tab from Google Sheets with a 60-second Streamlit cache to prevent Google API 429 quota errors."""
     try:
         wb = get_workbook()
         sheet = wb.worksheet(sheet_name)
@@ -204,11 +254,6 @@ def append_to_sheet(sheet_name: str, row_data_dict: dict):
         if not headers:
             headers = list(row_data_dict.keys())
             sheet.append_row(headers)
-        
-        # Add timestamp if missing
-        if "created_at" in headers and "created_at" not in row_data_dict:
-            row_data_dict["created_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
         row_values = [str(row_data_dict.get(h, "")) for h in headers]
         sheet.append_row(row_values)
         st.cache_data.clear()
@@ -227,11 +272,6 @@ def update_sheet_row(sheet_name: str, key_col: str, key_val: str, update_dict: d
             return False
         row_num = match_idx[0] + 2
         headers = sheet.row_values(1)
-        
-        # Add timestamp if missing
-        if "updated_at" in headers:
-            update_dict["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
         for col_name, new_val in update_dict.items():
             if col_name in headers:
                 col_num = headers.index(col_name) + 1
@@ -248,7 +288,7 @@ def parse_raw_worker_string(raw_str):
         r'([A-Za-z\s]+?)'                           # Name
         r'(\d{12})'                                 # National ID
         r'(\d{4})'                                  # PIN
-        r'(Supervisor|Worker|Admin)'                # Role
+        r'(Supervisor|Worker|Admin)'               # Role
         r'([A-Za-z]+)'                              # Base Location
     )
     parsed_workers = []
@@ -264,11 +304,8 @@ def parse_raw_worker_string(raw_str):
         })
     return parsed_workers
 
-def convert_df_to_csv(df):
-    return df.to_csv(index=False).encode('utf-8')
-
 # ==========================================
-# 4. AUTHENTICATION
+# 4. AUTHENTICATION (FORM LAYOUT)
 # ==========================================
 if "authenticated_user" not in st.session_state:
     st.session_state.authenticated_user = None
@@ -278,6 +315,7 @@ if "remembered_username" not in st.session_state:
 
 if not st.session_state.authenticated_user:
     st.write("##")
+    
     col_l, col_center, col_r = st.columns([0.1, 0.8, 0.1])
     with col_center:
         with st.form("login_form"):
@@ -377,6 +415,7 @@ else:
     ]
 
 menu = st.sidebar.radio("Navigation Menu", menu_options)
+
 st.sidebar.divider()
 
 if st.sidebar.button("🚪 LOG OUT", use_container_width=True):
@@ -387,9 +426,11 @@ if st.sidebar.button("🚪 LOG OUT", use_container_width=True):
 # 6. DYNAMIC MULTI-TASK WORK INPUT HELPER
 # ==========================================
 def render_restricted_work_input(target_worker_name, is_crew_log=False):
+    # Fetch Master Sheet Data
     df_sites = read_sheet("Sites_Master")
     df_workers = read_sheet("Workers_Master")
 
+    # 1. Filter out Handovered / Completed sites from dropdown options
     if not df_sites.empty and "installation_id" in df_sites.columns:
         if "status" in df_sites.columns:
             active_sites = df_sites[
@@ -401,6 +442,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
     else:
         site_options = []
 
+    # 2. Filter out Supervisors and Admins from worker dropdown options
     if not df_workers.empty and "name" in df_workers.columns:
         if "role" in df_workers.columns:
             filtered_workers = df_workers[
@@ -416,6 +458,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
         st.warning("⚠️ No Active Installation Sites Available — All sites are either handovered or not yet created.")
         return
 
+    # Dynamic site header placeholder
     header_placeholder = st.empty()
 
     c_site, c_date = st.columns(2)
@@ -428,11 +471,13 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
     with c_date:
         log_date = st.date_input("Date of Work", value=datetime.now(), key=f"date_{target_worker_name}_{is_crew_log}")
 
+    # Render dynamic title using selected site ID
     header_placeholder.markdown(f"## 📝 Log Daily Tasks - {selected_site_id}")
 
     site_info = df_sites[df_sites["installation_id"] == selected_site_id].iloc[0]
     site_city = site_info.get("site_city", "Jaipur")
 
+    # 3. Crew Selection (Team Lead & Helpers)
     st.markdown("### 👥 Crew & Team Assignment")
     col_lead, col_helpers = st.columns(2)
 
@@ -453,6 +498,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
             key=f"helpers_{target_worker_name}_{is_crew_log}"
         )
 
+    # Active Crew scope strictly restricted to Lead + Helpers
     active_crew = [team_lead_selected] + team_helpers_selected
 
     st.write("##")
@@ -466,14 +512,29 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 
     for i in range(st.session_state[task_count_key]):
         st.caption(f"**Task Line #{i+1}**")
+        
+        # Grid layout with "Task Assigned To" restricted strictly to selected active crew members
         col_cat, col_desc, col_assigned, col_hrs, col_min = st.columns([2.5, 3, 2.5, 1.2, 1.2])
 
         with col_cat:
-            cat = st.selectbox(f"Category #{i+1}", TASK_CATEGORIES, key=f"cat_{target_worker_name}_{is_crew_log}_{i}")
+            cat = st.selectbox(
+                f"Category #{i+1}",
+                TASK_CATEGORIES,
+                key=f"cat_{target_worker_name}_{is_crew_log}_{i}"
+            )
         with col_desc:
-            desc = st.text_input(f"Task #{i+1} Description", placeholder="e.g., Track Leveling", key=f"desc_{target_worker_name}_{is_crew_log}_{i}")
+            desc = st.text_input(
+                f"Task #{i+1} Description",
+                placeholder="e.g., Track Leveling",
+                key=f"desc_{target_worker_name}_{is_crew_log}_{i}"
+            )
         with col_assigned:
-            assigned_worker = st.selectbox(f"Assigned To #{i+1}", options=active_crew, key=f"assigned_{target_worker_name}_{is_crew_log}_{i}")
+            assigned_worker = st.selectbox(
+                f"Assigned To #{i+1}",
+                options=active_crew,
+                key=f"assigned_{target_worker_name}_{is_crew_log}_{i}",
+                help="Select from active crew members assigned to this site today."
+            )
         with col_hrs:
             hrs = st.number_input(f"Hours", min_value=0, max_value=24, value=2, step=1, key=f"hrs_{target_worker_name}_{is_crew_log}_{i}")
         with col_min:
@@ -493,23 +554,37 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 
     st.divider()
 
+    # 4. Site Delays Dropdown & Remarks Section
     st.markdown("### ⚠️ Site Remarks / Delays")
     col_delay_cat, col_delay_notes = st.columns([1, 2])
     
     with col_delay_cat:
-        delay_reason = st.selectbox("Primary Delay Category", options=DELAY_REASONS, key=f"delay_reason_{target_worker_name}_{is_crew_log}")
+        delay_reason = st.selectbox(
+            "Primary Delay Category",
+            options=DELAY_REASONS,
+            key=f"delay_reason_{target_worker_name}_{is_crew_log}"
+        )
         
     with col_delay_notes:
-        site_remarks = st.text_area("Specific Site Notes / Remarks", placeholder="Provide additional details regarding the delay or site notes...", key=f"rem_{target_worker_name}_{is_crew_log}")
+        site_remarks = st.text_area(
+            "Specific Site Notes / Remarks",
+            placeholder="Provide additional details regarding the delay or site notes...",
+            key=f"rem_{target_worker_name}_{is_crew_log}"
+        )
 
     st.markdown("### 📷 Site Photo Documentation")
-    uploaded_photo = st.file_uploader("Upload Photo of Site / Issues / Completed Task", type=["jpg", "jpeg", "png"], key=f"photo_{target_worker_name}_{is_crew_log}")
+    uploaded_photo = st.file_uploader(
+        "Upload Photo of Site / Issues / Completed Task",
+        type=["jpg", "jpeg", "png"],
+        key=f"photo_{target_worker_name}_{is_crew_log}"
+    )
 
     if uploaded_photo is not None:
         st.image(uploaded_photo, caption="Uploaded Site Photo Preview", width=280)
 
     st.write("##")
 
+    # 5. Database Syncing Logic
     if st.button("💾 Sync Daily Log to Database", key=f"btn_sync_{target_worker_name}_{is_crew_log}", use_container_width=True):
         photo_filename = uploaded_photo.name if uploaded_photo is not None else "No Photo"
         records_saved = 0
@@ -561,9 +636,11 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 # 7. ROUTING & MODULE IMPLEMENTATION
 # ==========================================
 
+# --- COMMON: LOG DAILY TASKS ---
 if menu == "Log Daily Tasks":
     render_restricted_work_input(target_worker_name=user_name, is_crew_log=False)
 
+# --- SUPERVISOR: TEAM HEAD DASHBOARD ---
 elif menu == "Team Head Dashboard":
     st.header("👥 Dual-Tab Team Head Dashboard")
     tab_personal, tab_crew = st.tabs(["👤 Personal Work Log", "👨‍🔧 Crew Task Logging"])
@@ -584,6 +661,7 @@ elif menu == "Team Head Dashboard":
             st.divider()
             render_restricted_work_input(target_worker_name=selected_crew, is_crew_log=True)
 
+# --- SUPERVISOR: ACTIVE TASKS ---
 elif menu == "Active Tasks Dashboard":
     st.header("📋 Active Tasks Dashboard")
     st.caption("Track site installation progress, monitor individual task statuses, and export site reports.")
@@ -599,7 +677,7 @@ elif menu == "Active Tasks Dashboard":
             site_options = ["All Sites"] + (df_sites["installation_id"].tolist() if not df_sites.empty and "installation_id" in df_sites.columns else [])
             site_filter = st.selectbox("Filter by Site", site_options)
         with col_f2:
-            status_filter = st.selectbox("Filter by Task Status", ["All Statuses"] + STATUS_OPTIONS)
+            status_filter = st.selectbox("Filter by Task Status", ["All Statuses", "In Progress", "Pending", "Completed"])
 
         filtered_tasks = df_tasks.copy()
         if site_filter != "All Sites" and "installation_id" in filtered_tasks.columns:
@@ -635,6 +713,7 @@ elif menu == "Active Tasks Dashboard":
         st.subheader(f"Task List ({len(filtered_tasks)} Records)")
         st.dataframe(filtered_tasks, use_container_width=True)
 
+# --- PAGE: EMPLOYEE ANALYTICS & REPORTS ---
 elif menu == "Employee Analytics & Reports":
     st.header("👤 Employee Deep Dive & Individual Analytics")
     st.caption("Select any worker to isolate their performance, daily progress graphs, and travel logs.")
@@ -733,13 +812,7 @@ elif menu == "Employee Analytics & Reports":
                 disp_cols = [c for c in ["log_id", "logged_date", "installation_id", "worker_role", "team_lead_name", "task_category", "task_name", "hours_spent", "minutes_spent", "is_travel_day", "site_remarks", "site_photo"] if c in filtered_emp_logs.columns]
                 st.dataframe(filtered_emp_logs[disp_cols].sort_values(by="logged_date", ascending=False), use_container_width=True)
 
-                st.download_button(
-                    label="📥 Export Employee Log as CSV",
-                    data=convert_df_to_csv(filtered_emp_logs),
-                    file_name=f"{selected_emp}_work_logs.csv",
-                    mime="text/csv"
-                )
-
+# --- WORKER: MY WORK HISTORY ---
 elif menu == "My Work History":
     st.header(f"📜 Work Log History & Audit Trail - {user_name}")
     st.caption("Complete transparency of all logged daily tasks, progress increments, and travel allowances.")
@@ -778,6 +851,7 @@ elif menu == "My Work History":
             disp_cols = [c for c in ["log_id", "logged_date", "installation_id", "worker_role", "team_lead_name", "task_category", "task_name", "hours_spent", "minutes_spent", "is_travel_day", "site_remarks", "site_photo"] if c in filtered_logs.columns]
             st.dataframe(filtered_logs[disp_cols].sort_values(by="logged_date", ascending=False), use_container_width=True)
 
+# --- WORKER: MY PROFILE & SETTINGS ---
 elif menu == "My Profile & Settings":
     st.header("👤 Worker Profile & Security")
     
@@ -814,6 +888,7 @@ elif menu == "My Profile & Settings":
                         st.success("PIN updated successfully!")
                         st.rerun()
 
+# --- ADMIN: ANALYTICS DASHBOARD ---
 elif menu == "Admin Analytics Dashboard":
     st.header("📊 Admin Operations Dashboard")
     df_logs = read_sheet("Worker_Daily_Logs")
@@ -838,21 +913,19 @@ elif menu == "Admin Analytics Dashboard":
         st.subheader("Field Hours per Worker")
         if not df_logs.empty and "worker_name" in df_logs.columns and df_logs["hours_spent"].sum() > 0:
             hrs_df = df_logs.groupby("worker_name")["hours_spent"].sum().reset_index()
-            fig_hrs_bar = px.bar(hrs_df, x="worker_name", y="hours_spent", color="hours_spent", title="Field Hours by Worker")
-            st.plotly_chart(fig_hrs_bar, use_container_width=True)
+            st.bar_chart(hrs_df.set_index("worker_name"))
         else:
             st.info("⚠️ No Field Hours Logged Yet")
 
     with col_chart2:
         st.subheader("Site Status Distribution")
         if not df_sites.empty and "status" in df_sites.columns:
-            st_counts = df_sites["status"].value_counts().reset_index()
-            st_counts.columns = ["Status", "Count"]
-            fig_status_pie = px.pie(st_counts, names="Status", values="Count", title="Site Status Distribution", hole=0.4)
-            st.plotly_chart(fig_status_pie, use_container_width=True)
+            st_counts = df_sites["status"].value_counts()
+            st.bar_chart(st_counts)
         else:
             st.info("⚠️ No Installation Sites Created Yet")
 
+# --- ADMIN: USER MANAGEMENT ---
 elif menu == "User Management":
     st.header("👥 User & Access Management")
     df_workers = read_sheet("Workers_Master")
@@ -926,6 +999,7 @@ elif menu == "User Management":
                         st.success(f"Updated **{selected_edit_user}** successfully!")
                         st.rerun()
 
+# --- ADMIN: TA/DA PAYROLL & TRAVEL SUMMARY ---
 elif menu == "TA/DA Payroll & Travel Summary":
     st.header("✈️ TA/DA Travel Allowance & Payroll Report")
     df_logs = read_sheet("Worker_Daily_Logs")
@@ -946,26 +1020,15 @@ elif menu == "TA/DA Payroll & Travel Summary":
             summary_df["Estimated Allowance (₹)"] = summary_df["total_travel_days"] * ta_rate
             st.dataframe(summary_df, use_container_width=True)
 
-            st.download_button(
-                label="📥 Export TA/DA Summary as CSV",
-                data=convert_df_to_csv(summary_df),
-                file_name="tada_summary_report.csv",
-                mime="text/csv"
-            )
-
+# --- ADMIN: ADVANCED FIELD LOGS INSPECTOR ---
 elif menu == "Advanced Field Logs Inspector":
     st.header("🔍 Advanced Field Log Inspector & Exporter")
     df_logs = read_sheet("Worker_Daily_Logs")
 
     if not df_logs.empty:
         st.dataframe(df_logs, use_container_width=True)
-        st.download_button(
-            label="📥 Export All Logs as CSV",
-            data=convert_df_to_csv(df_logs),
-            file_name="all_field_logs.csv",
-            mime="text/csv"
-        )
 
+# --- SUPERVISOR: HANDOVER DASHBOARD ---
 elif menu == "Handover Date Dashboard":
     st.header("📅 Site Handover Date Dashboard")
     df_sites = read_sheet("Sites_Master")
@@ -987,6 +1050,7 @@ elif menu == "Handover Date Dashboard":
                 </div>
             """, unsafe_allow_html=True)
 
+# --- SUPERVISOR: NEW ORDER ---
 elif menu == "New Installation Order":
     st.header("Create New Installation Order")
     df_workers = read_sheet("Workers_Master")
@@ -1005,7 +1069,9 @@ elif menu == "New Installation Order":
     with col_team:
         st.markdown("### 👨‍💼 Team Structure")
         team_lead_name = st.selectbox("Team Lead Name *", options=worker_options, key="inst_team_lead")
+        
         team_helpers = st.multiselect("Team Members / Helpers", options=[w for w in worker_options if w != team_lead_name], key="inst_helpers")
+
         city_name = st.text_input("City Name *", value="Mumbai", key="inst_city_name")
         site_address = st.text_area("Site Address *", placeholder="Full installation site address...", key="inst_site_address")
 
@@ -1016,6 +1082,7 @@ elif menu == "New Installation Order":
         target_handover_date = st.date_input("Target Handover Date", value=datetime.now() + timedelta(days=15), key="inst_handover_date")
 
     st.divider()
+
     st.markdown("### 📦 Order Products Details")
     
     products_data = []
@@ -1065,6 +1132,7 @@ elif menu == "New Installation Order":
             st.success(f"Installation Order **{visit_id}** recorded successfully!")
             st.session_state.products_count = 1
 
+# --- SUPERVISOR: VIEW LOGS & UPDATE ---
 elif menu == "View Logs & Update Status":
     st.header("🔍 View Daily Logs & Update Status")
     df_sites = read_sheet("Sites_Master")
@@ -1111,6 +1179,7 @@ elif menu == "View Logs & Update Status":
                     st.write(f"**Photo Attached:** {l.get('site_photo', 'No Photo')}")
                     st.write(f"**Remarks / Cause of Delay:** {l.get('site_remarks', 'None')}")
 
+# --- MASTER DATABASE ---
 elif menu == "Master Database":
     st.header("🗄️ Live Google Sheets Database")
     m_tab1, m_tab2, m_tab3, m_tab4 = st.tabs(["Workers Master", "Sites Master", "Task Assignments", "Worker Daily Logs"])
