@@ -74,6 +74,39 @@ def render_view_logs_and_update_status():
         </div>
     """, unsafe_allow_html=True)
     
+    # 6. Update Status Controls
+    col_st, col_btn = st.columns([2, 1])
+    with col_st:
+        curr_st = info['status']
+        st_idx = STATUS_OPTIONS.index(curr_st) if curr_st in STATUS_OPTIONS else 0
+        new_st = st.selectbox("Update Status", STATUS_OPTIONS, index=st_idx, key="update_status_selectbox")
+    with col_btn:
+        st.write(" ")
+        st.write(" ")
+        if st.button("Update Status", key="btn_update_site_status"):
+            update_sheet_row("Sites_Master", "installation_id", selected_id, {"status": new_st})
+            st.success(f"Status updated to **{new_st}**!")
+            st.rerun()
+
+    # 7. Render Submitted Field Logs for the selected site
+    st.divider()
+    st.subheader("📜 Submitted Work Logs")
+    df_logs = read_sheet("Worker_Daily_Logs")
+    p_logs = df_logs[df_logs["installation_id"] == selected_id] if not df_logs.empty and "installation_id" in df_logs.columns else pd.DataFrame()
+
+    if not p_logs.empty:
+        for _, l in p_logs.iterrows():
+            with st.expander(f"📅 Date: {l.get('logged_date')} | Worker: {l.get('worker_name')} | Role: {l.get('worker_role', 'N/A')}"):
+                st.write(f"**Task Category:** {l.get('task_category')}")
+                st.write(f"**Task Description:** {l.get('task_name')}")
+                st.write(f"**Time Spent:** {l.get('hours_spent')} hrs {l.get('minutes_spent')} mins")
+                st.write(f"**Travel Day (TA/DA):** {l.get('is_travel_day')}")
+                st.write(f"**Photo Attached:** {l.get('site_photo', 'No Photo')}")
+                st.write(f"**Remarks / Cause of Delay:** {l.get('site_remarks', 'None')}")
+    else:
+        st.info("No submitted field logs found for this installation ID.")
+
+
 # ==========================================
 # 0. CROSS-PLATFORM PATH MANAGEMENT
 # ==========================================
@@ -1228,51 +1261,7 @@ elif menu == "New Installation Order":
 
 # --- SUPERVISOR: VIEW LOGS & UPDATE ---
 elif menu == "View Logs & Update Status":
-    st.header("🔍 View Daily Logs & Update Status")
-    df_sites = read_sheet("Sites_Master")
-    df_logs = read_sheet("Worker_Daily_Logs")
-
-    if not df_sites.empty and "installation_id" in df_sites.columns:
-        site_list = df_sites["installation_id"].tolist()
-        selected_inst = st.selectbox("Select Installation ID", site_list)
-
-        site_row = df_sites[df_sites["installation_id"] == selected_inst].iloc[0]
-        
-        st.markdown(f"""
-            <div class="card-box">
-                <h3 style="margin:0;">{site_row.get('installation_id', 'N/A')}</h3>
-                <p style="margin:5px 0;"><b>Client Name:</b> {site_row.get('client_name', 'N/A')} | <b>Client Mobile:</b> {site_row.get('client_phone', 'N/A')}</p>
-                <p style="margin:5px 0;"><b>City:</b> {site_row.get('site_city', 'N/A')} | <b>Team Lead:</b> {site_row.get('team_lead', 'N/A')}</p>
-                <p style="margin:5px 0;"><b>Current Status:</b> <b>{site_row.get('status', 'In Progress')}</b></p>
-            </div>
-        """, unsafe_allow_html=True)
-
-        col_st, col_btn = st.columns([2, 1])
-        with col_st:
-            curr_st = site_row.get("status", "In Progress")
-            st_idx = STATUS_OPTIONS.index(curr_st) if curr_st in STATUS_OPTIONS else 0
-            new_st = st.selectbox("New Status", STATUS_OPTIONS, index=st_idx)
-        with col_btn:
-            st.write(" ")
-            st.write(" ")
-            if st.button("Update Status"):
-                update_sheet_row("Sites_Master", "installation_id", selected_inst, {"status": new_st})
-                st.success(f"Status updated to **{new_st}**!")
-                st.rerun()
-
-        st.divider()
-        st.subheader("📜 Submitted Work Logs")
-        p_logs = df_logs[df_logs["installation_id"] == selected_inst] if not df_logs.empty and "installation_id" in df_logs.columns else pd.DataFrame()
-
-        if not p_logs.empty:
-            for _, l in p_logs.iterrows():
-                with st.expander(f"📅 Date: {l.get('logged_date')} | Worker: {l.get('worker_name')} | Role: {l.get('worker_role', 'N/A')}"):
-                    st.write(f"**Task Category:** {l.get('task_category')}")
-                    st.write(f"**Task Description:** {l.get('task_name')}")
-                    st.write(f"**Time Spent:** {l.get('hours_spent')} hrs {l.get('minutes_spent')} mins")
-                    st.write(f"**Travel Day (TA/DA):** {l.get('is_travel_day')}")
-                    st.write(f"**Photo Attached:** {l.get('site_photo', 'No Photo')}")
-                    st.write(f"**Remarks / Cause of Delay:** {l.get('site_remarks', 'None')}")
+    render_view_logs_and_update_status()
 
 # --- MASTER DATABASE ---
 elif menu == "Master Database":
