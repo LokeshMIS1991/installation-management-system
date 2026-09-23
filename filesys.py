@@ -370,68 +370,53 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
     valid_site_map = {}
     site_info_dict = {}
 
-    if not df_sites.empty:
-        # Standardize column headers (lower case & stripped) to avoid lookup mismatches
-        df_sites.columns = [str(col).strip().lower().replace(" ", "_") for col in df_sites.columns]
+    if not df_sites.empty and "installation_id" in df_sites.columns:
+        today_date = datetime.now().date()
+        
+        for _, s in df_sites.iterrows():
+            site_id = str(s.get("installation_id", "")).strip()
+            status = str(s.get("status", "")).strip().lower()
+            c_name = str(s.get("client_name", "N/A")).strip() or "N/A"
+            c_phone = str(s.get("client_phone", "N/A")).strip() or "N/A"
+            handover_str = str(s.get("handover_date", "")).strip()
 
-        if "installation_id" in df_sites.columns:
-            today_date = datetime.now().date()
-            
-            for _, s in df_sites.iterrows():
-                site_id = str(s.get("installation_id", "")).strip()
-                if not site_id:
-                    continue
+            # Filter out completed / handovered sites
+            if status in ["handovered", "handover", "completed"]:
+                continue
 
-                status = str(s.get("status", "")).strip().lower()
-                
-                # Dynamic lookup across various possible column naming conventions
-                c_name = str(s.get("client_name") or s.get("client") or s.get("company_name") or "N/A").strip()
-                c_phone = str(s.get("client_phone") or s.get("mobile_no") or s.get("phone") or "N/A").strip()
-                handover_str = str(s.get("handover_date", "")).strip()
+            # Exclude past handover target date
+            if handover_str:
+                try:
+                    h_date = pd.to_datetime(handover_str).date()
+                    if today_date > h_date:
+                        continue
+                except Exception:
+                    pass
 
-                # Filter out completed / handovered sites
-                if status in ["handovered", "handover", "completed"]:
-                    continue
-
-                # Exclude past handover target date
-                if handover_str:
-                    try:
-                        h_date = pd.to_datetime(handover_str).date()
-                        if today_date > h_date:
-                            continue
-                    except Exception:
-                        pass
-
-                # Display label for Option A
-                display_label = f"{site_id} — {c_name}"
-                valid_site_map[display_label] = site_id
-                site_info_dict[site_id] = {
-                    "client_name": c_name,
-                    "client_phone": c_phone,
-                    "city": s.get("site_city", "Jaipur"),
-                    "address": s.get("site_address", "N/A")
-                }
+            # Option A Option Display String
+            display_label = f"{site_id} — {c_name}"
+            valid_site_map[display_label] = site_id
+            site_info_dict[site_id] = {
+                "client_name": c_name,
+                "client_phone": c_phone,
+                "city": s.get("site_city", "Jaipur"),
+                "address": s.get("site_address", "N/A")
+            }
 
     if not valid_site_map:
         st.warning("⚠️ No Active Installation Sites Available.")
         return
 
-    # Header placeholder to dynamically update with selection
     header_placeholder = st.empty()
 
     c_site, c_date = st.columns(2)
     with c_site:
-        selected_display_label = st.selectbox(
-            "Current Logging for :", 
-            list(valid_site_map.keys()), 
-            key=f"site_select_{target_worker_name}_{is_crew_log}"
-        )
+        selected_display_label = st.selectbox("Current Logging for :", list(valid_site_map.keys()), key=f"site_{target_worker_name}_{is_crew_log}")
         selected_site_id = valid_site_map[selected_display_label]
 
     with c_date:
         log_date = st.date_input("Date of Work", value=datetime.now(), key=f"date_{target_worker_name}_{is_crew_log}")
 
-    # Dynamic Header Update
     header_placeholder.markdown(f"## 📝 Log Daily Tasks - {selected_site_id}")
 
     # Dynamic Client Details Card
@@ -443,6 +428,20 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
             <span style="font-size:15px; font-weight:700; color:{COLOR_ACCENT};">📞 Contact Mobile: <a href="tel:{site_meta['client_phone']}" style="color:{COLOR_ACCENT}; text-decoration:none;">{site_meta['client_phone']}</a></span>
         </div>
     """, unsafe_allow_html=True)
+
+    site_city = site_meta["city"]
+
+    # Worker options list
+    if not df_workers.empty and "name" in df_workers.columns:
+        if "role" in df_workers.columns:
+            filtered_workers = df_workers[
+                ~df_workers["role"].astype(str).str.strip().str.lower().isin(["supervisor", "admin"])
+            ]
+            worker_options = sorted(filtered_workers["name"].astype(str).str.strip().unique().tolist())
+        else:
+            worker_options = sorted(df_workers["name"].astype(str).str.strip().unique().tolist())
+    else:
+        worker_options = [target_worker_name]
 
     st.markdown("### 👥 Crew & Team Assignment")
     col_lead, col_helpers = st.columns(2)
