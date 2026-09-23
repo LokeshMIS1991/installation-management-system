@@ -1,6 +1,7 @@
 import os
 import re
 import io
+from pathlib import Path
 import streamlit as st
 import pandas as pd
 import gspread
@@ -9,7 +10,13 @@ from datetime import datetime, timedelta
 import plotly.express as px
 
 # ==========================================
-# 0. OFFICIAL PRODUCT CATALOGUE DATA
+# 0. CROSS-PLATFORM PATH MANAGEMENT
+# ==========================================
+BASE_DIR = Path(__file__).resolve().parent
+LOGO_PATH = BASE_DIR / "Company Logo.jpeg"
+
+# ==========================================
+# 1. OFFICIAL PRODUCT CATALOGUE & CATEGORIES
 # ==========================================
 PRODUCT_CATALOG = {
     "Rolling Shutters": ["Motorized Rolling Shutter", "Gear Rolling Shutter", "Manual Rolling Shutter"],
@@ -33,20 +40,23 @@ TASK_CATEGORIES = [
     "Other"
 ]
 
+STATUS_OPTIONS = ["In Progress", "Completed", "On Hold", "Pending Inspection"]
+
 # ==========================================
-# 1. PAGE CONFIG & GLOBAL THEME
+# 2. PAGE CONFIG & RESPONSIVE GLOBAL THEME
 # ==========================================
 st.set_page_config(
     page_title="Sidharth Shutter & Automation - Portal", 
     layout="wide", 
-    page_icon="⚙️"
+    page_icon="⚙️",
+    initial_sidebar_state="auto"
 )
 
 COLOR_PRIMARY = "#10418A"    # Sidharth Deep Blue
 COLOR_ACCENT = "#00A859"     # Vibrant Green
 COLOR_BG_LIGHT = "#EBF3FA"   # Soft Blue Background Tint
 
-# Apply High-Specificity Global CSS Inject
+# Apply High-Specificity Cross-Platform CSS Inject
 st.markdown(f"""
     <style>
     .stApp {{
@@ -91,6 +101,7 @@ st.markdown(f"""
         padding: 15px;
         text-align: center;
         box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        margin-bottom: 10px;
     }}
     .kpi-number {{
         font-size: 28px;
@@ -152,7 +163,7 @@ st.markdown(f"""
         background-color: #FFFFFF;
         border: 2px solid {COLOR_PRIMARY};
         border-radius: 16px;
-        padding: 28px 24px;
+        padding: 24px 18px;
         box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
     }}
     div[data-testid="stFormSubmitButton"] > button {{
@@ -186,11 +197,15 @@ st.markdown(f"""
         margin-bottom: 20px;
         font-weight: 500;
     }}
+    img {{
+        max-width: 100%;
+        height: auto;
+    }}
     </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. GOOGLE SHEETS LIVE CONNECTION ENGINE
+# 3. GOOGLE SHEETS LIVE CONNECTION ENGINE
 # ==========================================
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -277,7 +292,7 @@ def parse_raw_worker_string(raw_str):
     return parsed_workers
 
 # ==========================================
-# 3. AUTHENTICATION (FORM LAYOUT)
+# 4. AUTHENTICATION (FORM LAYOUT)
 # ==========================================
 if "authenticated_user" not in st.session_state:
     st.session_state.authenticated_user = None
@@ -288,12 +303,11 @@ if "remembered_username" not in st.session_state:
 if not st.session_state.authenticated_user:
     st.write("##")
     
-    col_l, col_center, col_r = st.columns([1, 2, 1])
+    col_l, col_center, col_r = st.columns([0.1, 0.8, 0.1])
     with col_center:
         with st.form("login_form"):
-            logo_path = "Company Logo.jpeg"
-            if os.path.exists(logo_path):
-                st.image(logo_path, use_container_width=True)
+            if LOGO_PATH.exists():
+                st.image(str(LOGO_PATH), use_container_width=True)
             else:
                 st.markdown(f"""
                     <div style="text-align: center;">
@@ -340,16 +354,15 @@ if not st.session_state.authenticated_user:
     st.stop()
 
 # ==========================================
-# 4. ACTIVE SESSION & SIDEBAR NAVIGATION
+# 5. ACTIVE SESSION & SIDEBAR NAVIGATION
 # ==========================================
 user = st.session_state.authenticated_user
 user_name = user.get("name", "User")
 user_role = user.get("role", "Worker")
 user_base_location = user.get("base_location", "Jaipur")
 
-logo_path = "Company Logo.jpeg"
-if os.path.exists(logo_path):
-    st.sidebar.image(logo_path, use_container_width=True)
+if LOGO_PATH.exists():
+    st.sidebar.image(str(LOGO_PATH), use_container_width=True)
 else:
     st.sidebar.markdown(f"""
         <div style="text-align: center; padding: 12px; background-color: {COLOR_PRIMARY}; color: white; border-radius: 8px; margin-bottom: 10px;">
@@ -360,8 +373,6 @@ else:
 
 st.sidebar.markdown(f"**Active User:** {user_name} (`{user_role}`)  \n**Base Station:** {user_base_location}")
 st.sidebar.divider()
-
-STATUS_OPTIONS = ["In Progress", "Completed", "On Hold", "Pending Inspection"]
 
 if user_role == "Admin":
     menu_options = [
@@ -399,119 +410,131 @@ if st.sidebar.button("🚪 LOG OUT", use_container_width=True):
     st.rerun()
 
 # ==========================================
-# 5. DYNAMIC MULTI-TASK WORK INPUT HELPER
+# 6. DYNAMIC MULTI-TASK WORK INPUT HELPER
 # ==========================================
-
-def render_team_task_input():
-    # 1. Fetch Workers & Sites from Google Sheets
+def render_restricted_work_input(target_worker_name, is_crew_log=False):
     df_sites = read_sheet("Sites_Master")
     df_workers = read_sheet("Workers_Master")
 
-    if df_sites.empty or df_workers.empty:
-        st.error("⚠️ Unable to load Sites or Workers list. Check Google Sheets connection.")
+    site_options = df_sites["installation_id"].tolist() if not df_sites.empty and "installation_id" in df_sites.columns else []
+    
+    if not df_workers.empty and "name" in df_workers.columns:
+        worker_options = sorted(df_workers["name"].astype(str).str.strip().unique().tolist())
+    else:
+        worker_options = [user_name]
+
+    if not site_options:
+        st.warning("⚠️ No Installation Sites Created Yet — Create orders to log tasks.")
         return
 
-    site_options = df_sites["installation_id"].tolist()
-    
-    # Filter active workers to avoid invalid names
-    worker_list = sorted(df_workers["name"].str.strip().unique().tolist())
+    # Placeholder for dynamic title rendering
+    header_placeholder = st.empty()
 
-    st.markdown("## 📝 Log Daily Team Tasks")
-    st.write("---")
+    c_site, c_date = st.columns(2)
+    with c_site:
+        selected_site_id = st.selectbox(
+            f"Current Logging for :", 
+            site_options, 
+            key=f"site_{target_worker_name}_{is_crew_log}"
+        )
+    with c_date:
+        log_date = st.date_input("Date of Work", value=datetime.now(), key=f"date_{target_worker_name}_{is_crew_log}")
 
-    # 2. Site & Date Selection
-    col_site, col_date = st.columns(2)
-    with col_site:
-        selected_site_id = st.selectbox("Select Installation Site *", site_options)
-    with col_date:
-        log_date = st.date_input("Date of Work *", value=datetime.now())
+    # Render dynamic title based on selected Site ID
+    header_placeholder.markdown(f"## 📝 Log Daily Tasks - {selected_site_id}")
 
-    st.markdown("### 👥 Team Assignment")
-    
-    # 3. Dynamic Dropdowns for Team Lead & Helpers
-    col_lead, col_team = st.columns(2)
-    
+    site_info = df_sites[df_sites["installation_id"] == selected_site_id].iloc[0]
+    site_city = site_info.get("site_city", "Jaipur")
+
+    # Team Assignment via Clean Dropdowns
+    st.markdown("### 👥 Crew & Team Assignment")
+    col_lead, col_helpers = st.columns(2)
+
     with col_lead:
-        # Defaults to the currently logged in user if they are in the database
-        default_idx = worker_list.index(user_name) if user_name in worker_list else 0
-        team_lead_name = st.selectbox(
-            "Team Lead Name *", 
-            options=worker_list, 
-            index=default_idx,
-            help="Select the responsible supervisor or lead on site."
+        default_lead_idx = worker_options.index(target_worker_name) if target_worker_name in worker_options else 0
+        team_lead_selected = st.selectbox(
+            "Team Lead Name *",
+            options=worker_options,
+            index=default_lead_idx,
+            key=f"team_lead_{target_worker_name}_{is_crew_log}"
         )
 
-    with col_team:
-        # Multi-select dropdown for team members/helpers excluding the team lead
-        available_helpers = [w for w in worker_list if w != team_lead_name]
-        team_helpers = st.multiselect(
-            "Team Members / Helpers", 
+    with col_helpers:
+        available_helpers = [w for w in worker_options if w != team_lead_selected]
+        team_helpers_selected = st.multiselect(
+            "Team Members / Helpers",
             options=available_helpers,
-            help="Select all helpers/workers present with the lead today."
+            key=f"helpers_{target_worker_name}_{is_crew_log}"
         )
 
-    st.markdown("### 🛠️ Work Completed")
-    
-    task_cat = st.selectbox("Task Category *", TASK_CATEGORIES)
-    task_desc = st.text_input("Task Description *", placeholder="e.g., Track Leveling and Panel Erection")
-    
-    col_h, col_m = st.columns(2)
-    with col_h:
-        hrs = st.number_input("Hours Spent Per Worker *", min_value=0, max_value=24, value=8)
-    with col_m:
-        mins = st.selectbox("Minutes Spent", [0, 15, 30, 45])
-        
-    site_remarks = st.text_area("Site Remarks / Delays", placeholder="Optional site delay or progress notes...")
+    target_base = user_base_location
+    if is_crew_log and not df_workers.empty:
+        match = df_workers[df_workers["name"] == target_worker_name]
+        if not match.empty:
+            target_base = match.iloc[0].get("base_location", "Jaipur")
 
-    # 4. Processing & Individual Database Logging
-    if st.button("💾 Sync Team Daily Log to Database", use_container_width=True):
-        if not task_desc.strip():
-            st.error("Please enter a valid Task Description before submitting.")
-            return
+    is_travel = str(target_base).strip().lower() != str(site_city).strip().lower()
 
-        # Build full crew list (Lead + Selected Helpers)
-        full_crew = [team_lead_name] + team_helpers
-        log_timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    if is_travel:
+        st.warning(f"✈️ **Travel Day Detected (TA/DA Triggered)**: Base ({target_base}) ≠ Site Location ({site_city})")
+    else:
+        st.info(f"🏠 **Local Site**: Base ({target_base}) matches Site Location ({site_city})")
 
-        # Save an independent row for EVERY team member for accurate individual worker reports
-        for idx, worker in enumerate(full_crew):
-            log_id = f"LOG-{log_timestamp}-{idx+1:02d}"
-            role_in_entry = "Team Lead" if worker == team_lead_name else "Helper / Team Member"
-            
-            log_entry = {
-                "log_id": log_id,
-                "installation_id": selected_site_id,
-                "logged_date": str(log_date),
-                "worker_name": worker,                 # Clean standard dropdown name
-                "worker_role_on_site": role_in_entry,   # Distinguishes Lead vs Helper
-                "team_lead_name": team_lead_name,       # Preserves crew lead reference
-                "task_category": task_cat,
-                "task_name": task_desc,
-                "hours_spent": hrs,
-                "minutes_spent": mins,
-                "site_remarks": site_remarks,
-                "logged_by": user_name
-            }
-            
-            append_to_sheet("Worker_Daily_Logs", log_entry)
+    st.write("##")
+    st.markdown("### 🛠️ Tasks Completed Today")
 
-        st.success(f"Successfully logged task for {len(full_crew)} crew members: {', '.join(full_crew)}")
-        
-    # --- REMARKS & DELAYS SELECTION ---
-    st.markdown("### ⚠️ Site Remarks / Delays & Root Cause Analysis")
+    task_count_key = f"task_lines_count_{target_worker_name}_{is_crew_log}"
+    if task_count_key not in st.session_state:
+        st.session_state[task_count_key] = 1
+
+    task_entries = []
+
+    for i in range(st.session_state[task_count_key]):
+        st.caption(f"**Task Line #{i+1}**")
+        col_cat, col_desc, col_hrs, col_min = st.columns([3, 4, 1.5, 1.5])
+
+        with col_cat:
+            cat = st.selectbox(
+                f"Category #{i+1}",
+                TASK_CATEGORIES,
+                key=f"cat_{target_worker_name}_{is_crew_log}_{i}"
+            )
+        with col_desc:
+            desc = st.text_input(
+                f"Task #{i+1} Description",
+                placeholder="e.g., Track Leveling or 2 shutters installed",
+                key=f"desc_{target_worker_name}_{is_crew_log}_{i}"
+            )
+        with col_hrs:
+            hrs = st.number_input(f"Hours", min_value=0, max_value=24, value=2, step=1, key=f"hrs_{target_worker_name}_{is_crew_log}_{i}")
+        with col_min:
+            mins = st.selectbox(f"Minutes", [0, 15, 30, 45], key=f"min_{target_worker_name}_{is_crew_log}_{i}")
+
+        task_entries.append({
+            "category": cat,
+            "description": desc,
+            "hours": hrs,
+            "minutes": mins
+        })
+
+    if st.button("➕ ADD MORE TASK LINES", key=f"add_task_btn_{target_worker_name}_{is_crew_log}"):
+        st.session_state[task_count_key] += 1
+        st.rerun()
+
+    st.divider()
+
+    st.markdown("### ⚠️ Site Remarks / Delays")
     site_remarks = st.text_area(
         "Site Remarks / Cause of Delay",
         placeholder="Document site issues, missing power supply, civil delays, or client holds...",
         key=f"rem_{target_worker_name}_{is_crew_log}"
     )
 
-    # --- SEPARATE PHOTO UPLOAD SECTION ---
     st.markdown("### 📷 Site Photo Documentation")
     uploaded_photo = st.file_uploader(
         "Upload Photo of Site / Issues / Completed Task",
         type=["jpg", "jpeg", "png"],
-        key=f"photo_{target_worker_name}_{is_crew_log}",
-        help="Upload photo evidence to verify work execution or site delays."
+        key=f"photo_{target_worker_name}_{is_crew_log}"
     )
 
     if uploaded_photo is not None:
@@ -519,15 +542,17 @@ def render_team_task_input():
 
     st.write("##")
 
-    if st.button(f"💾 Sync Daily Log to Database", key=f"btn_sync_{target_worker_name}_{is_crew_log}", use_container_width=True):
+    if st.button("💾 Sync Daily Log to Database", key=f"btn_sync_{target_worker_name}_{is_crew_log}", use_container_width=True):
         photo_filename = uploaded_photo.name if uploaded_photo is not None else "No Photo"
         records_saved = 0
+
+        full_crew = [team_lead_selected] + team_helpers_selected
 
         for idx, t in enumerate(task_entries):
             if not t["description"].strip():
                 continue
 
-            for worker in t["assigned_workers"]:
+            for worker in full_crew:
                 w_base = target_base
                 if not df_workers.empty:
                     m = df_workers[df_workers["name"] == worker]
@@ -542,10 +567,10 @@ def render_team_task_input():
                     "installation_id": selected_site_id,
                     "logged_date": str(log_date),
                     "worker_name": worker,
-                    "role": user_role if worker == user_name else "Worker",
+                    "worker_role": "Team Lead" if worker == team_lead_selected else "Helper",
+                    "team_lead_name": team_lead_selected,
                     "task_category": t["category"],
                     "task_name": t["description"],
-                    "progress_percentage": 100,
                     "hours_spent": t["hours"],
                     "minutes_spent": t["minutes"],
                     "base_location": w_base,
@@ -559,18 +584,43 @@ def render_team_task_input():
                 records_saved += 1
 
         if records_saved > 0:
-            st.success(f"Successfully recorded {records_saved} task log entry/entries in database!")
+            st.success(f"Successfully recorded logs for {len(full_crew)} crew member(s) across {records_saved} entry/entries!")
             st.session_state[task_count_key] = 1
             st.rerun()
         else:
             st.error("Please fill in at least one Task Description before submitting.")
 
 # ==========================================
-# 6. MODULE IMPLEMENTATIONS
+# 7. ROUTING & MODULE IMPLEMENTATION
 # ==========================================
 
+# --- COMMON: LOG DAILY TASKS ---
+if menu == "Log Daily Tasks":
+    render_restricted_work_input(target_worker_name=user_name, is_crew_log=False)
+
+# --- SUPERVISOR: TEAM HEAD DASHBOARD ---
+elif menu == "Team Head Dashboard":
+    st.header("👥 Dual-Tab Team Head Dashboard")
+    tab_personal, tab_crew = st.tabs(["👤 Personal Work Log", "👨‍🔧 Crew Task Logging"])
+
+    with tab_personal:
+        st.subheader(f"Personal Execution Log ({user_name})")
+        render_restricted_work_input(target_worker_name=user_name, is_crew_log=False)
+
+    with tab_crew:
+        st.subheader("Manage Active Crew Logs")
+        df_workers = read_sheet("Workers_Master")
+        crew_members = df_workers[df_workers["role"] == "Worker"]["name"].tolist() if not df_workers.empty and "role" in df_workers.columns else []
+
+        if not crew_members:
+            st.info("⚠️ No Active Crew Members Found")
+        else:
+            selected_crew = st.selectbox("Select Worker to Log For", crew_members)
+            st.divider()
+            render_restricted_work_input(target_worker_name=selected_crew, is_crew_log=True)
+
 # --- SUPERVISOR: ACTIVE TASKS ---
-if menu == "Active Tasks Dashboard":
+elif menu == "Active Tasks Dashboard":
     st.header("📋 Active Tasks Dashboard")
     st.caption("Track site installation progress, monitor individual task statuses, and export site reports.")
 
@@ -600,7 +650,6 @@ if menu == "Active Tasks Dashboard":
             tot_site_tasks = len(site_task_subset)
             completed_tasks = len(site_task_subset[site_task_subset["status"] == "Completed"]) if "status" in site_task_subset.columns else 0
             in_prog_tasks = len(site_task_subset[site_task_subset["status"] == "In Progress"]) if "status" in site_task_subset.columns else 0
-            pending_tasks = len(site_task_subset[site_task_subset["status"] == "Pending"]) if "status" in site_task_subset.columns else 0
             
             overall_pct = int((completed_tasks / tot_site_tasks) * 100) if tot_site_tasks > 0 else 0
 
@@ -619,27 +668,6 @@ if menu == "Active Tasks Dashboard":
 
             st.divider()
 
-            metrics_df = pd.DataFrame([{
-                "Site ID": site_filter,
-                "Overall Completion (%)": f"{overall_pct}%",
-                "Total Tasks": tot_site_tasks,
-                "Completed Tasks": completed_tasks,
-                "In Progress Tasks": in_prog_tasks,
-                "Pending Tasks": pending_tasks
-            }])
-
-            csv_buffer = io.StringIO()
-            metrics_df.to_csv(csv_buffer, index=False)
-            csv_buffer.write("\n--- Detailed Task List ---\n")
-            filtered_tasks.to_csv(csv_buffer, index=False)
-
-            st.download_button(
-                label=f"📥 Export {site_filter} Progress Report (CSV)",
-                data=csv_buffer.getvalue(),
-                file_name=f"{site_filter}_Progress_Report_{datetime.now().strftime('%Y%m%d')}.csv",
-                mime="text/csv"
-            )
-
         st.subheader(f"Task List ({len(filtered_tasks)} Records)")
         st.dataframe(filtered_tasks, use_container_width=True)
 
@@ -654,7 +682,7 @@ elif menu == "Employee Analytics & Reports":
     if df_workers.empty:
         st.warning("⚠️ Workers database is empty.")
     else:
-        worker_names = df_workers["name"].tolist()
+        worker_names = sorted(df_workers["name"].astype(str).str.strip().unique().tolist())
         default_index = worker_names.index("Parvesh Kumar") if "Parvesh Kumar" in worker_names else 0
         selected_emp = st.selectbox("🔍 Select Employee to Generate Report:", worker_names, index=default_index)
 
@@ -739,7 +767,7 @@ elif menu == "Employee Analytics & Reports":
                         st.plotly_chart(fig_cat, use_container_width=True)
 
                 st.subheader(f"📋 Detailed Work Logs ({len(filtered_emp_logs)} Records)")
-                disp_cols = [c for c in ["log_id", "logged_date", "installation_id", "task_category", "task_name", "hours_spent", "minutes_spent", "is_travel_day", "site_remarks", "site_photo"] if c in filtered_emp_logs.columns]
+                disp_cols = [c for c in ["log_id", "logged_date", "installation_id", "worker_role", "team_lead_name", "task_category", "task_name", "hours_spent", "minutes_spent", "is_travel_day", "site_remarks", "site_photo"] if c in filtered_emp_logs.columns]
                 st.dataframe(filtered_emp_logs[disp_cols].sort_values(by="logged_date", ascending=False), use_container_width=True)
 
 # --- WORKER: MY WORK HISTORY ---
@@ -778,14 +806,14 @@ elif menu == "My Work History":
                 filtered_logs = filtered_logs[mask]
 
             st.subheader(f"Submitted Log Entries ({len(filtered_logs)} Records)")
-            disp_cols = [c for c in ["log_id", "logged_date", "installation_id", "task_category", "task_name", "hours_spent", "minutes_spent", "is_travel_day", "site_remarks", "site_photo"] if c in filtered_logs.columns]
+            disp_cols = [c for c in ["log_id", "logged_date", "installation_id", "worker_role", "team_lead_name", "task_category", "task_name", "hours_spent", "minutes_spent", "is_travel_day", "site_remarks", "site_photo"] if c in filtered_logs.columns]
             st.dataframe(filtered_logs[disp_cols].sort_values(by="logged_date", ascending=False), use_container_width=True)
 
 # --- WORKER: MY PROFILE & SETTINGS ---
 elif menu == "My Profile & Settings":
     st.header("👤 Worker Profile & Security")
     
-    col_l, col_center, col_r = st.columns([1, 2, 1])
+    col_l, col_center, col_r = st.columns([0.1, 0.8, 0.1])
     with col_center:
         st.markdown(f"""
             <div class="card-box">
@@ -864,7 +892,7 @@ elif menu == "User Management":
 
     with tab_add:
         st.subheader("Add Worker / Supervisor to System")
-        col_l, col_center, col_r = st.columns([1, 2, 1])
+        col_l, col_center, col_r = st.columns([0.1, 0.8, 0.1])
         with col_center:
             with st.form("add_user_form"):
                 c1, c2 = st.columns(2)
@@ -912,10 +940,10 @@ elif menu == "User Management":
     with tab_edit:
         st.subheader("Update User Profile, Role & PIN")
         if not df_workers.empty and "name" in df_workers.columns:
-            selected_edit_user = st.selectbox("Select User to Edit", df_workers["name"].tolist())
+            selected_edit_user = st.selectbox("Select User to Edit", sorted(df_workers["name"].tolist()))
             user_data = df_workers[df_workers["name"] == selected_edit_user].iloc[0]
 
-            col_l, col_center, col_r = st.columns([1, 2, 1])
+            col_l, col_center, col_r = st.columns([0.1, 0.8, 0.1])
             with col_center:
                 with st.form("edit_user_form"):
                     e_role = st.selectbox("Update Role", ["Worker", "Supervisor", "Admin"], index=["Worker", "Supervisor", "Admin"].index(user_data.get("role", "Worker")))
@@ -983,7 +1011,9 @@ elif menu == "Handover Date Dashboard":
 # --- SUPERVISOR: NEW ORDER ---
 elif menu == "New Installation Order":
     st.header("Create New Installation Order")
-    
+    df_workers = read_sheet("Workers_Master")
+    worker_options = sorted(df_workers["name"].tolist()) if not df_workers.empty and "name" in df_workers.columns else [user_name]
+
     if "team_members_count" not in st.session_state:
         st.session_state.team_members_count = 1
     if "products_count" not in st.session_state:
@@ -996,17 +1026,9 @@ elif menu == "New Installation Order":
 
     with col_team:
         st.markdown("### 👨‍💼 Team Structure")
-        team_lead_name = st.text_input("Team Lead Name *", placeholder="e.g., Rajeer", key="inst_team_lead")
+        team_lead_name = st.selectbox("Team Lead Name *", options=worker_options, key="inst_team_lead")
         
-        team_helpers = []
-        for i in range(st.session_state.team_members_count):
-            helper = st.text_input("Team Members / Helpers", placeholder="e.g., Parvesh Kumar", key=f"inst_helper_{i}")
-            if helper.strip():
-                team_helpers.append(helper.strip())
-        
-        if st.button("➕ Add Team Member", key="btn_add_team_member"):
-            st.session_state.team_members_count += 1
-            st.rerun()
+        team_helpers = st.multiselect("Team Members / Helpers", options=[w for w in worker_options if w != team_lead_name], key="inst_helpers")
 
         city_name = st.text_input("City Name *", value="Mumbai", key="inst_city_name")
         site_address = st.text_area("Site Address *", placeholder="Full installation site address...", key="inst_site_address")
@@ -1066,33 +1088,7 @@ elif menu == "New Installation Order":
             }
             append_to_sheet("Sites_Master", order_data)
             st.success(f"Installation Order **{visit_id}** recorded successfully!")
-            st.session_state.team_members_count = 1
             st.session_state.products_count = 1
-
-# --- COMMON: LOG DAILY TASKS ---
-elif menu == "Log Daily Tasks":
-    render_restricted_work_input(target_worker_name=user_name, is_crew_log=False)
-
-# --- SUPERVISOR: TEAM HEAD DASHBOARD ---
-elif menu == "Team Head Dashboard":
-    st.header("👥 Dual-Tab Team Head Dashboard")
-    tab_personal, tab_crew = st.tabs(["👤 Personal Work Log", "👨‍🔧 Crew Task Logging"])
-
-    with tab_personal:
-        st.subheader(f"Personal Execution Log ({user_name})")
-        render_restricted_work_input(target_worker_name=user_name, is_crew_log=False)
-
-    with tab_crew:
-        st.subheader("Manage Active Crew Logs")
-        df_workers = read_sheet("Workers_Master")
-        crew_members = df_workers[df_workers["role"] == "Worker"]["name"].tolist() if not df_workers.empty and "role" in df_workers.columns else []
-
-        if not crew_members:
-            st.info("⚠️ No Active Crew Members Found")
-        else:
-            selected_crew = st.selectbox("Select Worker to Log For", crew_members)
-            st.divider()
-            render_restricted_work_input(target_worker_name=selected_crew, is_crew_log=True)
 
 # --- SUPERVISOR: VIEW LOGS & UPDATE ---
 elif menu == "View Logs & Update Status":
@@ -1133,7 +1129,8 @@ elif menu == "View Logs & Update Status":
 
         if not p_logs.empty:
             for _, l in p_logs.iterrows():
-                with st.expander(f"📅 Date: {l.get('logged_date')} | Worker: {l.get('worker_name')} | Category: {l.get('task_category', 'N/A')}"):
+                with st.expander(f"📅 Date: {l.get('logged_date')} | Worker: {l.get('worker_name')} | Role: {l.get('worker_role', 'N/A')}"):
+                    st.write(f"**Task Category:** {l.get('task_category')}")
                     st.write(f"**Task Description:** {l.get('task_name')}")
                     st.write(f"**Time Spent:** {l.get('hours_spent')} hrs {l.get('minutes_spent')} mins")
                     st.write(f"**Travel Day (TA/DA):** {l.get('is_travel_day')}")
