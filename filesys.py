@@ -30,13 +30,22 @@ PRODUCT_CATALOG = {
 }
 
 TASK_CATEGORIES = [
-    "Assembly / Mechanical",
-    "Electrical Wiring & Automation",
     "Civil & Mounting Work",
-    "Track Leveling & Alignment",
-    "Testing & Quality Inspection",
-    "Maintenance & Repairs",
-    "General Site Prep",
+    "Track Leveling",
+    "Wiring & Electrical",
+    "Commissioning & Testing",
+    "Site Survey",
+    "Travel / Transit",
+    "Other"
+]
+
+DELAY_REASONS = [
+    "No Delay",
+    "Power Supply Issue",
+    "Civil Work Delay",
+    "Client Hold",
+    "Material Missing",
+    "Weather Delay",
     "Other"
 ]
 
@@ -225,9 +234,9 @@ def get_workbook():
     sheet_url = st.secrets.get("spreadsheet_url", "https://docs.google.com/spreadsheets/d/19rQC3aNtosjhSwyctKAk9ojUt0c8gyOPH-Q8trW5q5s/edit")
     return client.open_by_url(sheet_url)
 
-@st.cache_data(ttl=60)     
+@st.cache_data(ttl=60)
 def read_sheet(sheet_name: str) -> pd.DataFrame:
-        """    Reads a tab from Google Sheets with a 60-second Streamlit cache to prevent Google API 429 quota errors.    """
+    """Reads a tab from Google Sheets with a 60-second Streamlit cache to prevent Google API 429 quota errors."""
     try:
         wb = get_workbook()
         sheet = wb.worksheet(sheet_name)
@@ -247,6 +256,7 @@ def append_to_sheet(sheet_name: str, row_data_dict: dict):
             sheet.append_row(headers)
         row_values = [str(row_data_dict.get(h, "")) for h in headers]
         sheet.append_row(row_values)
+        st.cache_data.clear()
     except Exception as e:
         st.error(f"Error writing to tab '{sheet_name}': {e}")
 
@@ -266,6 +276,7 @@ def update_sheet_row(sheet_name: str, key_col: str, key_val: str, update_dict: d
             if col_name in headers:
                 col_num = headers.index(col_name) + 1
                 sheet.update_cell(row_num, col_num, str(new_val))
+        st.cache_data.clear()
         return True
     except Exception as e:
         st.error(f"Error updating tab '{sheet_name}': {e}")
@@ -413,61 +424,6 @@ if st.sidebar.button("🚪 LOG OUT", use_container_width=True):
 
 # ==========================================
 # 6. DYNAMIC MULTI-TASK WORK INPUT HELPER
-# ==========================================
-# ==========================================
-# 1. CONSTANTS & CATEGORIES
-# ==========================================
-TASK_CATEGORIES = [
-    "Civil & Mounting Work",
-    "Track Leveling",
-    "Wiring & Electrical",
-    "Commissioning & Testing",
-    "Site Survey",
-    "Travel / Transit",
-    "Other"
-]
-
-# Add DELAY_REASONS here before it is used in the function below
-DELAY_REASONS = [
-    "No Delay",
-    "Power Supply Issue",
-    "Civil Work Delay",
-    "Client Hold",
-    "Material Missing",
-    "Weather Delay",
-    "Other"
-]
-
-
-# ==========================================
-# DYNAMIC MULTI-TASK WORK INPUT HELPER
-# ==========================================
-# ==========================================
-# 1. CONSTANTS & MASTER CATEGORIES
-# ==========================================
-TASK_CATEGORIES = [
-    "Civil & Mounting Work",
-    "Track Leveling",
-    "Wiring & Electrical",
-    "Commissioning & Testing",
-    "Site Survey",
-    "Travel / Transit",
-    "Other"
-]
-
-DELAY_REASONS = [
-    "No Delay",
-    "Power Supply Issue",
-    "Civil Work Delay",
-    "Client Hold",
-    "Material Missing",
-    "Weather Delay",
-    "Other"
-]
-
-
-# ==========================================
-# 2. DYNAMIC MULTI-TASK WORK INPUT HELPER
 # ==========================================
 def render_restricted_work_input(target_worker_name, is_crew_log=False):
     # Fetch Master Sheet Data
@@ -675,6 +631,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
             st.rerun()
         else:
             st.error("Please fill in at least one Task Description before submitting.")
+
 # ==========================================
 # 7. ROUTING & MODULE IMPLEMENTATION
 # ==========================================
