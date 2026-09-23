@@ -440,20 +440,64 @@ DELAY_REASONS = [
 # ==========================================
 # DYNAMIC MULTI-TASK WORK INPUT HELPER
 # ==========================================
+# ==========================================
+# 1. CONSTANTS & MASTER CATEGORIES
+# ==========================================
+TASK_CATEGORIES = [
+    "Civil & Mounting Work",
+    "Track Leveling",
+    "Wiring & Electrical",
+    "Commissioning & Testing",
+    "Site Survey",
+    "Travel / Transit",
+    "Other"
+]
 
+DELAY_REASONS = [
+    "No Delay",
+    "Power Supply Issue",
+    "Civil Work Delay",
+    "Client Hold",
+    "Material Missing",
+    "Weather Delay",
+    "Other"
+]
+
+
+# ==========================================
+# 2. DYNAMIC MULTI-TASK WORK INPUT HELPER
+# ==========================================
 def render_restricted_work_input(target_worker_name, is_crew_log=False):
+    # Fetch Master Sheet Data
     df_sites = read_sheet("Sites_Master")
     df_workers = read_sheet("Workers_Master")
 
-    site_options = df_sites["installation_id"].tolist() if not df_sites.empty and "installation_id" in df_sites.columns else []
-    
-    if not df_workers.empty and "name" in df_workers.columns:
-        worker_options = sorted(df_workers["name"].astype(str).str.strip().unique().tolist())
+    # 1. Filter out Handovered / Completed sites from dropdown options
+    if not df_sites.empty and "installation_id" in df_sites.columns:
+        if "status" in df_sites.columns:
+            active_sites = df_sites[
+                ~df_sites["status"].astype(str).str.strip().str.lower().isin(["handovered", "handover", "completed"])
+            ]
+            site_options = active_sites["installation_id"].tolist()
+        else:
+            site_options = df_sites["installation_id"].tolist()
     else:
-        worker_options = [user_name]
+        site_options = []
+
+    # 2. Filter out Supervisors and Admins from worker dropdown options
+    if not df_workers.empty and "name" in df_workers.columns:
+        if "role" in df_workers.columns:
+            filtered_workers = df_workers[
+                ~df_workers["role"].astype(str).str.strip().str.lower().isin(["supervisor", "admin"])
+            ]
+            worker_options = sorted(filtered_workers["name"].astype(str).str.strip().unique().tolist())
+        else:
+            worker_options = sorted(df_workers["name"].astype(str).str.strip().unique().tolist())
+    else:
+        worker_options = [target_worker_name]
 
     if not site_options:
-        st.warning("⚠️ No Installation Sites Created Yet — Create orders to log tasks.")
+        st.warning("⚠️ No Active Installation Sites Available — All sites are either handovered or not yet created.")
         return
 
     # Dynamic site header placeholder
@@ -475,7 +519,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
     site_info = df_sites[df_sites["installation_id"] == selected_site_id].iloc[0]
     site_city = site_info.get("site_city", "Jaipur")
 
-    # 1. Crew Selection (Team Lead & Helpers)
+    # 3. Crew Selection (Team Lead & Helpers)
     st.markdown("### 👥 Crew & Team Assignment")
     col_lead, col_helpers = st.columns(2)
 
@@ -511,7 +555,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
     for i in range(st.session_state[task_count_key]):
         st.caption(f"**Task Line #{i+1}**")
         
-        # Grid layout including "Task Assigned To" restricted to selected crew
+        # Grid layout with "Task Assigned To" restricted strictly to selected active crew members
         col_cat, col_desc, col_assigned, col_hrs, col_min = st.columns([2.5, 3, 2.5, 1.2, 1.2])
 
         with col_cat:
@@ -531,7 +575,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
                 f"Assigned To #{i+1}",
                 options=active_crew,
                 key=f"assigned_{target_worker_name}_{is_crew_log}_{i}",
-                help="Select from the active crew members assigned to this site today."
+                help="Select from active crew members assigned to this site today."
             )
         with col_hrs:
             hrs = st.number_input(f"Hours", min_value=0, max_value=24, value=2, step=1, key=f"hrs_{target_worker_name}_{is_crew_log}_{i}")
@@ -552,7 +596,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 
     st.divider()
 
-    # 2. Site Delays Dropdown & Remarks Section
+    # 4. Site Delays Dropdown & Remarks Section
     st.markdown("### ⚠️ Site Remarks / Delays")
     col_delay_cat, col_delay_notes = st.columns([1, 2])
     
@@ -582,7 +626,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 
     st.write("##")
 
-    # 3. Database Syncing Logic
+    # 5. Database Syncing Logic
     if st.button("💾 Sync Daily Log to Database", key=f"btn_sync_{target_worker_name}_{is_crew_log}", use_container_width=True):
         photo_filename = uploaded_photo.name if uploaded_photo is not None else "No Photo"
         records_saved = 0
@@ -605,7 +649,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
                 "log_id": log_id,
                 "installation_id": selected_site_id,
                 "logged_date": str(log_date),
-                "worker_name": worker,                           # Selected assigned worker for this task
+                "worker_name": worker,
                 "worker_role": "Team Lead" if worker == team_lead_selected else "Helper",
                 "team_lead_name": team_lead_selected,
                 "task_category": t["category"],
@@ -615,10 +659,10 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
                 "base_location": w_base,
                 "site_city": site_city,
                 "is_travel_day": "Yes" if w_is_travel else "No",
-                "delay_category": delay_reason,                  # Categorized delay reason
+                "delay_category": delay_reason,
                 "site_remarks": site_remarks,
                 "site_photo": photo_filename,
-                "logged_by": user_name
+                "logged_by": target_worker_name
             }
             append_to_sheet("Worker_Daily_Logs", log_entry)
             records_saved += 1
