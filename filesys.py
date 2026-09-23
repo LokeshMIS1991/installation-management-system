@@ -49,7 +49,7 @@ DELAY_REASONS = [
     "Other"
 ]
 
-STATUS_OPTIONS = ["In Progress", "Completed", "On Hold", "Pending Inspection"]
+STATUS_OPTIONS = ["In Progress", "Completed", "On Hold", "Pending Inspection", "Handovered"]
 
 # ==========================================
 # 2. PAGE CONFIG & RESPONSIVE GLOBAL THEME
@@ -102,6 +102,14 @@ st.markdown(f"""
         margin-bottom: 15px; 
         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
     }}
+    .client-card {{
+        background-color: #FFFFFF;
+        border-left: 5px solid {COLOR_ACCENT};
+        padding: 12px 18px;
+        border-radius: 8px;
+        margin-bottom: 15px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+    }}
     .kpi-card {{
         background-color: #FFFFFF;
         border: 2px solid {COLOR_PRIMARY};
@@ -121,49 +129,12 @@ st.markdown(f"""
         color: #6C757D;
         font-weight: 600;
     }}
-    .alert-box {{
-        background-color: #FFF3CD;
-        border-left: 6px solid #FFC107;
-        padding: 12px;
-        border-radius: 6px;
-        margin-bottom: 15px;
-        color: #856404;
-    }}
     section[data-testid="stSidebar"] {{
         background-color: #EBF1F8;
     }}
     section[data-testid="stSidebar"] .block-container {{
         padding-top: 1.5rem !important;
         padding-bottom: 1.5rem !important;
-    }}
-    section[data-testid="stSidebar"] hr {{
-        margin-top: 0.8rem !important;
-        margin-bottom: 0.8rem !important;
-    }}
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label {{
-        padding-top: 2px !important;
-        padding-bottom: 2px !important;
-        margin-bottom: 2px !important;
-    }}
-    section[data-testid="stSidebar"] div[role="radiogroup"] {{
-        gap: 4px !important;
-    }}
-    section[data-testid="stSidebar"] div.stButton > button {{
-        background-color: {COLOR_ACCENT} !important;
-        background: {COLOR_ACCENT} !important;
-        color: #FFFFFF !important;
-        font-weight: 700 !important;
-        border-radius: 8px !important;
-        padding: 10px 0px !important;
-        font-size: 15px !important;
-        border: none !important;
-        width: 100% !important;
-        margin-top: 10px !important;
-        box-shadow: 0 4px 10px rgba(0, 168, 89, 0.35) !important;
-    }}
-    section[data-testid="stSidebar"] div.stButton > button * {{
-        color: #FFFFFF !important;
-        font-weight: 700 !important;
     }}
     div[data-testid="stForm"] div[data-baseweb="input"],
     div[data-testid="stForm"] div[data-baseweb="select"] > div {{
@@ -194,28 +165,6 @@ st.markdown(f"""
         width: 100% !important;
         min-height: 48px !important;
         margin-top: 15px !important;
-        box-shadow: 0 4px 12px rgba(0, 168, 89, 0.3) !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-    }}
-    div[data-testid="stFormSubmitButton"] > button * {{
-        color: #FFFFFF !important;
-        font-weight: 700 !important;
-        font-size: 15px !important;
-        white-space: nowrap !important;
-    }}
-    .login-caption {{
-        color: #6C757D;
-        text-align: center;
-        font-size: 13px;
-        margin-top: 10px;
-        margin-bottom: 20px;
-        font-weight: 500;
-    }}
-    img {{
-        max-width: 100%;
-        height: auto;
     }}
     </style>
 """, unsafe_allow_html=True)
@@ -243,7 +192,6 @@ def get_workbook():
 
 @st.cache_data(ttl=60)
 def read_sheet(sheet_name: str) -> pd.DataFrame:
-    """Reads a tab from Google Sheets with a 60-second Streamlit cache."""
     try:
         wb = get_workbook()
         sheet = wb.worksheet(sheet_name)
@@ -293,11 +241,10 @@ def generate_excel_download(df, filename="report.xlsx"):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df.to_excel(writer, index=False, sheet_name='Sheet1')
-    processed_data = output.getvalue()
-    return processed_data
+    return output.getvalue()
 
 # ==========================================
-# 4. AUTHENTICATION (COMPACT LAYOUT)
+# 4. AUTHENTICATION
 # ==========================================
 if "authenticated_user" not in st.session_state:
     st.session_state.authenticated_user = None
@@ -321,7 +268,7 @@ if not st.session_state.authenticated_user:
                     </div>
                 """, unsafe_allow_html=True)
 
-            st.markdown('<div class="login-caption" style="margin-bottom: 12px;">Enterprise Operations & Field Portal</div>', unsafe_allow_html=True)
+            st.caption("Enterprise Operations & Field Portal")
 
             username_input = st.text_input("Username / Name", value=st.session_state.remembered_username, placeholder="e.g. Parvesh Kumar or Vishak")
             password_input = st.text_input("Password / PIN", type="password", placeholder="Enter password")
@@ -346,10 +293,7 @@ if not st.session_state.authenticated_user:
                         ]
                         if not user_row.empty:
                             st.session_state.authenticated_user = user_row.iloc[0].to_dict()
-                            if remember_me:
-                                st.session_state.remembered_username = username_input.strip()
-                            else:
-                                st.session_state.remembered_username = ""
+                            st.session_state.remembered_username = username_input.strip() if remember_me else ""
                             st.success("Authentication Successful!")
                             st.rerun()
                         else:
@@ -417,23 +361,77 @@ if st.sidebar.button("🚪 LOG OUT", use_container_width=True):
     st.rerun()
 
 # ==========================================
-# 6. DYNAMIC WORK INPUT HELPER
+# 6. DYNAMIC WORK INPUT HELPER (WITH OPTION A SEARCH & CLIENT METADATA)
 # ==========================================
 def render_restricted_work_input(target_worker_name, is_crew_log=False):
     df_sites = read_sheet("Sites_Master")
     df_workers = read_sheet("Workers_Master")
 
-    if not df_sites.empty and "installation_id" in df_sites.columns:
-        if "status" in df_sites.columns:
-            active_sites = df_sites[
-                ~df_sites["status"].astype(str).str.strip().str.lower().isin(["handovered", "handover", "completed"])
-            ]
-            site_options = active_sites["installation_id"].tolist()
-        else:
-            site_options = df_sites["installation_id"].tolist()
-    else:
-        site_options = []
+    valid_site_map = {}
+    site_info_dict = {}
 
+    if not df_sites.empty and "installation_id" in df_sites.columns:
+        today_date = datetime.now().date()
+        
+        for _, s in df_sites.iterrows():
+            site_id = str(s.get("installation_id", "")).strip()
+            status = str(s.get("status", "")).strip().lower()
+            c_name = str(s.get("client_name", "N/A")).strip() or "N/A"
+            c_phone = str(s.get("client_phone", "N/A")).strip() or "N/A"
+            handover_str = str(s.get("handover_date", "")).strip()
+
+            # Filter out completed / handovered sites
+            if status in ["handovered", "handover", "completed"]:
+                continue
+
+            # Exclude past handover target date
+            if handover_str:
+                try:
+                    h_date = pd.to_datetime(handover_str).date()
+                    if today_date > h_date:
+                        continue
+                except Exception:
+                    pass
+
+            # Option A Option Display String
+            display_label = f"{site_id} — {c_name}"
+            valid_site_map[display_label] = site_id
+            site_info_dict[site_id] = {
+                "client_name": c_name,
+                "client_phone": c_phone,
+                "city": s.get("site_city", "Jaipur"),
+                "address": s.get("site_address", "N/A")
+            }
+
+    if not valid_site_map:
+        st.warning("⚠️ No Active Installation Sites Available.")
+        return
+
+    header_placeholder = st.empty()
+
+    c_site, c_date = st.columns(2)
+    with c_site:
+        selected_display_label = st.selectbox("Current Logging for :", list(valid_site_map.keys()), key=f"site_{target_worker_name}_{is_crew_log}")
+        selected_site_id = valid_site_map[selected_display_label]
+
+    with c_date:
+        log_date = st.date_input("Date of Work", value=datetime.now(), key=f"date_{target_worker_name}_{is_crew_log}")
+
+    header_placeholder.markdown(f"## 📝 Log Daily Tasks - {selected_site_id}")
+
+    # Dynamic Client Details Card
+    site_meta = site_info_dict[selected_site_id]
+    st.markdown(f"""
+        <div class="client-card">
+            <span style="font-size:15px; font-weight:700; color:{COLOR_PRIMARY};">🏢 Client Name: {site_meta['client_name']}</span>
+            &nbsp;&nbsp;|&nbsp;&nbsp;
+            <span style="font-size:15px; font-weight:700; color:{COLOR_ACCENT};">📞 Contact Mobile: <a href="tel:{site_meta['client_phone']}" style="color:{COLOR_ACCENT}; text-decoration:none;">{site_meta['client_phone']}</a></span>
+        </div>
+    """, unsafe_allow_html=True)
+
+    site_city = site_meta["city"]
+
+    # Worker options list
     if not df_workers.empty and "name" in df_workers.columns:
         if "role" in df_workers.columns:
             filtered_workers = df_workers[
@@ -444,23 +442,6 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
             worker_options = sorted(df_workers["name"].astype(str).str.strip().unique().tolist())
     else:
         worker_options = [target_worker_name]
-
-    if not site_options:
-        st.warning("⚠️ No Active Installation Sites Available.")
-        return
-
-    header_placeholder = st.empty()
-
-    c_site, c_date = st.columns(2)
-    with c_site:
-        selected_site_id = st.selectbox("Current Logging for :", site_options, key=f"site_{target_worker_name}_{is_crew_log}")
-    with c_date:
-        log_date = st.date_input("Date of Work", value=datetime.now(), key=f"date_{target_worker_name}_{is_crew_log}")
-
-    header_placeholder.markdown(f"## 📝 Log Daily Tasks - {selected_site_id}")
-
-    site_info = df_sites[df_sites["installation_id"] == selected_site_id].iloc[0]
-    site_city = site_info.get("site_city", "Jaipur")
 
     st.markdown("### 👥 Crew & Team Assignment")
     col_lead, col_helpers = st.columns(2)
@@ -1087,13 +1068,14 @@ elif menu == "Handover Date Dashboard":
             st.markdown(f"""
                 <div class="card-box">
                     <h3 style="margin:0;">{site.get('site_name', 'N/A')} ({site.get('installation_id', 'N/A')})</h3>
+                    <p style="margin:5px 0;"><b>Client:</b> {site.get('client_name', 'N/A')} | <b>Contact:</b> {site.get('client_phone', 'N/A')}</p>
                     <p style="margin:5px 0;"><b>City:</b> {site.get('site_city', 'N/A')} | <b>Team Lead:</b> {site.get('team_lead', 'N/A')}</p>
                     <p style="margin:5px 0;"><b>Target Handover:</b> {site.get('handover_date', 'N/A')}</p>
                     <p style="margin:5px 0;"><b>Status:</b> <span style="color:{badge_color}; font-weight:bold;">{site.get('status', 'In Progress')} ({days} Days Remaining)</span></p>
                 </div>
             """, unsafe_allow_html=True)
 
-# --- SUPERVISOR: NEW ORDER ---
+# --- SUPERVISOR: NEW ORDER (UPDATED WITH CLIENT NAME & PHONE) ---
 elif menu == "New Installation Order":
     st.header("Create New Installation Order")
     df_workers = read_sheet("Workers_Master")
@@ -1105,10 +1087,15 @@ elif menu == "New Installation Order":
     visit_id = f"INST-2026-{os.urandom(2).hex().upper()}"
     st.info(f"**Automated Visit ID:** {visit_id}")
 
-    col_team, col_dates = st.columns(2)
+    col_client, col_team, col_dates = st.columns(3)
+
+    with col_client:
+        st.markdown("### 🏢 Client Info")
+        client_name = st.text_input("Client / Company Name *", placeholder="e.g. Reliance Logistics")
+        client_phone = st.text_input("Client Mobile No. *", placeholder="e.g. 9876543210", max_chars=10)
 
     with col_team:
-        st.markdown("### 👨‍💼 Team Structure")
+        st.markdown("### 👨‍💼 Team & Site Structure")
         team_lead_name = st.selectbox("Team Lead Name *", options=worker_options, key="inst_team_lead")
         team_helpers = st.multiselect("Team Members / Helpers", options=[w for w in worker_options if w != team_lead_name], key="inst_helpers")
         city_name = st.text_input("City Name *", value="Mumbai", key="inst_city_name")
@@ -1150,11 +1137,16 @@ elif menu == "New Installation Order":
 
     st.write("##")
     if st.button("💾 Submit Installation Order", use_container_width=True, key="btn_submit_inst_order"):
-        if not team_lead_name or not city_name or not site_address:
-            st.error("Please fill in mandatory fields.")
+        clean_phone = str(client_phone).strip()
+        if not client_name or not clean_phone or not team_lead_name or not city_name or not site_address:
+            st.error("Please fill in all mandatory fields including Client Name and Contact Number.")
+        elif len(clean_phone) != 10 or not clean_phone.isdigit():
+            st.error("Please enter a valid 10-digit mobile number for the client.")
         else:
             order_data = {
                 "installation_id": visit_id,
+                "client_name": client_name.strip(),
+                "client_phone": clean_phone,
                 "team_lead": team_lead_name,
                 "team_members": ", ".join(team_helpers),
                 "site_city": city_name,
@@ -1166,7 +1158,7 @@ elif menu == "New Installation Order":
                 "status": "In Progress"
             }
             append_to_sheet("Sites_Master", order_data)
-            st.success(f"Installation Order **{visit_id}** recorded successfully!")
+            st.success(f"Installation Order **{visit_id}** for **{client_name}** recorded successfully!")
             st.session_state.products_count = 1
 
 # --- SUPERVISOR: VIEW LOGS & UPDATE ---
@@ -1184,6 +1176,7 @@ elif menu == "View Logs & Update Status":
         st.markdown(f"""
             <div class="card-box">
                 <h3 style="margin:0;">{site_row.get('installation_id', 'N/A')}</h3>
+                <p style="margin:5px 0;"><b>Client Name:</b> {site_row.get('client_name', 'N/A')} | <b>Client Mobile:</b> {site_row.get('client_phone', 'N/A')}</p>
                 <p style="margin:5px 0;"><b>City:</b> {site_row.get('site_city', 'N/A')} | <b>Team Lead:</b> {site_row.get('team_lead', 'N/A')}</p>
                 <p style="margin:5px 0;"><b>Current Status:</b> <b>{site_row.get('status', 'In Progress')}</b></p>
             </div>
