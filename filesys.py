@@ -6,8 +6,51 @@ import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
 from datetime import datetime, timedelta
 import plotly.express as px
+
+# ==========================================
+# 0. CONFIGURATION & CONSTANTS
+# ==========================================
+DRIVE_FOLDER_ID = "0ADjIFMwZGB62Uk9PVA"
+
+BASE_DIR = Path(__file__).resolve().parent
+LOGO_PATH = BASE_DIR / "Company Logo.jpeg"
+
+PRODUCT_CATALOG = {
+    "Rolling Shutters": ["Motorized Rolling Shutter", "Gear Rolling Shutter", "Manual Rolling Shutter"],
+    "Dock Leveler": ["Hydraulic Doclevller", "Hydraulic Dock Edge", "Manual Dock Edge"],
+    "Gates": ["Sliding Gate", "Telescopic Gate", "L-Folding Gate", "Swing Gate", "Retractable Gate"],
+    "Doors": ["High Speed Door", "Fire Door", "HMPS Door", "GPD Door", "Overhead Sectional Door"],
+    "Boom Barrier": ["Automatic Traffic Barrier", "Heavy-Duty Traffic Barrier"],
+    "Dock Shelter": ["Retractable Dock Shelter", "Inflatable Dock Shelter"],
+    "Dock Bumper": ["Heavy Rubber Bumper", "Moulded Bumper"],
+    "Other": ["Other"]
+}
+
+TASK_CATEGORIES = [
+    "Civil & Mounting Work",
+    "Track Leveling",
+    "Wiring & Electrical",
+    "Commissioning & Testing",
+    "Site Survey",
+    "Travel / Transit",
+    "Other"
+]
+
+DELAY_REASONS = [
+    "No Delay",
+    "Power Supply Issue",
+    "Civil Work Delay",
+    "Client Hold",
+    "Material Missing",
+    "Weather Delay",
+    "Other"
+]
+
+STATUS_OPTIONS = ["In Progress", "Completed", "On Hold", "Pending Inspection", "Handovered"]
 
 
 def render_view_logs_and_update_status():
@@ -37,7 +80,7 @@ def render_view_logs_and_update_status():
         lead = str(s.get("team_lead") or s.get("lead") or "N/A").strip()
         status = str(s.get("status") or "In Progress").strip().title()
 
-        # Build dropdown option label: "INST-2026-39B4 — recky industries"
+        # Build dropdown option label
         display_label = f"{site_id} — {c_name}" if c_name != "N/A" else site_id
         
         site_map[display_label] = site_id
@@ -60,7 +103,6 @@ def render_view_logs_and_update_status():
         key="view_logs_site_select"
     )
     
-    # Map back selected label to pure installation ID
     selected_id = site_map[selected_label]
     info = site_data[selected_id]
 
@@ -106,48 +148,6 @@ def render_view_logs_and_update_status():
     else:
         st.info("No submitted field logs found for this installation ID.")
 
-
-# ==========================================
-# 0. CROSS-PLATFORM PATH MANAGEMENT
-# ==========================================
-BASE_DIR = Path(__file__).resolve().parent
-LOGO_PATH = BASE_DIR / "Company Logo.jpeg"
-
-# ==========================================
-# 1. OFFICIAL PRODUCT CATALOGUE & CATEGORIES
-# ==========================================
-PRODUCT_CATALOG = {
-    "Rolling Shutters": ["Motorized Rolling Shutter", "Gear Rolling Shutter", "Manual Rolling Shutter"],
-    "Dock Leveler": ["Hydraulic Doclevller", "Hydraulic Dock Edge", "Manual Dock Edge"],
-    "Gates": ["Sliding Gate", "Telescopic Gate", "L-Folding Gate", "Swing Gate", "Retractable Gate"],
-    "Doors": ["High Speed Door", "Fire Door", "HMPS Door", "GPD Door", "Overhead Sectional Door"],
-    "Boom Barrier": ["Automatic Traffic Barrier", "Heavy-Duty Traffic Barrier"],
-    "Dock Shelter": ["Retractable Dock Shelter", "Inflatable Dock Shelter"],
-    "Dock Bumper": ["Heavy Rubber Bumper", "Moulded Bumper"],
-    "Other": ["Other"]
-}
-
-TASK_CATEGORIES = [
-    "Civil & Mounting Work",
-    "Track Leveling",
-    "Wiring & Electrical",
-    "Commissioning & Testing",
-    "Site Survey",
-    "Travel / Transit",
-    "Other"
-]
-
-DELAY_REASONS = [
-    "No Delay",
-    "Power Supply Issue",
-    "Civil Work Delay",
-    "Client Hold",
-    "Material Missing",
-    "Weather Delay",
-    "Other"
-]
-
-STATUS_OPTIONS = ["In Progress", "Completed", "On Hold", "Pending Inspection", "Handovered"]
 
 # ==========================================
 # 2. PAGE CONFIG & RESPONSIVE GLOBAL THEME
@@ -268,7 +268,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. GOOGLE SHEETS CONNECTION ENGINE
+# 3. GOOGLE SHEETS & DRIVE ENGINE
 # ==========================================
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -276,12 +276,43 @@ SCOPES = [
 ]
 
 @st.cache_resource
-def get_gspread_client():
-    credentials = Credentials.from_service_account_info(
+def get_credentials():
+    return Credentials.from_service_account_info(
         st.secrets["gcp_service_account"],
         scopes=SCOPES
     )
-    return gspread.authorize(credentials)
+
+@st.cache_resource
+def get_gspread_client():
+    creds = get_credentials()
+    return gspread.authorize(creds)
+
+@st.cache_resource
+def get_drive_service():
+    creds = get_credentials()
+    return build('drive', 'v3', credentials=creds)
+
+def upload_file_to_drive(uploaded_file, file_name):
+    try:
+        service = get_drive_service()
+        file_metadata = {
+            'name': file_name,
+            'parents': [DRIVE_FOLDER_ID]
+        }
+        media = MediaIoBaseUpload(
+            io.BytesIO(uploaded_file.getvalue()), 
+            mimetype=uploaded_file.type,
+            resumable=True
+        )
+        file = service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id, webViewLink'
+        ).execute()
+        return file.get('webViewLink', '')
+    except Exception as e:
+        st.error(f"Error uploading image to Google Drive: {e}")
+        return "Upload Failed"
 
 def get_workbook():
     client = get_gspread_client()
@@ -337,7 +368,7 @@ def update_sheet_row(sheet_name: str, key_col: str, key_val: str, update_dict: d
 
 def generate_excel_download(df, filename="report.xlsx"):
     output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='Sheet1')
     return output.getvalue()
 
@@ -459,7 +490,7 @@ if st.sidebar.button("🚪 LOG OUT", use_container_width=True):
     st.rerun()
 
 # ==========================================
-# 6. DYNAMIC WORK INPUT HELPER (WITH OPTION A SEARCH & CLIENT METADATA)
+# 6. DYNAMIC WORK INPUT HELPER
 # ==========================================
 def render_restricted_work_input(target_worker_name, is_crew_log=False):
     df_sites = read_sheet("Sites_Master")
@@ -478,11 +509,9 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
             c_phone = str(s.get("client_phone", "N/A")).strip() or "N/A"
             handover_str = str(s.get("handover_date", "")).strip()
 
-            # Filter out completed / handovered sites
             if status in ["handovered", "handover", "completed"]:
                 continue
 
-            # Exclude past handover target date
             if handover_str:
                 try:
                     h_date = pd.to_datetime(handover_str).date()
@@ -491,7 +520,6 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
                 except Exception:
                     pass
 
-            # Option A Option Display String
             display_label = f"{site_id} — {c_name}"
             valid_site_map[display_label] = site_id
             site_info_dict[site_id] = {
@@ -517,7 +545,6 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 
     header_placeholder.markdown(f"## 📝 Log Daily Tasks - {selected_site_id}")
 
-    # Dynamic Client Details Card
     site_meta = site_info_dict[selected_site_id]
     st.markdown(f"""
         <div class="client-card">
@@ -529,7 +556,6 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 
     site_city = site_meta["city"]
 
-    # Worker options list
     if not df_workers.empty and "name" in df_workers.columns:
         if "role" in df_workers.columns:
             filtered_workers = df_workers[
@@ -610,7 +636,11 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
     st.write("##")
 
     if st.button("💾 Sync Daily Log to Database", key=f"btn_sync_{target_worker_name}_{is_crew_log}", use_container_width=True):
-        photo_filename = uploaded_photo.name if uploaded_photo is not None else "No Photo"
+        photo_link = "No Photo"
+        if uploaded_photo is not None:
+            photo_name = f"{selected_site_id}_{target_worker_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+            photo_link = upload_file_to_drive(uploaded_photo, photo_name)
+
         records_saved = 0
 
         for idx, t in enumerate(task_entries):
@@ -643,7 +673,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
                 "is_travel_day": "Yes" if w_is_travel else "No",
                 "delay_category": delay_reason,
                 "site_remarks": site_remarks,
-                "site_photo": photo_filename,
+                "site_photo": photo_link,
                 "logged_by": target_worker_name
             }
             append_to_sheet("Worker_Daily_Logs", log_entry)
@@ -1173,7 +1203,7 @@ elif menu == "Handover Date Dashboard":
                 </div>
             """, unsafe_allow_html=True)
 
-# --- SUPERVISOR: NEW ORDER (UPDATED WITH CLIENT NAME & PHONE) ---
+# --- SUPERVISOR: NEW ORDER ---
 elif menu == "New Installation Order":
     st.header("Create New Installation Order")
     df_workers = read_sheet("Workers_Master")
