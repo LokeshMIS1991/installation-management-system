@@ -295,14 +295,17 @@ def get_drive_service():
 # Fetch Drive Folder ID directly from secrets or fallback to your folder ID
 DRIVE_FOLDER_ID = st.secrets.get("drive_folder_id", "0ADjIFMwZGB62Uk9PVA")
 
+DRIVE_FOLDER_ID = st.secrets.get("drive_folder_id", "0ADjIFMwZGB62Uk9PVA")
+
+
 def upload_file_to_drive(uploaded_file, file_name):
-    """Uploads a file to the Installation Management Google Drive folder and sets public view permissions."""
+    """Uploads a file to a Shared Drive folder and sets public permissions."""
     try:
         service = get_drive_service()
 
         file_metadata = {
             "name": file_name,
-            "parents": [DRIVE_FOLDER_ID],  # Target Folder: Installation Management
+            "parents": [DRIVE_FOLDER_ID],  # Target Shared Drive / Folder
         }
 
         media = MediaIoBaseUpload(
@@ -311,19 +314,27 @@ def upload_file_to_drive(uploaded_file, file_name):
             resumable=True,
         )
 
-        # 1. Create file inside the specific folder
+        # 1. Create file inside Shared Drive (supportsAllDrives=True is required)
         file = (
             service.files()
-            .create(body=file_metadata, media_body=media, fields="id, webViewLink")
+            .create(
+                body=file_metadata,
+                media_body=media,
+                fields="id, webViewLink",
+                supportsAllDrives=True,  # <--- CRITICAL FIX FOR 404
+            )
             .execute()
         )
 
         file_id = file.get("id")
 
-        # 2. Grant public view permission for easy access in Streamlit
+        # 2. Grant public view permission
         user_permission = {"type": "anyone", "role": "viewer"}
         service.permissions().create(
-            fileId=file_id, body=user_permission, fields="id"
+            fileId=file_id,
+            body=user_permission,
+            fields="id",
+            supportsAllDrives=True,  # <--- CRITICAL FIX FOR 404
         ).execute()
 
         return file.get("webViewLink", "")
@@ -331,6 +342,7 @@ def upload_file_to_drive(uploaded_file, file_name):
     except Exception as e:
         st.error(f"Error uploading image to Google Drive: {e}")
         return "Upload Failed"
+        
 def get_workbook():
     client = get_gspread_client()
     sheet_url = st.secrets.get("spreadsheet_url", "https://docs.google.com/spreadsheets/d/19rQC3aNtosjhSwyctKAk9ojUt0c8gyOPH-Q8trW5q5s/edit")
