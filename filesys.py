@@ -1278,6 +1278,38 @@ elif menu == "My Work History & Performance":
                 use_container_width=True,
             )
 
+# --- WORKER DASHBOARD SECTION ---
+elif menu == "My Work Dashboard":
+    st.header(f"⚡ My Personal Summary — {user_name}")
+    
+    df_logs = read_sheet("Worker_Daily_Logs")
+    df_expenses = read_sheet("Expense_Logs")
+    
+    my_logs = df_logs[df_logs["worker_name"].str.strip().str.lower() == user_name.strip().lower()] if not df_logs.empty else pd.DataFrame()
+    my_expenses = df_expenses[df_expenses["worker_name"].str.strip().str.lower() == user_name.strip().lower()] if not df_expenses.empty else pd.DataFrame()
+
+    if my_logs.empty:
+        st.info("No work history found.")
+    else:
+        # Personal KPI Cards
+        w1, w2, w3, w4, w5, w6 = st.columns(6)
+        w1.metric("Sites Visited", my_logs["installation_id"].nunique())
+        w2.metric("Days Worked", my_logs["logged_date"].nunique())
+        w3.metric("Travel Days", len(my_logs[my_logs["is_travel_day"] == "Yes"]))
+        w4.metric("Travel Expenses", f"₹{my_expenses['travel_expense'].sum():,.0f}" if "travel_expense" in my_expenses.columns else "₹0")
+        w5.metric("Stay Expenses", f"₹{my_expenses['stay_expense'].sum():,.0f}" if "stay_expense" in my_expenses.columns else "₹0")
+        w6.metric("Leaves/Absences", len(my_logs[my_logs["attendance_status"] == "Leave"]) if "attendance_status" in my_logs.columns else "0")
+
+        # Visual Chart of Personal Logged Problems
+        st.write("##")
+        fig_my_problems = px.pie(
+            my_logs, 
+            names="delay_category", 
+            title="Overview of Issues Faced on Sites",
+            hole=0.4
+        )
+        st.plotly_chart(fig_my_problems, use_container_width=True)
+        
 # --- WORKER: MY PROFILE & SETTINGS ---
 elif menu == "My Profile & Settings":
     st.header("👤 Worker Profile & Security")
@@ -1672,77 +1704,69 @@ elif menu == "Employee Analytics & Reports":
                 )
 
 # --- ADMIN: ANALYTICS DASHBOARD ---
+# --- ADMIN DASHBOARD SECTION ---
 elif menu == "Admin Analytics Dashboard":
-    st.header("📊 Admin Operations Dashboard")
+    st.header("📊 Admin Operations & Expense Analytics")
+    
     df_logs = read_sheet("Worker_Daily_Logs")
-    df_workers = read_sheet("Workers_Master")
-    df_sites = read_sheet("Sites_Master")
+    df_expenses = read_sheet("Expense_Logs")  # Ensure you have a sheet/tab for expenses
+    
+    if df_logs.empty:
+        st.info("No log data available.")
+    else:
+        # 1. Global KPI Metrics Calculations
+        sites_visited = df_logs["installation_id"].nunique()
+        days_worked = df_logs["logged_date"].nunique()
+        days_travelled = len(df_logs[df_logs["is_travel_day"] == "Yes"])
+        
+        # Calculate Expenses & Absences (if columns exist)
+        travel_exp = df_expenses["travel_expense"].sum() if not df_expenses.empty and "travel_expense" in df_expenses.columns else 0
+        stay_exp = df_expenses["stay_expense"].sum() if not df_expenses.empty and "stay_expense" in df_expenses.columns else 0
+        leave_days = len(df_logs[df_logs["attendance_status"] == "Leave"]) if "attendance_status" in df_logs.columns else 0
 
-    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-    with kpi1:
-        st.markdown(
-            '<div class="kpi-card"><div'
-            f' class="kpi-number">{len(df_workers)}</div><div'
-            ' class="kpi-label">Active Team Members</div></div>',
-            unsafe_allow_html=True,
-        )
-    with kpi2:
-        st.markdown(
-            '<div class="kpi-card"><div'
-            f' class="kpi-number">{len(df_sites)}</div><div'
-            ' class="kpi-label">Total Installation Sites</div></div>',
-            unsafe_allow_html=True,
-        )
-    with kpi3:
-        tot_hrs = (
-            df_logs["hours_spent"].sum()
-            if not df_logs.empty and "hours_spent" in df_logs.columns
-            else 0
-        )
-        st.markdown(
-            '<div class="kpi-card"><div'
-            f' class="kpi-number">{tot_hrs} hrs</div><div'
-            ' class="kpi-label">Total Field Hours Logged</div></div>',
-            unsafe_allow_html=True,
-        )
-    with kpi4:
-        trv_days = (
-            len(df_logs[df_logs["is_travel_day"] == "Yes"])
-            if not df_logs.empty and "is_travel_day" in df_logs.columns
-            else 0
-        )
-        st.markdown(
-            '<div class="kpi-card"><div'
-            f' class="kpi-number">{trv_days} Days</div><div'
-            ' class="kpi-label">TA/DA Travel Days Claims</div></div>',
-            unsafe_allow_html=True,
-        )
+        # 2. Interactive KPI Cards (Top Row)
+        k1, k2, k3, k4, k5, k6 = st.columns(6)
+        with k1:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{sites_visited}</div><div class="kpi-label">Sites Visited</div></div>', unsafe_allow_html=True)
+        with k2:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{days_worked}</div><div class="kpi-label">Days Worked</div></div>', unsafe_allow_html=True)
+        with k3:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{days_travelled}</div><div class="kpi-label">Days Travelled</div></div>', unsafe_allow_html=True)
+        with k4:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">₹{travel_exp:,.0f}</div><div class="kpi-label">Travel Expense</div></div>', unsafe_allow_html=True)
+        with k5:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">₹{stay_exp:,.0f}</div><div class="kpi-label">Stay Expense</div></div>', unsafe_allow_html=True)
+        with k6:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number" style="color:#D32F2F;">{leave_days}</div><div class="kpi-label">On-Site Leaves</div></div>', unsafe_allow_html=True)
 
-    st.write("##")
-    col_chart1, col_chart2 = st.columns(2)
-    with col_chart1:
-        st.subheader("Field Hours per Worker")
-        if (
-            not df_logs.empty
-            and "worker_name" in df_logs.columns
-            and df_logs["hours_spent"].sum() > 0
-        ):
-            hrs_df = (
-                df_logs.groupby("worker_name")["hours_spent"]
-                .sum()
-                .reset_index()
-            )
-            st.bar_chart(hrs_df.set_index("worker_name"))
-        else:
-            st.info("⚠️ No Field Hours Logged Yet")
+        st.divider()
 
-    with col_chart2:
-        st.subheader("Site Status Distribution")
-        if not df_sites.empty and "status" in df_sites.columns:
-            st_counts = df_sites["status"].value_counts()
-            st.bar_chart(st_counts)
-        else:
-            st.info("⚠️ No Installation Sites Created Yet")
+        # 3. Interactive Charts
+        g1, g2 = st.columns(2)
+        with g1:
+            st.subheader("⚠️ Problems & Delays Encountered")
+            if "delay_category" in df_logs.columns:
+                fig_delay = px.bar(
+                    df_logs[df_logs["delay_category"] != "No Delay"],
+                    x="delay_category",
+                    color="installation_id",
+                    title="Site Problems by Category",
+                    labels={"delay_category": "Problem Type", "count": "Occurrences"}
+                )
+                st.plotly_chart(fig_delay, use_container_width=True)
+                
+        with g2:
+            st.subheader("💰 Worker Expenses Comparison")
+            if not df_expenses.empty and "worker_name" in df_expenses.columns:
+                fig_exp = px.bar(
+                    df_expenses,
+                    x="worker_name",
+                    y=["travel_expense", "stay_expense"],
+                    title="Travel vs. Stay Expense per Worker",
+                    barmode="stack",
+                    labels={"value": "Amount (₹)", "worker_name": "Worker"}
+                )
+                st.plotly_chart(fig_exp, use_container_width=True)
 
 # --- ADMIN: USER MANAGEMENT ---
 elif menu == "User Management":
@@ -2122,6 +2146,33 @@ elif menu == "New Installation Order":
 elif menu == "View Logs & Update Status":
     render_view_logs_and_update_status()
 
+# --- SUPERVISOR DASHBOARD SECTION ---
+elif menu == "Team Head Dashboard":
+    st.header("👥 Supervisor Crew & Site Performance")
+    
+    df_logs = read_sheet("Worker_Daily_Logs")
+    df_expenses = read_sheet("Expense_Logs")
+    
+    # Filter options by site/crew
+    site_list = ["All Sites"] + df_logs["installation_id"].unique().tolist()
+    selected_site = st.selectbox("Select Installation Site", site_list)
+    
+    sub_df = df_logs.copy()
+    if selected_site != "All Sites":
+        sub_df = sub_df[sub_df["installation_id"] == selected_site]
+        
+    # KPI Row
+    s1, s2, s3, s4, s5 = st.columns(5)
+    s1.metric("Sites Tracked", sub_df["installation_id"].nunique())
+    s2.metric("Total Days Worked", sub_df["logged_date"].nunique())
+    s3.metric("Travel Days", len(sub_df[sub_df["is_travel_day"] == "Yes"]))
+    s4.metric("Leaves Reported", len(sub_df[sub_df["attendance_status"] == "Leave"]) if "attendance_status" in sub_df.columns else 0)
+    
+    # Problems/Remarks Table
+    st.subheader("🚨 Reported Problems & Remarks")
+    problems_df = sub_df[sub_df["site_remarks"].str.strip() != ""][["logged_date", "worker_name", "installation_id", "delay_category", "site_remarks"]]
+    st.dataframe(problems_df, use_container_width=True)
+    
 # --- MASTER DATABASE ---
 elif menu == "Master Database":
     st.header("🗄️ Live Google Sheets Database")
