@@ -71,6 +71,15 @@ DELAY_REASONS = [
     "Other",
 ]
 
+HOLD_REASONS = [
+    "Power Supply Issue",
+    "Civil Work Delay",
+    "Client Hold",
+    "Material Missing",
+    "Weather Delay",
+    "Other",
+]
+
 STATUS_OPTIONS = [
     "In Progress",
     "Completed",
@@ -80,6 +89,9 @@ STATUS_OPTIONS = [
 ]
 
 
+# ==========================================
+# 1. HELPER FUNCTIONS & VIEW LOGS MODULE
+# ==========================================
 def render_view_logs_and_update_status():
     st.markdown("## 🔍 View Daily Logs & Update Status")
 
@@ -89,7 +101,7 @@ def render_view_logs_and_update_status():
         st.warning("No installation records found.")
         return
 
-    # 2. Standardize column headers for reliable lookup
+    # 2. Standardize column headers
     df_sites.columns = [
         str(col).strip().lower().replace(" ", "_") for col in df_sites.columns
     ]
@@ -97,10 +109,12 @@ def render_view_logs_and_update_status():
     site_map = {}
     site_data = {}
 
-    # 3. Process each site record
+    # 3. Process each site record and filter out Handovered / Completed sites
     for _, s in df_sites.iterrows():
         site_id = str(s.get("installation_id", "")).strip()
-        if not site_id:
+        status = str(s.get("status") or "In Progress").strip().title()
+
+        if not site_id or status in ["Handovered", "Handover", "Completed"]:
             continue
 
         c_name = str(
@@ -117,9 +131,7 @@ def render_view_logs_and_update_status():
         ).strip()
         city = str(s.get("site_city") or s.get("city") or "N/A").strip()
         lead = str(s.get("team_lead") or s.get("lead") or "N/A").strip()
-        status = str(s.get("status") or "In Progress").strip().title()
 
-        # Build dropdown option label
         display_label = f"{site_id} — {c_name}" if c_name != "N/A" else site_id
 
         site_map[display_label] = site_id
@@ -132,10 +144,10 @@ def render_view_logs_and_update_status():
         }
 
     if not site_map:
-        st.warning("No valid site records found.")
+        st.info("No active installation sites found (all sites completed or handovered).")
         return
 
-    # 4. Render selectbox with formatted display labels
+    # 4. Dropdown for Site Selection
     selected_label = st.selectbox(
         "Select Installation ID",
         options=list(site_map.keys()),
@@ -145,7 +157,7 @@ def render_view_logs_and_update_status():
     selected_id = site_map[selected_label]
     info = site_data[selected_id]
 
-    # 5. Display Installation Card Details
+    # 5. Display Installation Details
     st.markdown(
         f"""
         <div style="background-color: #f0f4f8; padding: 20px; border-radius: 10px; border-left: 5px solid #1E3A8A; margin-top: 15px; margin-bottom: 20px;">
@@ -158,7 +170,7 @@ def render_view_logs_and_update_status():
         unsafe_allow_html=True,
     )
 
-    # 6. Update Status Controls
+    # 6. Dynamic Status Update Controls with Mandatory On-Hold Handling
     col_st, col_btn = st.columns([2, 1])
     with col_st:
         curr_st = info["status"]
@@ -171,20 +183,58 @@ def render_view_logs_and_update_status():
             index=st_idx,
             key="update_status_selectbox",
         )
+
+    hold_reason_val = ""
+    hold_remark_val = ""
+
+    if new_st == "On Hold":
+        st.warning("⚠️ Site is being placed On Hold. A reason is mandatory.")
+        c_r1, c_r2 = st.columns(2)
+        with c_r1:
+            hold_reason_val = st.selectbox(
+                "Mandatory Reason for Hold *",
+                HOLD_REASONS,
+                key="hold_reason_select",
+            )
+        with c_r2:
+            if hold_reason_val == "Other":
+                hold_remark_val = st.text_input(
+                    "Specific Hold Remarks (Mandatory for 'Other') *",
+                    key="hold_remark_input",
+                )
+
     with col_btn:
         st.write(" ")
         st.write(" ")
         if st.button("Update Status", key="btn_update_site_status"):
-            update_sheet_row(
-                "Sites_Master",
-                "installation_id",
-                selected_id,
-                {"status": new_st},
-            )
+            if new_st == "On Hold":
+                if hold_reason_val == "Other" and not hold_remark_val.strip():
+                    st.error("Please enter specific remarks when selecting 'Other'.")
+                    st.stop()
+                
+                final_hold_note = (
+                    f"On Hold Reason: {hold_reason_val} - {hold_remark_val}"
+                    if hold_reason_val == "Other"
+                    else f"On Hold Reason: {hold_reason_val}"
+                )
+                update_sheet_row(
+                    "Sites_Master",
+                    "installation_id",
+                    selected_id,
+                    {"status": new_st, "hold_reason": final_hold_note},
+                )
+            else:
+                update_sheet_row(
+                    "Sites_Master",
+                    "installation_id",
+                    selected_id,
+                    {"status": new_st},
+                )
+
             st.success(f"Status updated to **{new_st}**!")
             st.rerun()
 
-    # 7. Render Submitted Field Logs for the selected site
+    # 7. Submitted Field Logs
     st.divider()
     st.subheader("📜 Submitted Work Logs")
     df_logs = read_sheet("Worker_Daily_Logs")
@@ -196,8 +246,10 @@ def render_view_logs_and_update_status():
 
     if not p_logs.empty:
         for _, l in p_logs.iterrows():
+            day_lbl = l.get("site_day", "")
+            header_prefix = f"[{day_lbl}] " if day_lbl else ""
             with st.expander(
-                f"📅 Date: {l.get('logged_date')} | Worker: {l.get('worker_name')} | Role: {l.get('worker_role', 'N/A')}"
+                f"📅 {header_prefix}Date: {l.get('logged_date')} | Worker: {l.get('worker_name')} | Role: {l.get('worker_role', 'N/A')}"
             ):
                 st.write(f"**Task Category:** {l.get('task_category')}")
                 st.write(f"**Task Description:** {l.get('task_name')}")
@@ -223,9 +275,9 @@ st.set_page_config(
     initial_sidebar_state="auto",
 )
 
-COLOR_PRIMARY = "#10418A"  # Sidharth Deep Blue
-COLOR_ACCENT = "#00A859"  # Vibrant Green
-COLOR_BG_LIGHT = "#EBF3FA"  # Soft Blue Background Tint
+COLOR_PRIMARY = "#10418A"
+COLOR_ACCENT = "#00A859"
+COLOR_BG_LIGHT = "#EBF3FA"
 
 st.markdown(
     f"""
@@ -345,13 +397,12 @@ SCOPES = [
 
 @st.cache_resource
 def get_credentials():
+    """Reads GCP credentials from Streamlit secrets and auto-corrects literal '\\n' in private key."""
     creds_dict = dict(st.secrets["gcp_service_account"])
 
-    # Fix literal '\\n' escape sequences in private key string
     if "private_key" in creds_dict:
-        creds_dict["private_key"] = creds_dict["private_key"].replace(
-            "\\n", "\n"
-        )
+        # Replaces double-escaped '\\n' with actual newline characters
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
 
     return Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
 
@@ -368,12 +419,11 @@ def get_drive_service():
     return build("drive", "v3", credentials=creds)
 
 
-# Fetch Drive Folder ID directly from secrets or fallback to your folder ID
 DRIVE_FOLDER_ID = st.secrets.get("drive_folder_id", "0ADjIFMwZGB62Uk9PVA")
 
 
 def upload_file_to_drive(uploaded_file, file_name):
-    """Uploads a file to a Shared Drive folder and sets public read permissions."""
+    """Uploads a file to Google Drive and makes it accessible via link."""
     try:
         service = get_drive_service()
 
@@ -388,7 +438,6 @@ def upload_file_to_drive(uploaded_file, file_name):
             resumable=True,
         )
 
-        # 1. Create file inside Shared Drive
         file = (
             service.files()
             .create(
@@ -402,10 +451,9 @@ def upload_file_to_drive(uploaded_file, file_name):
 
         file_id = file.get("id")
 
-        # 2. Grant public view permission (use 'reader', not 'viewer')
         user_permission = {
             "type": "anyone",
-            "role": "reader",  # <--- CRITICAL FIX FOR HTTP 400
+            "role": "reader",
         }
         service.permissions().create(
             fileId=file_id,
@@ -649,13 +697,13 @@ if st.sidebar.button("🚪 LOG OUT", use_container_width=True):
 # 6. DYNAMIC WORK INPUT HELPER
 # ==========================================
 def render_restricted_work_input(target_worker_name, is_crew_log=False):
-    # Check for success flag on page rerun to show pop-up notification
     if st.session_state.get("log_success"):
         st.toast("✅ Log entry has been recorded successfully!", icon="🎉")
         del st.session_state["log_success"]
 
     df_sites = read_sheet("Sites_Master")
     df_workers = read_sheet("Workers_Master")
+    df_logs = read_sheet("Worker_Daily_Logs")
 
     valid_site_map = {}
     site_info_dict = {}
@@ -712,7 +760,21 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
             key=f"date_{target_worker_name}_{is_crew_log}",
         )
 
-    header_placeholder.markdown(f"## 📝 Log Daily Tasks - {selected_site_id}")
+    # --- DYNAMIC DAY TRACKING (Day 1, Day 2...) CALCULATOR ---
+    site_days_count = 1
+    if not df_logs.empty and "installation_id" in df_logs.columns and "logged_date" in df_logs.columns:
+        site_logs = df_logs[df_logs["installation_id"] == selected_site_id]
+        logged_dates = sorted(site_logs["logged_date"].astype(str).unique())
+
+        cur_date_str = str(log_date)
+        if cur_date_str in logged_dates:
+            site_days_count = logged_dates.index(cur_date_str) + 1
+        else:
+            site_days_count = len(logged_dates) + 1
+
+    site_day_label = f"Day {site_days_count}"
+
+    header_placeholder.markdown(f"## 📝 Log Daily Tasks - {selected_site_id} ({site_day_label})")
 
     site_meta = site_info_dict[selected_site_id]
     st.markdown(
@@ -721,6 +783,8 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
             <span style="font-size:15px; font-weight:700; color:{COLOR_PRIMARY};">🏢 Client Name: {site_meta['client_name']}</span>
             &nbsp;&nbsp;|&nbsp;&nbsp;
             <span style="font-size:15px; font-weight:700; color:{COLOR_ACCENT};">📞 Contact Mobile: <a href="tel:{site_meta['client_phone']}" style="color:{COLOR_ACCENT}; text-decoration:none;">{site_meta['client_phone']}</a></span>
+            &nbsp;&nbsp;|&nbsp;&nbsp;
+            <span style="font-size:15px; font-weight:700; color:{COLOR_PRIMARY};">📅 Current Timeline: <strong>{site_day_label}</strong></span>
         </div>
     """,
         unsafe_allow_html=True,
@@ -903,6 +967,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
             log_entry = {
                 "log_id": log_id,
                 "installation_id": selected_site_id,
+                "site_day": site_day_label,
                 "logged_date": str(log_date),
                 "worker_name": worker,
                 "worker_role": (
@@ -1218,6 +1283,7 @@ elif menu == "My Work History & Performance":
                 c
                 for c in [
                     "log_id",
+                    "site_day",
                     "logged_date",
                     "installation_id",
                     "worker_role",
@@ -1609,6 +1675,7 @@ elif menu == "Employee Analytics & Reports":
                     c
                     for c in [
                         "log_id",
+                        "site_day",
                         "logged_date",
                         "installation_id",
                         "worker_role",
@@ -1708,7 +1775,6 @@ elif menu == "User Management":
     st.header("👥 User & Access Management")
     df_workers = read_sheet("Workers_Master")
 
-    # Check for success flag on page rerun to show pop-up notification
     if st.session_state.get("user_created_success"):
         new_user = st.session_state.get("created_user_name", "User")
         st.toast(f"👤 Account for {new_user} created successfully!", icon="✅")
