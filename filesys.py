@@ -345,9 +345,15 @@ SCOPES = [
 
 @st.cache_resource
 def get_credentials():
-    return Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"], scopes=SCOPES
-    )
+    creds_dict = dict(st.secrets["gcp_service_account"])
+
+    # Fix literal '\\n' escape sequences in private key string
+    if "private_key" in creds_dict:
+        creds_dict["private_key"] = creds_dict["private_key"].replace(
+            "\\n", "\n"
+        )
+
+    return Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
 
 
 @st.cache_resource
