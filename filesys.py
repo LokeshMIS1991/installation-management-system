@@ -299,13 +299,13 @@ DRIVE_FOLDER_ID = st.secrets.get("drive_folder_id", "0ADjIFMwZGB62Uk9PVA")
 
 
 def upload_file_to_drive(uploaded_file, file_name):
-    """Uploads a file to a Shared Drive folder and sets public permissions."""
+    """Uploads a file to a Shared Drive folder and sets public read permissions."""
     try:
         service = get_drive_service()
 
         file_metadata = {
             "name": file_name,
-            "parents": [DRIVE_FOLDER_ID],  # Target Shared Drive / Folder
+            "parents": [DRIVE_FOLDER_ID],
         }
 
         media = MediaIoBaseUpload(
@@ -314,27 +314,30 @@ def upload_file_to_drive(uploaded_file, file_name):
             resumable=True,
         )
 
-        # 1. Create file inside Shared Drive (supportsAllDrives=True is required)
+        # 1. Create file inside Shared Drive
         file = (
             service.files()
             .create(
                 body=file_metadata,
                 media_body=media,
                 fields="id, webViewLink",
-                supportsAllDrives=True,  # <--- CRITICAL FIX FOR 404
+                supportsAllDrives=True,
             )
             .execute()
         )
 
         file_id = file.get("id")
 
-        # 2. Grant public view permission
-        user_permission = {"type": "anyone", "role": "viewer"}
+        # 2. Grant public view permission (use 'reader', not 'viewer')
+        user_permission = {
+            "type": "anyone",
+            "role": "reader",  # <--- CRITICAL FIX FOR HTTP 400
+        }
         service.permissions().create(
             fileId=file_id,
             body=user_permission,
             fields="id",
-            supportsAllDrives=True,  # <--- CRITICAL FIX FOR 404
+            supportsAllDrives=True,
         ).execute()
 
         return file.get("webViewLink", "")
