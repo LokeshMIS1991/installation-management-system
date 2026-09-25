@@ -694,12 +694,39 @@ if st.sidebar.button("🚪 LOG OUT", use_container_width=True):
 
 
 # ==========================================
-# 6. DYNAMIC WORK INPUT HELPER
+# 6. DYNAMIC WORK INPUT HELPER WITH SUCCESS MODAL
 # ==========================================
+@st.dialog("🎉 Daily Log Submitted Successfully!")
+def show_upload_success_modal(site_id, day_label, records_count):
+    st.write(f"### Great Job! 🚀")
+    st.markdown(
+        f"""
+        Your **{records_count} task(s)** and photos for **{site_id} ({day_label})** have been uploaded and saved directly to the database.
+        
+        * All entries have been synchronized.
+        * The entry form has been cleared for your next log.
+        """
+    )
+    if st.button("Close & Continue", use_container_width=True, key="btn_close_success_dialog"):
+        st.session_state["show_success_modal"] = False
+        st.rerun()
+
+
 def render_restricted_work_input(target_worker_name, is_crew_log=False):
-    if st.session_state.get("log_success"):
-        st.toast("✅ Log entry has been recorded successfully!", icon="🎉")
-        del st.session_state["log_success"]
+    # Check if we should open the modal dialog after rerun
+    if st.session_state.get("show_success_modal"):
+        m_info = st.session_state.get("modal_info", {})
+        show_upload_success_modal(
+            m_info.get("site_id", ""),
+            m_info.get("day_label", ""),
+            m_info.get("count", 1)
+        )
+
+    # Key generation for state management
+    form_version_key = f"form_version_{target_worker_name}_{is_crew_log}"
+    if form_version_key not in st.session_state:
+        st.session_state[form_version_key] = 0
+    v = st.session_state[form_version_key]
 
     df_sites = read_sheet("Sites_Master")
     df_workers = read_sheet("Workers_Master")
@@ -749,7 +776,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
         selected_display_label = st.selectbox(
             "Current Logging for :",
             list(valid_site_map.keys()),
-            key=f"site_{target_worker_name}_{is_crew_log}",
+            key=f"site_{target_worker_name}_{is_crew_log}_v{v}",
         )
         selected_site_id = valid_site_map[selected_display_label]
 
@@ -757,7 +784,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
         log_date = st.date_input(
             "Date of Work",
             value=datetime.now(),
-            key=f"date_{target_worker_name}_{is_crew_log}",
+            key=f"date_{target_worker_name}_{is_crew_log}_v{v}",
         )
 
     # --- DYNAMIC DAY TRACKING (Day 1, Day 2...) CALCULATOR ---
@@ -824,7 +851,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
             "Team Lead Name *",
             options=worker_options,
             index=default_lead_idx,
-            key=f"team_lead_{target_worker_name}_{is_crew_log}",
+            key=f"team_lead_{target_worker_name}_{is_crew_log}_v{v}",
         )
 
     with col_helpers:
@@ -834,7 +861,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
         team_helpers_selected = st.multiselect(
             "Team Members / Helpers",
             options=available_helpers,
-            key=f"helpers_{target_worker_name}_{is_crew_log}",
+            key=f"helpers_{target_worker_name}_{is_crew_log}_v{v}",
         )
 
     active_crew = [team_lead_selected] + team_helpers_selected
@@ -842,7 +869,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
     st.write("##")
     st.markdown("### 🛠️ Tasks Completed Today")
 
-    task_count_key = f"task_lines_count_{target_worker_name}_{is_crew_log}"
+    task_count_key = f"task_lines_count_{target_worker_name}_{is_crew_log}_v{v}"
     if task_count_key not in st.session_state:
         st.session_state[task_count_key] = 1
 
@@ -858,19 +885,19 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
             cat = st.selectbox(
                 f"Category #{i+1}",
                 TASK_CATEGORIES,
-                key=f"cat_{target_worker_name}_{is_crew_log}_{i}",
+                key=f"cat_{target_worker_name}_{is_crew_log}_{i}_v{v}",
             )
         with col_desc:
             desc = st.text_input(
                 f"Task #{i+1} Description",
                 placeholder="e.g., Track Leveling",
-                key=f"desc_{target_worker_name}_{is_crew_log}_{i}",
+                key=f"desc_{target_worker_name}_{is_crew_log}_{i}_v{v}",
             )
         with col_assigned:
             assigned_worker = st.selectbox(
                 f"Assigned To #{i+1}",
                 options=active_crew,
-                key=f"assigned_{target_worker_name}_{is_crew_log}_{i}",
+                key=f"assigned_{target_worker_name}_{is_crew_log}_{i}_v{v}",
             )
         with col_hrs:
             hrs = st.number_input(
@@ -879,13 +906,13 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
                 max_value=24,
                 value=2,
                 step=1,
-                key=f"hrs_{target_worker_name}_{is_crew_log}_{i}",
+                key=f"hrs_{target_worker_name}_{is_crew_log}_{i}_v{v}",
             )
         with col_min:
             mins = st.selectbox(
                 f"Minutes",
                 [0, 15, 30, 45],
-                key=f"min_{target_worker_name}_{is_crew_log}_{i}",
+                key=f"min_{target_worker_name}_{is_crew_log}_{i}_v{v}",
             )
 
         task_entries.append(
@@ -900,7 +927,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 
     if st.button(
         "➕ ADD MORE TASK LINES",
-        key=f"add_task_btn_{target_worker_name}_{is_crew_log}",
+        key=f"add_task_btn_{target_worker_name}_{is_crew_log}_v{v}",
     ):
         st.session_state[task_count_key] += 1
         st.rerun()
@@ -914,21 +941,21 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
         delay_reason = st.selectbox(
             "Primary Delay Category",
             options=DELAY_REASONS,
-            key=f"delay_reason_{target_worker_name}_{is_crew_log}",
+            key=f"delay_reason_{target_worker_name}_{is_crew_log}_v{v}",
         )
 
     with col_delay_notes:
         site_remarks = st.text_area(
             "Specific Site Notes / Remarks",
             placeholder="Provide details...",
-            key=f"rem_{target_worker_name}_{is_crew_log}",
+            key=f"rem_{target_worker_name}_{is_crew_log}_v{v}",
         )
 
     st.markdown("### 📷 Site Photo Documentation")
     uploaded_photo = st.file_uploader(
         "Upload Photo of Site",
         type=["jpg", "jpeg", "png"],
-        key=f"photo_{target_worker_name}_{is_crew_log}",
+        key=f"photo_{target_worker_name}_{is_crew_log}_v{v}",
     )
 
     if uploaded_photo is not None:
@@ -938,9 +965,15 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 
     if st.button(
         "💾 Sync Daily Log to Database",
-        key=f"btn_sync_{target_worker_name}_{is_crew_log}",
+        key=f"btn_sync_{target_worker_name}_{is_crew_log}_v{v}",
         use_container_width=True,
     ):
+        valid_tasks = [t for t in task_entries if t["description"].strip()]
+        
+        if not valid_tasks:
+            st.error("Please enter at least one task description before syncing.")
+            return
+
         photo_link = "No Photo"
         if uploaded_photo is not None:
             photo_name = f"{selected_site_id}_{target_worker_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
@@ -948,10 +981,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 
         records_saved = 0
 
-        for idx, t in enumerate(task_entries):
-            if not t["description"].strip():
-                continue
-
+        for idx, t in enumerate(valid_tasks):
             worker = t["assigned_worker"]
             w_base = "Jaipur"
             if not df_workers.empty:
@@ -990,8 +1020,15 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
             records_saved += 1
 
         if records_saved > 0:
-            st.session_state[task_count_key] = 1
-            st.session_state["log_success"] = True
+            # Set state for Success Dialog Pop-up
+            st.session_state["show_success_modal"] = True
+            st.session_state["modal_info"] = {
+                "site_id": selected_site_id,
+                "day_label": site_day_label,
+                "count": records_saved,
+            }
+            # Increment version to reset all input elements & uploaded file states
+            st.session_state[form_version_key] += 1
             st.rerun()
 
 
