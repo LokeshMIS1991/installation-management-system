@@ -292,28 +292,45 @@ def get_drive_service():
     creds = get_credentials()
     return build('drive', 'v3', credentials=creds)
 
+# Fetch Drive Folder ID directly from secrets or fallback to your folder ID
+DRIVE_FOLDER_ID = st.secrets.get("drive_folder_id", "0ADjIFMwZGB62Uk9PVA")
+
 def upload_file_to_drive(uploaded_file, file_name):
+    """Uploads a file to the Installation Management Google Drive folder and sets public view permissions."""
     try:
         service = get_drive_service()
+
         file_metadata = {
-            'name': file_name,
-            'parents': [DRIVE_FOLDER_ID]
+            "name": file_name,
+            "parents": [DRIVE_FOLDER_ID],  # Target Folder: Installation Management
         }
+
         media = MediaIoBaseUpload(
-            io.BytesIO(uploaded_file.getvalue()), 
+            io.BytesIO(uploaded_file.getvalue()),
             mimetype=uploaded_file.type,
-            resumable=True
+            resumable=True,
         )
-        file = service.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields='id, webViewLink'
+
+        # 1. Create file inside the specific folder
+        file = (
+            service.files()
+            .create(body=file_metadata, media_body=media, fields="id, webViewLink")
+            .execute()
+        )
+
+        file_id = file.get("id")
+
+        # 2. Grant public view permission for easy access in Streamlit
+        user_permission = {"type": "anyone", "role": "viewer"}
+        service.permissions().create(
+            fileId=file_id, body=user_permission, fields="id"
         ).execute()
-        return file.get('webViewLink', '')
+
+        return file.get("webViewLink", "")
+
     except Exception as e:
         st.error(f"Error uploading image to Google Drive: {e}")
         return "Upload Failed"
-
 def get_workbook():
     client = get_gspread_client()
     sheet_url = st.secrets.get("spreadsheet_url", "https://docs.google.com/spreadsheets/d/19rQC3aNtosjhSwyctKAk9ojUt0c8gyOPH-Q8trW5q5s/edit")
