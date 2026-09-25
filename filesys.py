@@ -1,3 +1,5 @@
+# app.py
+
 import io
 import os
 import re
@@ -12,6 +14,15 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
+# Import static options from config.py
+from config import (
+    DELAY_REASONS,
+    HOLD_REASONS,
+    PRODUCT_CATALOG,
+    STATUS_OPTIONS,
+    TASK_CATEGORIES,
+)
+
 # ==========================================
 # 0. CONFIGURATION & CONSTANTS
 # ==========================================
@@ -19,74 +30,6 @@ DRIVE_FOLDER_ID = "0ADjIFMwZGB62Uk9PVA"
 
 BASE_DIR = Path(__file__).resolve().parent
 LOGO_PATH = BASE_DIR / "Company Logo.jpeg"
-
-PRODUCT_CATALOG = {
-    "Rolling Shutters": [
-        "Motorized Rolling Shutter",
-        "Gear Rolling Shutter",
-        "Manual Rolling Shutter",
-    ],
-    "Dock Leveler": [
-        "Hydraulic Doclevller",
-        "Hydraulic Dock Edge",
-        "Manual Dock Edge",
-    ],
-    "Gates": [
-        "Sliding Gate",
-        "Telescopic Gate",
-        "L-Folding Gate",
-        "Swing Gate",
-        "Retractable Gate",
-    ],
-    "Doors": [
-        "High Speed Door",
-        "Fire Door",
-        "HMPS Door",
-        "GPD Door",
-        "Overhead Sectional Door",
-    ],
-    "Boom Barrier": ["Automatic Traffic Barrier", "Heavy-Duty Traffic Barrier"],
-    "Dock Shelter": ["Retractable Dock Shelter", "Inflatable Dock Shelter"],
-    "Dock Bumper": ["Heavy Rubber Bumper", "Moulded Bumper"],
-    "Other": ["Other"],
-}
-
-TASK_CATEGORIES = [
-    "Civil & Mounting Work",
-    "Track Leveling",
-    "Wiring & Electrical",
-    "Commissioning & Testing",
-    "Site Survey",
-    "Travel / Transit",
-    "Other",
-]
-
-DELAY_REASONS = [
-    "No Delay",
-    "Power Supply Issue",
-    "Civil Work Delay",
-    "Client Hold",
-    "Material Missing",
-    "Weather Delay",
-    "Other",
-]
-
-HOLD_REASONS = [
-    "Power Supply Issue",
-    "Civil Work Delay",
-    "Client Hold",
-    "Material Missing",
-    "Weather Delay",
-    "Other",
-]
-
-STATUS_OPTIONS = [
-    "In Progress",
-    "Completed",
-    "On Hold",
-    "Pending Inspection",
-    "Handovered",
-]
 
 
 # ==========================================
@@ -401,7 +344,6 @@ def get_credentials():
     creds_dict = dict(st.secrets["gcp_service_account"])
 
     if "private_key" in creds_dict:
-        # Replaces double-escaped '\\n' with actual newline characters
         creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
 
     return Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
@@ -698,7 +640,7 @@ if st.sidebar.button("🚪 LOG OUT", use_container_width=True):
 # ==========================================
 @st.dialog("🎉 Daily Log Submitted Successfully!")
 def show_upload_success_modal(site_id, day_label, records_count):
-    st.write(f"### Great Job! 🚀")
+    st.write("### Great Job! 🚀")
     st.markdown(
         f"""
         Your **{records_count} task(s)** and photos for **{site_id} ({day_label})** have been uploaded and saved directly to the database.
@@ -713,7 +655,6 @@ def show_upload_success_modal(site_id, day_label, records_count):
 
 
 def render_restricted_work_input(target_worker_name, is_crew_log=False):
-    # Check if we should open the modal dialog after rerun
     if st.session_state.get("show_success_modal"):
         m_info = st.session_state.get("modal_info", {})
         show_upload_success_modal(
@@ -722,7 +663,6 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
             m_info.get("count", 1)
         )
 
-    # Key generation for state management
     form_version_key = f"form_version_{target_worker_name}_{is_crew_log}"
     if form_version_key not in st.session_state:
         st.session_state[form_version_key] = 0
@@ -787,7 +727,6 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
             key=f"date_{target_worker_name}_{is_crew_log}_v{v}",
         )
 
-    # --- DYNAMIC DAY TRACKING (Day 1, Day 2...) CALCULATOR ---
     site_days_count = 1
     if not df_logs.empty and "installation_id" in df_logs.columns and "logged_date" in df_logs.columns:
         site_logs = df_logs[df_logs["installation_id"] == selected_site_id]
@@ -901,7 +840,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
             )
         with col_hrs:
             hrs = st.number_input(
-                f"Hours",
+                "Hours",
                 min_value=0,
                 max_value=24,
                 value=2,
@@ -910,7 +849,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
             )
         with col_min:
             mins = st.selectbox(
-                f"Minutes",
+                "Minutes",
                 [0, 15, 30, 45],
                 key=f"min_{target_worker_name}_{is_crew_log}_{i}_v{v}",
             )
@@ -1020,14 +959,12 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
             records_saved += 1
 
         if records_saved > 0:
-            # Set state for Success Dialog Pop-up
             st.session_state["show_success_modal"] = True
             st.session_state["modal_info"] = {
                 "site_id": selected_site_id,
                 "day_label": site_day_label,
                 "count": records_saved,
             }
-            # Increment version to reset all input elements & uploaded file states
             st.session_state[form_version_key] += 1
             st.rerun()
 
