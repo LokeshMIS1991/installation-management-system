@@ -75,7 +75,6 @@ def generate_work_id(role: str, df_workers: pd.DataFrame) -> str:
     padding = 2 if prefix == "ADM" else 3
     return f"{prefix}{next_num:0{padding}d}"
 
-
 def format_worker_dropdown_options(df_workers: pd.DataFrame) -> list:
     """Formats worker options with designations for UI drop-downs."""
     if df_workers.empty or "name" not in df_workers.columns:
@@ -462,6 +461,7 @@ def get_workbook():
     return client.open_by_url(sheet_url)
 
 
+# --- UPDATE IN read_sheet FUNCTION ---
 @st.cache_data(ttl=60)
 def read_sheet(sheet_name: str) -> pd.DataFrame:
     try:
@@ -478,6 +478,20 @@ def read_sheet(sheet_name: str) -> pd.DataFrame:
     except Exception as e:
         print(f"DEBUG SHEET ERROR [{sheet_name}]: {e}")
         return pd.DataFrame()
+
+
+# --- UPDATE IN USER CREATION FORM (User Management Tab) ---
+user_dict = {
+    "worker_id": auto_generated_id,
+    "name": new_name.strip(),
+    "email": new_email.strip() if selected_role != "Worker" else "",
+    "aadhaar_no": "[Identity Omitted]",  # Strictly masked on write
+    "pin": str(new_pin).strip(),
+    "role": selected_role,
+    "designation": worker_designation if selected_role == "Worker" else selected_role,
+    "base_location": new_base.strip(),
+}
+append_to_sheet("Workers_Master", user_dict)
 
 
 def append_to_sheet(sheet_name: str, row_data_dict: dict):
@@ -882,12 +896,11 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
     st.write("##")
 
     if st.button("💾 Sync Daily Log to Database", key=f"btn_sync_{target_worker_name}_{is_crew_log}_v{v}", use_container_width=True):
-        valid_tasks = [t for t in task_entries if t["description"].strip()]
-        
-        if not valid_tasks:
-            st.error("Please enter at least one task description before syncing.")
-            return
-
+    valid_tasks = [t for t in task_entries if t["description"].strip()]
+    
+    if not valid_tasks:
+        st.error("Please enter at least one task description before syncing.")
+    else:
         photo_link = "No Photo"
         if uploaded_photo is not None:
             photo_name = f"{selected_site_id}_{target_worker_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
@@ -896,9 +909,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
         records_saved = 0
 
         for idx, t in enumerate(valid_tasks):
-            raw_worker_string = t["assigned_worker"]
-            clean_worker_name = raw_worker_string.split(" (")[0].strip()
-            
+            clean_worker_name = t["assigned_worker"].split(" (")[0].strip()
             w_base = "Jaipur"
             w_desig = "Worker"
             
@@ -909,7 +920,6 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
                     w_desig = m.iloc[0].get("designation", "Worker")
 
             w_is_travel = str(w_base).strip().lower() != str(site_city).strip().lower()
-
             clean_lead_name = team_lead_selected.split(" (")[0].strip()
 
             log_id = f"LOG-{datetime.now().strftime('%Y%m%d%H%M%S')}-{idx+1}"
@@ -943,7 +953,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
                 "day_label": site_day_label,
                 "count": records_saved,
             }
-            st.session_state[form_version_key] += 1
+            st.session_state[form_version_key] += 1  # Resets input fields dynamically
             st.rerun()
 
 
@@ -951,13 +961,11 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 # 7. ROUTING & MODULE IMPLEMENTATION
 # ==========================================
 
-# --- SUPERVISOR: LOG SITE DAILY EXPENSES ---
 if menu == "💰 Log Site Daily Expenses":
     st.header("💰 Supervisor Daily Site Expense Logging")
-    st.caption("Record daily operational costs (Travel, Food, Stay, Materials) for running sites. These will dynamically feature on dashboards until site handover.")
+    st.caption("Record daily operational costs for running sites.")
 
     df_sites = read_sheet("Sites_Master")
-    df_workers = read_sheet("Workers_Master")
 
     if df_sites.empty:
         st.warning("No installation sites found.")
@@ -1010,7 +1018,7 @@ if menu == "💰 Log Site Daily Expenses":
                         append_to_sheet("Expense_Logs", exp_data)
                         st.success(f"Daily expense of ₹{total_amount:,.2f} logged for site {sel_site_id}!")
                         st.rerun()
-
+                        
             st.divider()
             st.subheader("📜 Recent Site Expense Logs")
             df_expenses = read_sheet("Expense_Logs")
