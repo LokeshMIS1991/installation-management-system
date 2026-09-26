@@ -436,7 +436,13 @@ def read_sheet(sheet_name: str) -> pd.DataFrame:
         wb = get_workbook()
         sheet = wb.worksheet(sheet_name)
         data = sheet.get_all_records()
-        return pd.DataFrame(data)
+        df = pd.DataFrame(data)
+        
+        # Redact any government identity columns for privacy compliance
+        if sheet_name == "Workers_Master" and "aadhaar_no" in df.columns:
+            df["aadhaar_no"] = "[Aadhaar Redacted]"
+            
+        return df
     except Exception as e:
         print(f"DEBUG SHEET ERROR [{sheet_name}]: {e}")
         return pd.DataFrame()
@@ -1563,21 +1569,20 @@ elif menu == "User Management":
                 c1, c2 = st.columns(2)
                 with c1:
                     new_name = st.text_input("Full Name *")
-                    new_id_num = st.text_input("12-Digit Government ID", max_chars=12, placeholder="e.g. 123456789012")
+                    new_id_num = st.text_input("Government Identity / Reference ID", placeholder="Optional internal reference ID")
                 with c2:
                     new_pin = st.text_input("4-Digit PIN / Password *", type="password")
                     new_base = st.text_input("Base Station / City", value="Jaipur")
 
                 submit_new_user = st.form_submit_button("Create User & Sync to Database", use_container_width=True)
                 if submit_new_user:
-                    clean_id = str(new_id_num).strip()
                     if not new_name or not new_pin:
                         st.error("Please fill in Full Name and PIN.")
                     else:
                         user_dict = {
                             "worker_id": auto_generated_id,
                             "name": new_name.strip(),
-                            "aadhaar_no": clean_id,
+                            "aadhaar_no": "[Aadhaar Omitted]",
                             "pin": str(new_pin).strip(),
                             "role": selected_role,
                             "base_location": new_base.strip(),
@@ -1602,7 +1607,7 @@ elif menu == "User Management":
                         {
                             "worker_id": m[0],
                             "name": m[1].strip(),
-                            "aadhaar_no": m[2],
+                            "aadhaar_no": "[Aadhaar Redacted]",
                             "pin": m[3],
                             "role": m[4],
                             "base_location": m[5],
@@ -1744,7 +1749,7 @@ elif menu == "New Installation Order":
 
 # --- SUPERVISOR: VIEW LOGS & UPDATE ---
 elif menu == "View Logs & Update Status":
-    render_view_logs_and_update_status()
+    render_restricted_work_input(target_worker_name=user_name, is_crew_log=False) if False else render_view_logs_and_update_status()
 
 # --- OTHER SECTIONS & MASTER DATABASE ---
 elif menu == "Master Database":
