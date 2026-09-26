@@ -1,3 +1,5 @@
+# app.py
+
 import io
 import os
 import re
@@ -919,10 +921,13 @@ if menu == "My Sales Dashboard":
     if df_sites.empty:
         st.info("No sites found in database.")
     else:
-        my_sites = df_sites[
-            (df_sites.get("salesperson_id", pd.Series()).astype(str).str.strip().str.lower() == user_id.lower())
-            | (df_sites.get("salesperson_name", pd.Series()).astype(str).str.strip().str.lower() == user_name.lower())
-        ].copy() if "salesperson_id" in df_sites.columns or "salesperson_name" in df_sites.columns else pd.DataFrame()
+        # Strict user-specific filtering for Salespersons
+        if user_role == "Salesperson":
+            sp_id_match = df_sites.get("salesperson_id", pd.Series()).astype(str).str.strip().str.lower() == str(user_id).strip().lower() if "salesperson_id" in df_sites.columns else pd.Series(False, index=df_sites.index)
+            sp_name_match = df_sites.get("salesperson_name", pd.Series()).astype(str).str.strip().str.lower() == str(user_name).strip().lower() if "salesperson_name" in df_sites.columns else pd.Series(False, index=df_sites.index)
+            my_sites = df_sites[sp_id_match | sp_name_match].copy()
+        else:
+            my_sites = df_sites.copy()
 
         if my_sites.empty:
             st.info("⚠️ You currently have no sites assigned to your Sales ID.")
@@ -1044,7 +1049,7 @@ elif menu == "📝 Log Visit & Order Deal":
                 st.success(f"🎉 Deal for **{client_name}** recorded successfully under **{new_visit_id}**! Total Value: **₹{deal_amount:,.2f}**")
                 st.rerun()
 
-# --- SALESPERSON: TRACK SITE PROGRESS ---
+# --- SALESPERSON: TRACK SITE PROGRESS (UPDATED FOR STRICT USER ISOLATION) ---
 elif menu == "🔍 Track Site Progress":
     st.header(f"🔍 Site Progress & Order Tracker — {user_name}")
     st.caption("Search site records by Site ID or Client Name to view live progress, worker logs, and timeline updates.")
@@ -1063,12 +1068,25 @@ elif menu == "🔍 Track Site Progress":
 
         filtered_df = df_sites.copy()
 
-        if "salesperson_id" in filtered_df.columns or "salesperson_name" in filtered_df.columns:
-            my_sites_mask = (
-                (filtered_df.get("salesperson_id", pd.Series()).astype(str).str.strip().str.lower() == user_id.lower())
-                | (filtered_df.get("salesperson_name", pd.Series()).astype(str).str.strip().str.lower() == user_name.lower())
-            )
-            filtered_df = filtered_df[my_sites_mask]
+        # Strict data isolation for Salesperson role
+        if user_role == "Salesperson":
+            sp_id_match = (
+                filtered_df.get("salesperson_id", pd.Series())
+                .astype(str)
+                .str.strip()
+                .str.lower()
+                == str(user_id).strip().lower()
+            ) if "salesperson_id" in filtered_df.columns else pd.Series(False, index=filtered_df.index)
+
+            sp_name_match = (
+                filtered_df.get("salesperson_name", pd.Series())
+                .astype(str)
+                .str.strip()
+                .str.lower()
+                == str(user_name).strip().lower()
+            ) if "salesperson_name" in filtered_df.columns else pd.Series(False, index=filtered_df.index)
+
+            filtered_df = filtered_df[sp_id_match | sp_name_match]
 
         if search_query:
             q = search_query.lower()
@@ -1083,7 +1101,7 @@ elif menu == "🔍 Track Site Progress":
         st.write("##")
 
         if filtered_df.empty:
-            st.info("No matching sites found for your search criteria.")
+            st.info("No matching sites found for your search criteria or assigned user profile.")
         else:
             st.subheader(f"Found {len(filtered_df)} Matching Site(s)")
             for _, site in filtered_df.iterrows():
@@ -1730,7 +1748,7 @@ elif menu == "New Installation Order":
 
 # --- SUPERVISOR: VIEW LOGS & UPDATE ---
 elif menu == "View Logs & Update Status":
-    render_view_logs_and_update_status()
+    render_restricted_work_input(target_worker_name=user_name, is_crew_log=False) if False else render_view_logs_and_update_status()
 
 # --- OTHER SECTIONS & MASTER DATABASE ---
 elif menu == "Master Database":
