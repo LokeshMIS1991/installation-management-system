@@ -469,7 +469,7 @@ def read_sheet(sheet_name: str) -> pd.DataFrame:
         data = sheet.get_all_records()
         df = pd.DataFrame(data)
         
-        # Redact identity columns for privacy compliance
+        # Redact government identity columns for privacy compliance
         if sheet_name == "Workers_Master" and "aadhaar_no" in df.columns:
             df["aadhaar_no"] = "[Redacted Identity]"
             
@@ -516,6 +516,26 @@ def update_sheet_row(
         return True
     except Exception as e:
         st.error(f"Error updating tab '{sheet_name}': {e}")
+        return False
+
+
+def delete_sheet_row(sheet_name: str, key_col: str, key_val: str) -> bool:
+    """Deletes a row matching key_col == key_val from specified sheet."""
+    try:
+        wb = get_workbook()
+        sheet = wb.worksheet(sheet_name)
+        df = pd.DataFrame(sheet.get_all_records())
+        if df.empty or key_col not in df.columns:
+            return False
+        match_idx = df[df[key_col].astype(str).str.strip() == str(key_val).strip()].index
+        if match_idx.empty:
+            return False
+        row_num = match_idx[0] + 2
+        sheet.delete_rows(row_num)
+        st.cache_data.clear()
+        return True
+    except Exception as e:
+        st.error(f"Error deleting row from '{sheet_name}': {e}")
         return False
 
 
@@ -629,7 +649,7 @@ if user_role == "Admin":
         "Admin Analytics Dashboard",
         "Sales Analytics Report",
         "Employee Analytics & Reports",
-        "User Management",
+        "👥 Dynamic User & Access Management",
         "TA/DA Payroll & Travel Summary",
         "Advanced Field Logs Inspector",
         "Master Database",
@@ -938,7 +958,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
                     "day_label": site_day_label,
                     "count": records_saved,
                 }
-                st.session_state[form_version_key] += 1  # Resets input fields dynamically
+                st.session_state[form_version_key] += 1
                 st.rerun()
 
 # ==========================================
@@ -1009,19 +1029,17 @@ if menu == "💰 Log Site Daily Expenses":
             if not df_expenses.empty:
                 st.dataframe(df_expenses.sort_values(by="logged_date", ascending=False), use_container_width=True)
 
-# --- ADMIN: TA/DA PAYROLL & TRAVEL SUMMARY ---
+# --- ADMIN: TA/DA PAYROLL & TRAVEL SUMMARY (REARRANGED: GRAPHS ON TOP, EXCEL BELOW) ---
 elif menu == "TA/DA Payroll & Travel Summary":
     st.header("✈️ TA/DA Payroll & Field Travel Summary")
     st.caption("Calculate daily allowance, travel metrics, and worker site reimbursements.")
 
     df_logs = read_sheet("Worker_Daily_Logs")
-    df_workers = read_sheet("Workers_Master")
-    df_expenses = read_sheet("Expense_Logs")
 
     if df_logs.empty:
         st.info("No field daily logs found for TA/DA calculations.")
     else:
-        st.subheader("📊 Individual Worker TA/DA Breakdown")
+        st.subheader("📊 TA/DA & Travel Visual Analytics")
 
         travel_logs = df_logs[df_logs["is_travel_day"].astype(str).str.title() == "Yes"] if "is_travel_day" in df_logs.columns else df_logs
 
@@ -1037,8 +1055,7 @@ elif menu == "TA/DA Payroll & Travel Summary":
             # Dynamic TA/DA rate assumption: ₹500/travel day
             summary["Estimated_TADA_Allowance"] = summary["Travel_Days"] * 500
 
-            st.dataframe(summary, use_container_width=True)
-
+            # GRAPHS PLACED ON TOP
             c1, c2 = st.columns(2)
             with c1:
                 fig_ta = px.bar(
@@ -1059,7 +1076,20 @@ elif menu == "TA/DA Payroll & Travel Summary":
                 )
                 st.plotly_chart(fig_allowance, use_container_width=True)
 
-# --- ADMIN: ADVANCED FIELD LOGS INSPECTOR ---
+            st.divider()
+            # EXCEL & TABLE BELOW GRAPHS
+            st.subheader("📜 Detailed Individual Worker TA/DA Breakdown Table")
+            st.dataframe(summary, use_container_width=True)
+
+            excel_ta = generate_excel_download(summary, "TADA_Payroll_Summary.xlsx")
+            st.download_button(
+                "📥 Download TA/DA Payroll Summary Excel",
+                data=excel_ta,
+                file_name="TADA_Payroll_Summary.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+
+# --- ADMIN: ADVANCED FIELD LOGS INSPECTOR (REARRANGED: CARDS ABOVE, EXCEL/TABLE BELOW) ---
 elif menu == "Advanced Field Logs Inspector":
     st.header("🔍 Advanced Field Logs & Photo Inspector")
     st.caption("Audit complete field logs, examine attached site photos, and filter entries by date, worker, or site ID.")
@@ -1088,8 +1118,33 @@ elif menu == "Advanced Field Logs Inspector":
         if selected_delay != "All Categories" and "delay_category" in inspect_df.columns:
             inspect_df = inspect_df[inspect_df["delay_category"] == selected_delay]
 
+        # METRIC CARDS ABOVE
+        st.write("##")
+        k1, k2, k3, k4 = st.columns(4)
+        with k1:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{len(inspect_df)}</div><div class="kpi-label">Total Field Logs</div></div>', unsafe_allow_html=True)
+        with k2:
+            s_cnt = inspect_df["installation_id"].nunique() if "installation_id" in inspect_df.columns else 0
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{s_cnt}</div><div class="kpi-label">Active Sites Covered</div></div>', unsafe_allow_html=True)
+        with k3:
+            w_cnt = inspect_df["worker_name"].nunique() if "worker_name" in inspect_df.columns else 0
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{w_cnt}</div><div class="kpi-label">Field Personnel</div></div>', unsafe_allow_html=True)
+        with k4:
+            p_cnt = len(inspect_df[inspect_df["site_photo"].astype(str).str.startswith("http")]) if "site_photo" in inspect_df.columns else 0
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{p_cnt}</div><div class="kpi-label">Photos Attached</div></div>', unsafe_allow_html=True)
+
+        st.divider()
+        # EXCEL TABLE BELOW
         st.subheader(f"📋 Inspection Records ({len(inspect_df)} entries found)")
         st.dataframe(inspect_df, use_container_width=True)
+
+        excel_logs = generate_excel_download(inspect_df, "Field_Logs_Inspector.xlsx")
+        st.download_button(
+            "📥 Export Inspected Logs to Excel",
+            data=excel_logs,
+            file_name="Field_Logs_Inspector.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
 
         st.divider()
         st.subheader("📷 Photo Audit Log")
@@ -1104,6 +1159,93 @@ elif menu == "Advanced Field Logs Inspector":
                     st.markdown(f"**Site:** `{row.get('installation_id')}` | **Worker:** {row.get('worker_name')}")
                     st.caption(f"Date: {row.get('logged_date')} | Task: {row.get('task_name')}")
                     st.markdown(f"[🔗 Open Google Drive Photo]({row.get('site_photo')})")
+
+# --- SUPERVISOR / ADMIN: EMPLOYEE ANALYTICS & REPORTS (FIXED BLANK PAGE BUG) ---
+elif menu == "Employee Analytics & Reports":
+    st.header("👥 Employee Work Analytics & Performance Metrics")
+    st.caption("Detailed productivity tracking, task distributions, and employee field logs.")
+
+    df_logs = read_sheet("Worker_Daily_Logs")
+    df_workers = read_sheet("Workers_Master")
+
+    if df_logs.empty:
+        st.info("No employee daily work logs found in the database.")
+    else:
+        # High-level Employee KPI Overview
+        total_workers = df_logs["worker_name"].nunique() if "worker_name" in df_logs.columns else 0
+        total_hours = df_logs["hours_spent"].sum() if "hours_spent" in df_logs.columns else 0
+        total_days = df_logs["logged_date"].nunique() if "logged_date" in df_logs.columns else 0
+        total_travel_days = len(df_logs[df_logs["is_travel_day"].astype(str).str.title() == "Yes"]) if "is_travel_day" in df_logs.columns else 0
+
+        e1, e2, e3, e4 = st.columns(4)
+        with e1:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{total_workers}</div><div class="kpi-label">Active Field Workers</div></div>', unsafe_allow_html=True)
+        with e2:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{total_hours} hrs</div><div class="kpi-label">Total Field Work Hours</div></div>', unsafe_allow_html=True)
+        with e3:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{total_days}</div><div class="kpi-label">Unique Work Days</div></div>', unsafe_allow_html=True)
+        with e4:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{total_travel_days}</div><div class="kpi-label">Outstation Travel Days</div></div>', unsafe_allow_html=True)
+
+        st.divider()
+
+        # Graphs Overview
+        g1, g2 = st.columns(2)
+        with g1:
+            st.subheader("⏳ Total Work Hours per Employee")
+            worker_hrs = df_logs.groupby("worker_name")["hours_spent"].sum().reset_index()
+            fig_worker_hrs = px.bar(
+                worker_hrs,
+                x="worker_name",
+                y="hours_spent",
+                color="hours_spent",
+                labels={"worker_name": "Worker Name", "hours_spent": "Total Hours"},
+            )
+            st.plotly_chart(fig_worker_hrs, use_container_width=True)
+
+        with g2:
+            st.subheader("🛠️ Category Time Allocation")
+            cat_hrs = df_logs.groupby("task_category")["hours_spent"].sum().reset_index()
+            fig_cat = px.pie(
+                cat_hrs,
+                names="task_category",
+                values="hours_spent",
+                hole=0.4,
+            )
+            st.plotly_chart(fig_cat, use_container_width=True)
+
+        st.divider()
+
+        # Individual Worker Specific Drilldown
+        st.subheader("👤 Individual Worker Analytics Filter")
+        all_workers_list = sorted(df_logs["worker_name"].dropna().unique().tolist())
+        selected_emp = st.selectbox("Select Worker for Specific Report", all_workers_list)
+
+        emp_logs = df_logs[df_logs["worker_name"] == selected_emp]
+
+        if not emp_logs.empty:
+            st.write(f"### Report Summary for **{selected_emp}**")
+            w_hrs = emp_logs["hours_spent"].sum()
+            w_days = emp_logs["logged_date"].nunique()
+            w_sites = emp_logs["installation_id"].nunique()
+
+            m1, m2, m3 = st.columns(3)
+            with m1:
+                st.markdown(f'<div class="kpi-card"><div class="kpi-number">{w_hrs} hrs</div><div class="kpi-label">Hours Contributed</div></div>', unsafe_allow_html=True)
+            with m2:
+                st.markdown(f'<div class="kpi-card"><div class="kpi-number">{w_days} Days</div><div class="kpi-label">Days Logged</div></div>', unsafe_allow_html=True)
+            with m3:
+                st.markdown(f'<div class="kpi-card"><div class="kpi-number">{w_sites} Sites</div><div class="kpi-label">Sites Assigned</div></div>', unsafe_allow_html=True)
+
+            st.dataframe(emp_logs, use_container_width=True)
+
+            excel_emp = generate_excel_download(emp_logs, f"{selected_emp}_Analytics.xlsx")
+            st.download_button(
+                f"📥 Download {selected_emp} Analytics Excel",
+                data=excel_emp,
+                file_name=f"{selected_emp}_Analytics.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
 
 # --- SUPERVISOR: NEW INSTALLATION REQUESTS ---
 elif menu == "🔔 New Installation Requests":
@@ -1641,6 +1783,7 @@ elif menu == "My Profile & Settings":
                 <p style="margin:5px 0;"><b>Designation:</b> {user_designation}</p>
                 <p style="margin:5px 0;"><b>Access Role:</b> {user_role}</p>
                 <p style="margin:5px 0;"><b>Work ID:</b> {user_id}</p>
+                <p style="margin:5px 0;"><b>Phone:</b> {user.get('phone_no', 'N/A')}</p>
                 <p style="margin:5px 0;"><b>Base Station:</b> {user_base_location}</p>
             </div>
         """,
@@ -1752,7 +1895,6 @@ elif menu == "Admin Analytics Dashboard":
         days_worked = df_logs["logged_date"].nunique() if "logged_date" in df_logs.columns else 0
         days_travelled = len(df_logs[df_logs["is_travel_day"] == "Yes"]) if "is_travel_day" in df_logs.columns else 0
 
-        # Filter expense logs strictly to active/running sites
         active_expenses = df_expenses[df_expenses["installation_id"].isin(active_site_ids)] if not df_expenses.empty and "installation_id" in df_expenses.columns else pd.DataFrame()
 
         travel_exp = (
@@ -1821,8 +1963,8 @@ elif menu == "Admin Analytics Dashboard":
             else:
                 st.info("No active site expenses recorded yet.")
 
-# --- ADMIN: USER MANAGEMENT ---
-elif menu == "User Management":
+# --- ADMIN: DYNAMIC USER & ACCESS MANAGEMENT (INCLUDES DELETE USER & UPDATE USER TABS) ---
+elif menu == "👥 Dynamic User & Access Management":
     st.header("👥 Dynamic User & Access Management")
     df_workers = read_sheet("Workers_Master")
 
@@ -1831,12 +1973,11 @@ elif menu == "User Management":
         st.toast(f"👤 Account for {new_user} created successfully!", icon="✅")
         del st.session_state["user_created_success"]
 
-    tab_add, tab_batch, tab_edit = st.tabs([
-        "➕ Add Single User",
-        "⚡ Batch Process Raw String",
-        "✏️ Edit Existing User & Role",
-    ])
+    # Tab selection includes Update User and Delete User
+    tabs_list = ["➕ Add Single User", "✏️ Update User", "❌ Delete User (Admin Only)", "⚡ Batch Process Raw String"]
+    tab_add, tab_edit, tab_del, tab_batch = st.tabs(tabs_list)
 
+    # 1. ADD USER TAB (WITH UNIQUE AADHAAR AND PHONE NUMBER)
     with tab_add:
         st.subheader("Add Employee / Salesperson / Supervisor")
         col_l, col_center, col_r = st.columns([0.1, 0.8, 0.1])
@@ -1847,7 +1988,6 @@ elif menu == "User Management":
                 key="add_user_role_select"
             )
             
-            # Select Designation if System Role is Worker
             worker_designation = ""
             if selected_role == "Worker":
                 worker_designation = st.selectbox(
@@ -1856,7 +1996,6 @@ elif menu == "User Management":
                     key="add_user_designation_select"
                 )
 
-            # Generate Work ID dynamically before rendering form fields
             auto_generated_id = generate_work_id(selected_role, df_workers)
 
             with st.form("add_user_form"):
@@ -1865,31 +2004,43 @@ elif menu == "User Management":
                 c1, c2 = st.columns(2)
                 with c1:
                     new_name = st.text_input("Full Name *")
-                    # Email is requested for all roles EXCEPT Workers
+                    new_phone = st.text_input("Phone Number *", max_chars=10, placeholder="10-digit mobile number")
                     if selected_role != "Worker":
                         new_email = st.text_input("Email Address *", placeholder="e.g. user@company.com")
                     else:
                         new_email = ""
-                    new_aadhaar = st.text_input("Aadhaar Number *", max_chars=12, placeholder="12-digit number")
                 with c2:
+                    new_aadhaar = st.text_input("Aadhaar Number *", max_chars=12, placeholder="12-digit number")
                     new_pin = st.text_input("4-Digit PIN / Password *", type="password")
                     new_base = st.text_input("Base Station / City", value="Jaipur")
 
                 submit_new_user = st.form_submit_button("Create User & Sync to Database", use_container_width=True)
                 if submit_new_user:
                     clean_aadhaar = str(new_aadhaar).strip()
-                    if not new_name or not new_pin:
-                        st.error("Please fill in Full Name and PIN.")
+                    clean_phone = str(new_phone).strip()
+
+                    # Validate Aadhaar Duplication
+                    existing_aadhaars = []
+                    if not df_workers.empty and "aadhaar_no" in df_workers.columns:
+                        existing_aadhaars = df_workers["aadhaar_no"].astype(str).str.strip().tolist()
+
+                    if not new_name or not new_pin or not clean_phone:
+                        st.error("Please fill in Full Name, Phone Number, and PIN.")
+                    elif len(clean_phone) != 10 or not clean_phone.isdigit():
+                        st.error("Please enter a valid 10-digit phone number.")
                     elif selected_role != "Worker" and (not new_email or not validate_email(new_email)):
                         st.error("Please enter a valid email address.")
-                    elif clean_aadhaar and (len(clean_aadhaar) > 12 or not clean_aadhaar.isdigit()):
-                        st.error("Aadhaar number must contain only numeric digits and cannot exceed 12 digits.")
+                    elif not clean_aadhaar or len(clean_aadhaar) != 12 or not clean_aadhaar.isdigit():
+                        st.error("Aadhaar number must contain exactly 12 numeric digits.")
+                    elif clean_aadhaar in existing_aadhaars:
+                        st.error("⚠️ Duplicate Aadhaar Number detected! An employee with this Aadhaar already exists.")
                     else:
                         user_dict = {
                             "worker_id": auto_generated_id,
                             "name": new_name.strip(),
+                            "phone_no": clean_phone,
                             "email": new_email.strip() if selected_role != "Worker" else "",
-                            "aadhaar_no": "[Identity Omitted]",
+                            "aadhaar_no": clean_aadhaar,
                             "pin": str(new_pin).strip(),
                             "role": selected_role,
                             "designation": worker_designation if selected_role == "Worker" else selected_role,
@@ -1900,35 +2051,13 @@ elif menu == "User Management":
                         st.session_state["created_user_name"] = new_name
                         st.rerun()
 
-    with tab_batch:
-        st.subheader("⚡ Batch Import Employees")
-        raw_text_input = st.text_area("Paste Continuous Data String Here:")
-        if st.button("🔍 Parse and Import Data"):
-            if raw_text_input:
-                pattern = re.compile(
-                    r"([A-Z]{1,3}\d{2,3})([A-Za-z\s]+?)(\d{12})(\d{4})(Supervisor|Worker|Admin|Salesperson)([A-Za-z]+)"
-                )
-                matches = pattern.findall(raw_text_input)
-                for m in matches:
-                    append_to_sheet(
-                        "Workers_Master",
-                        {
-                            "worker_id": m[0],
-                            "name": m[1].strip(),
-                            "aadhaar_no": "[Redacted Identity]",
-                            "pin": m[3],
-                            "role": m[4],
-                            "designation": "Installer" if m[4] == "Worker" else m[4],
-                            "base_location": m[5],
-                        },
-                    )
-                st.success("All extracted users synced!")
-                st.rerun()
-
+    # 2. UPDATE USER TAB
     with tab_edit:
-        st.subheader("Update Profile")
-        if not df_workers.empty and "name" in df_workers.columns:
-            selected_edit_user = st.selectbox("Select User to Edit", sorted(df_workers["name"].tolist()))
+        st.subheader("✏️ Update User Profile & Access")
+        if df_workers.empty or "name" not in df_workers.columns:
+            st.info("No user profiles available to update.")
+        else:
+            selected_edit_user = st.selectbox("Select User Profile to Edit", sorted(df_workers["name"].unique().tolist()))
             user_data = df_workers[df_workers["name"] == selected_edit_user].iloc[0]
 
             col_l, col_center, col_r = st.columns([0.1, 0.8, 0.1])
@@ -1949,6 +2078,8 @@ elif menu == "User Management":
                         index=desig_idx
                     ) if e_role == "Worker" else e_role
 
+                    e_phone = st.text_input("Update Phone Number", value=str(user_data.get("phone_no", "")))
+
                     if e_role != "Worker":
                         e_email = st.text_input("Update Email", value=str(user_data.get("email", "")))
                     else:
@@ -1965,6 +2096,7 @@ elif menu == "User Management":
                             updates = {
                                 "role": e_role,
                                 "designation": e_designation,
+                                "phone_no": e_phone.strip(),
                                 "email": e_email.strip() if e_role != "Worker" else "",
                                 "pin": e_pin,
                                 "base_location": e_base,
@@ -1972,6 +2104,61 @@ elif menu == "User Management":
                             update_sheet_row("Workers_Master", "name", selected_edit_user, updates)
                             st.success(f"Updated **{selected_edit_user}** successfully!")
                             st.rerun()
+
+    # 3. DELETE USER TAB (ADMIN ONLY)
+    with tab_del:
+        st.subheader("❌ Delete User Account")
+        if user_role != "Admin":
+            st.error("🔒 Security Restriction: Only Admin accounts can delete user profiles.")
+        elif df_workers.empty or "name" not in df_workers.columns:
+            st.info("No users available to delete.")
+        else:
+            # Filter out logged-in admin from self-deletion
+            deletable_users = df_workers[df_workers["name"] != user_name]
+            
+            if deletable_users.empty:
+                st.info("No other user profiles available to delete.")
+            else:
+                user_to_delete = st.selectbox("Select User Profile to Permanently Delete", deletable_users["name"].tolist(), key="del_user_select")
+                del_target_info = deletable_users[deletable_users["name"] == user_to_delete].iloc[0]
+                
+                st.warning(f"⚠️ Are you sure you want to delete **{user_to_delete}** (`{del_target_info.get('worker_id', 'N/A')}`)? This action cannot be undone.")
+                
+                col_del_btn1, col_del_btn2 = st.columns([1, 2])
+                with col_del_btn1:
+                    if st.button("🗑️ Confirm & Delete User", key="btn_confirm_delete_user"):
+                        success = delete_sheet_row("Workers_Master", "name", user_to_delete)
+                        if success:
+                            st.success(f"User **{user_to_delete}** deleted successfully from database.")
+                            st.rerun()
+                        else:
+                            st.error("Failed to delete user. Please retry.")
+
+    # 4. BATCH IMPORT TAB
+    with tab_batch:
+        st.subheader("⚡ Batch Import Employees")
+        raw_text_input = st.text_area("Paste Continuous Data String Here:")
+        if st.button("🔍 Parse and Import Data"):
+            if raw_text_input:
+                pattern = re.compile(
+                    r"([A-Z]{1,3}\d{2,3})([A-Za-z\s]+?)(\d{12})(\d{4})(Supervisor|Worker|Admin|Salesperson)([A-Za-z]+)"
+                )
+                matches = pattern.findall(raw_text_input)
+                for m in matches:
+                    append_to_sheet(
+                        "Workers_Master",
+                        {
+                            "worker_id": m[0],
+                            "name": m[1].strip(),
+                            "aadhaar_no": m[2],
+                            "pin": m[3],
+                            "role": m[4],
+                            "designation": "Installer" if m[4] == "Worker" else m[4],
+                            "base_location": m[5],
+                        },
+                    )
+                st.success("All extracted users synced!")
+                st.rerun()
 
 # --- SUPERVISOR: NEW ORDER ---
 elif menu == "New Installation Order":
