@@ -432,14 +432,6 @@ def read_sheet(sheet_name: str) -> pd.DataFrame:
         print(f"DEBUG SHEET ERROR [{sheet_name}]: {e}")
         return pd.DataFrame()
 
-def read_sheet(tab_name):
-    try:
-        sheet = sh.worksheet(tab_name)
-        data = sheet.get_all_records()
-        return pd.DataFrame(data)
-    except Exception as e:
-        # Fallback if a tab is temporarily empty or missing
-        return pd.DataFrame()
         
 def append_to_sheet(sheet_name: str, row_data_dict: dict):
     try:
