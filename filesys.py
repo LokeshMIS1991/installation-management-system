@@ -29,9 +29,8 @@ DRIVE_FOLDER_ID = "0ADjIFMwZGB62Uk9PVA"
 BASE_DIR = Path(__file__).resolve().parent
 LOGO_PATH = BASE_DIR / "Company Logo.jpeg"
 
-# Email and Phone validation helper regexes
+# Email validation helper regex
 EMAIL_REGEX = r"^[\w\.-]+@[\w\.-]+\.\w+$"
-PHONE_REGEX = r"^\d{10}$"
 
 # Field Worker Designations
 WORKER_DESIGNATIONS = ["Installer", "Helper", "Manager"]
@@ -44,13 +43,6 @@ def validate_email(email_str: str) -> bool:
     if not email_str:
         return False
     return bool(re.match(EMAIL_REGEX, email_str.strip()))
-
-
-def validate_phone(phone_str: str) -> bool:
-    """Validates 10-digit mobile phone number."""
-    if not phone_str:
-        return False
-    return bool(re.match(PHONE_REGEX, phone_str.strip()))
 
 
 def generate_work_id(role: str, df_workers: pd.DataFrame) -> str:
@@ -613,7 +605,6 @@ user_name = user.get("name", "User")
 user_role = user.get("role", "Worker")
 user_designation = user.get("designation", user_role)
 user_id = user.get("worker_id", "N/A")
-user_phone = user.get("phone_no", user.get("phone", "N/A"))
 user_base_location = user.get("base_location", "Jaipur")
 
 if LOGO_PATH.exists():
@@ -630,7 +621,7 @@ else:
     )
 
 st.sidebar.markdown(
-    f"**Active User:** {user_name} (`{user_id}`)  \n**Designation:** {user_designation}  \n**Role:** {user_role}  \n**Phone:** {user_phone}  \n**Base Station:** {user_base_location}"
+    f"**Active User:** {user_name} (`{user_id}`)  \n**Designation:** {user_designation}  \n**Role:** {user_role}  \n**Base Station:** {user_base_location}"
 )
 st.sidebar.divider()
 
@@ -1658,7 +1649,6 @@ elif menu == "My Profile & Settings":
                 <p style="margin:5px 0;"><b>Designation:</b> {user_designation}</p>
                 <p style="margin:5px 0;"><b>Access Role:</b> {user_role}</p>
                 <p style="margin:5px 0;"><b>Work ID:</b> {user_id}</p>
-                <p style="margin:5px 0;"><b>Phone Number:</b> {user_phone}</p>
                 <p style="margin:5px 0;"><b>Base Station:</b> {user_base_location}</p>
             </div>
         """,
@@ -1771,7 +1761,7 @@ elif menu == "Admin Analytics Dashboard":
         days_travelled = len(df_logs[df_logs["is_travel_day"] == "Yes"]) if "is_travel_day" in df_logs.columns else 0
 
         # Filter expense logs strictly to active/running sites
-        active_expenses = df_expenses[df_expenses["installation_id"].isin(active_site_ids)] if not df_expenses.empty and "installation_id" in active_expenses.columns else pd.DataFrame()
+        active_expenses = df_expenses[df_expenses["installation_id"].isin(active_site_ids)] if not df_expenses.empty and "installation_id" in df_expenses.columns else pd.DataFrame()
 
         travel_exp = (
             pd.to_numeric(active_expenses["travel_expense"], errors="coerce").sum() 
@@ -1882,25 +1872,21 @@ elif menu == "User Management":
                 c1, c2 = st.columns(2)
                 with c1:
                     new_name = st.text_input("Full Name *")
-                    new_phone = st.text_input("Mobile Phone Number *", max_chars=10, placeholder="e.g. 9876543210")
                     # Email is requested for all roles EXCEPT Workers
                     if selected_role != "Worker":
                         new_email = st.text_input("Email Address *", placeholder="e.g. user@company.com")
                     else:
                         new_email = ""
-                with c2:
                     new_aadhaar = st.text_input("Aadhaar Number *", max_chars=12, placeholder="12-digit number")
+                with c2:
                     new_pin = st.text_input("4-Digit PIN / Password *", type="password")
                     new_base = st.text_input("Base Station / City", value="Jaipur")
 
                 submit_new_user = st.form_submit_button("Create User & Sync to Database", use_container_width=True)
                 if submit_new_user:
                     clean_aadhaar = str(new_aadhaar).strip()
-                    clean_phone = str(new_phone).strip()
-                    if not new_name or not new_pin or not clean_phone:
-                        st.error("Please fill in Full Name, Phone Number, and PIN.")
-                    elif not validate_phone(clean_phone):
-                        st.error("Please enter a valid 10-digit mobile phone number.")
+                    if not new_name or not new_pin:
+                        st.error("Please fill in Full Name and PIN.")
                     elif selected_role != "Worker" and (not new_email or not validate_email(new_email)):
                         st.error("Please enter a valid email address.")
                     elif clean_aadhaar and (len(clean_aadhaar) > 12 or not clean_aadhaar.isdigit()):
@@ -1909,7 +1895,6 @@ elif menu == "User Management":
                         user_dict = {
                             "worker_id": auto_generated_id,
                             "name": new_name.strip(),
-                            "phone_no": clean_phone,
                             "email": new_email.strip() if selected_role != "Worker" else "",
                             "aadhaar_no": "[Identity Omitted]",
                             "pin": str(new_pin).strip(),
@@ -1928,7 +1913,7 @@ elif menu == "User Management":
         if st.button("🔍 Parse and Import Data"):
             if raw_text_input:
                 pattern = re.compile(
-                    r"([A-Z]{1,3}\d{2,3})([A-Za-z\s]+?)(\d{10})?(\d{12})(\d{4})(Supervisor|Worker|Admin|Salesperson)([A-Za-z]+)"
+                    r"([A-Z]{1,3}\d{2,3})([A-Za-z\s]+?)(\d{12})(\d{4})(Supervisor|Worker|Admin|Salesperson)([A-Za-z]+)"
                 )
                 matches = pattern.findall(raw_text_input)
                 for m in matches:
@@ -1937,95 +1922,63 @@ elif menu == "User Management":
                         {
                             "worker_id": m[0],
                             "name": m[1].strip(),
-                            "phone_no": m[2] if m[2] else "",
                             "aadhaar_no": "[Redacted Identity]",
-                            "pin": m[4],
-                            "role": m[5],
-                            "designation": "Installer" if m[5] == "Worker" else m[5],
-                            "base_location": m[6],
+                            "pin": m[3],
+                            "role": m[4],
+                            "designation": "Installer" if m[4] == "Worker" else m[4],
+                            "base_location": m[5],
                         },
                     )
                 st.success("All extracted users synced!")
                 st.rerun()
 
     with tab_edit:
-        st.subheader("Update User Profile & Access Levels")
+        st.subheader("Update Profile")
         if not df_workers.empty and "name" in df_workers.columns:
-            user_options = sorted(df_workers["name"].astype(str).tolist())
-            selected_edit_user = st.selectbox("Select User to Edit", user_options, key="edit_user_selectbox")
-            
-            user_row = df_workers[df_workers["name"].astype(str) == selected_edit_user]
-            
-            if not user_row.empty:
-                user_data = user_row.iloc[0]
+            selected_edit_user = st.selectbox("Select User to Edit", sorted(df_workers["name"].tolist()))
+            user_data = df_workers[df_workers["name"] == selected_edit_user].iloc[0]
 
-                col_l, col_center, col_r = st.columns([0.1, 0.8, 0.1])
-                with col_center:
-                    curr_role = str(user_data.get("role", "Worker")).strip()
-                    role_options = ["Worker", "Supervisor", "Salesperson", "Admin"]
-                    role_idx = role_options.index(curr_role) if curr_role in role_options else 0
+            col_l, col_center, col_r = st.columns([0.1, 0.8, 0.1])
+            with col_center:
+                with st.form("edit_user_form"):
+                    e_role = st.selectbox(
+                        "Update System Access Role",
+                        ["Worker", "Supervisor", "Salesperson", "Admin"],
+                        index=["Worker", "Supervisor", "Salesperson", "Admin"].index(user_data.get("role", "Worker")),
+                    )
+                    
+                    e_desig = user_data.get("designation", "")
+                    desig_idx = WORKER_DESIGNATIONS.index(e_desig) if e_desig in WORKER_DESIGNATIONS else 0
+                    
+                    e_designation = st.selectbox(
+                        "Update Field Designation",
+                        WORKER_DESIGNATIONS,
+                        index=desig_idx
+                    ) if e_role == "Worker" else e_role
 
-                    with st.form("edit_user_form"):
-                        st.info(f"🆔 **Work ID:** `{user_data.get('worker_id', 'N/A')}`")
+                    if e_role != "Worker":
+                        e_email = st.text_input("Update Email", value=str(user_data.get("email", "")))
+                    else:
+                        e_email = ""
 
-                        e_name = st.text_input("Full Name", value=str(user_data.get("name", "")))
-                        e_phone = st.text_input(
-                            "Mobile Phone Number *", 
-                            value=str(user_data.get("phone_no", user_data.get("phone", ""))), 
-                            max_chars=10
-                        )
+                    e_pin = st.text_input("Update PIN", value=str(user_data.get("pin", "")))
+                    e_base = st.text_input("Update Base Location", value=str(user_data.get("base_location", "Jaipur")))
 
-                        e_role = st.selectbox(
-                            "Update System Access Role",
-                            role_options,
-                            index=role_idx,
-                            key="edit_role_select",
-                        )
-                        
-                        e_desig_val = str(user_data.get("designation", "")).strip()
-                        desig_idx = WORKER_DESIGNATIONS.index(e_desig_val) if e_desig_val in WORKER_DESIGNATIONS else 0
-                        
-                        e_designation = st.selectbox(
-                            "Update Field Designation",
-                            WORKER_DESIGNATIONS,
-                            index=desig_idx,
-                            key="edit_desig_select"
-                        ) if e_role == "Worker" else e_role
-
-                        if e_role != "Worker":
-                            e_email = st.text_input("Update Email", value=str(user_data.get("email", "")))
+                    submit_edit = st.form_submit_button("Update Profile in Database", use_container_width=True)
+                    if submit_edit:
+                        if e_role != "Worker" and e_email and not validate_email(e_email):
+                            st.error("Please enter a valid email address.")
                         else:
-                            e_email = ""
-
-                        e_pin = st.text_input("Update Security PIN / Password", value=str(user_data.get("pin", "")))
-                        e_base = st.text_input("Update Base Station / Location", value=str(user_data.get("base_location", "Jaipur")))
-
-                        submit_edit = st.form_submit_button("Update User Profile in Database", use_container_width=True)
-                        
-                        if submit_edit:
-                            clean_e_phone = str(e_phone).strip()
-                            if not e_name.strip() or not e_pin.strip() or not clean_e_phone:
-                                st.error("Name, Phone Number, and PIN fields cannot be empty.")
-                            elif not validate_phone(clean_e_phone):
-                                st.error("Please enter a valid 10-digit mobile phone number.")
-                            elif e_role != "Worker" and e_email and not validate_email(e_email):
-                                st.error("Please enter a valid email address.")
-                            else:
-                                updates = {
-                                    "name": e_name.strip(),
-                                    "phone_no": clean_e_phone,
-                                    "role": e_role,
-                                    "designation": e_designation,
-                                    "email": e_email.strip() if e_role != "Worker" else "",
-                                    "pin": e_pin.strip(),
-                                    "base_location": e_base.strip(),
-                                }
-                                success = update_sheet_row("Workers_Master", "name", selected_edit_user, updates)
-                                if success:
-                                    st.success(f"Updated profile for **{e_name}** successfully!")
-                                    st.rerun()
-                                else:
-                                    st.error("Failed to update user profile in Google Sheets database.")
+                            updates = {
+                                "role": e_role,
+                                "designation": e_designation,
+                                "email": e_email.strip() if e_role != "Worker" else "",
+                                "pin": e_pin,
+                                "base_location": e_base,
+                            }
+                            update_sheet_row("Workers_Master", "name", selected_edit_user, updates)
+                            st.success(f"Updated **{selected_edit_user}** successfully!")
+                            st.rerun()
 
 # --- SUPERVISOR: NEW ORDER ---
 elif menu == "New Installation Order":
