@@ -647,6 +647,7 @@ elif user_role == "Supervisor":
         "🔔 New Installation Requests",
         "New Installation Order",
         "Log Daily Tasks",
+        "💰 Log Site Daily Expenses",
         "View Logs & Update Status",
         "Handover Date Dashboard",
         "Active Tasks Dashboard",
@@ -950,8 +951,170 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 # 7. ROUTING & MODULE IMPLEMENTATION
 # ==========================================
 
+# --- SUPERVISOR: LOG SITE DAILY EXPENSES ---
+if menu == "💰 Log Site Daily Expenses":
+    st.header("💰 Supervisor Daily Site Expense Logging")
+    st.caption("Record daily operational costs (Travel, Food, Stay, Materials) for running sites. These will dynamically feature on dashboards until site handover.")
+
+    df_sites = read_sheet("Sites_Master")
+    df_workers = read_sheet("Workers_Master")
+
+    if df_sites.empty:
+        st.warning("No installation sites found.")
+    else:
+        active_sites = df_sites[~df_sites["status"].astype(str).str.strip().str.title().isin(["Handovered", "Handover", "Completed"])]
+
+        if active_sites.empty:
+            st.info("No active installation sites requiring daily expense logs.")
+        else:
+            site_options = {
+                f"{row.get('installation_id')} — {row.get('client_name', 'N/A')} ({row.get('site_city', 'N/A')})": row.get('installation_id')
+                for _, row in active_sites.iterrows()
+            }
+
+            with st.form("supervisor_expense_form"):
+                selected_label = st.selectbox("Select Active Installation Site *", options=list(site_options.keys()))
+                sel_site_id = site_options[selected_label]
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    exp_date = st.date_input("Expense Date", value=datetime.now())
+                    travel_exp = st.number_input("Travel Expense (₹)", min_value=0.0, step=100.0)
+                    stay_exp = st.number_input("Stay / Accommodation Expense (₹)", min_value=0.0, step=100.0)
+                with col2:
+                    food_exp = st.number_input("Food / Daily Allowance Expense (₹)", min_value=0.0, step=50.0)
+                    misc_exp = st.number_input("Local Purchase / Misc Expense (₹)", min_value=0.0, step=100.0)
+
+                exp_remarks = st.text_area("Expense Description / Notes", placeholder="Detail local purchase items or travel distance...")
+
+                submit_expense = st.form_submit_button("💾 Record & Sync Daily Expense", use_container_width=True)
+
+                if submit_expense:
+                    total_amount = travel_exp + stay_exp + food_exp + misc_exp
+                    if total_amount <= 0:
+                        st.error("Please enter a non-zero expense amount.")
+                    else:
+                        exp_id = f"EXP-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+                        exp_data = {
+                            "expense_id": exp_id,
+                            "installation_id": sel_site_id,
+                            "logged_date": str(exp_date),
+                            "supervisor_name": user_name,
+                            "travel_expense": travel_exp,
+                            "stay_expense": stay_exp,
+                            "food_expense": food_exp,
+                            "misc_expense": misc_exp,
+                            "total_expense": total_amount,
+                            "remarks": exp_remarks.strip(),
+                        }
+                        append_to_sheet("Expense_Logs", exp_data)
+                        st.success(f"Daily expense of ₹{total_amount:,.2f} logged for site {sel_site_id}!")
+                        st.rerun()
+
+            st.divider()
+            st.subheader("📜 Recent Site Expense Logs")
+            df_expenses = read_sheet("Expense_Logs")
+            if not df_expenses.empty:
+                st.dataframe(df_expenses.sort_values(by="logged_date", ascending=False), use_container_width=True)
+
+# --- ADMIN: TA/DA PAYROLL & TRAVEL SUMMARY ---
+elif menu == "TA/DA Payroll & Travel Summary":
+    st.header("✈️ TA/DA Payroll & Field Travel Summary")
+    st.caption("Calculate daily allowance, travel metrics, and worker site reimbursements.")
+
+    df_logs = read_sheet("Worker_Daily_Logs")
+    df_workers = read_sheet("Workers_Master")
+    df_expenses = read_sheet("Expense_Logs")
+
+    if df_logs.empty:
+        st.info("No field daily logs found for TA/DA calculations.")
+    else:
+        st.subheader("📊 Individual Worker TA/DA Breakdown")
+
+        travel_logs = df_logs[df_logs["is_travel_day"].astype(str).str.title() == "Yes"] if "is_travel_day" in df_logs.columns else df_logs
+
+        if travel_logs.empty:
+            st.info("No outstation travel days logged yet.")
+        else:
+            summary = travel_logs.groupby("worker_name").agg(
+                Travel_Days=("logged_date", "nunique"),
+                Total_Hours=("hours_spent", "sum"),
+                Sites_Covered=("installation_id", "nunique"),
+            ).reset_index()
+
+            # Dynamic TA/DA rate assumption: ₹500/travel day
+            summary["Estimated_TADA_Allowance"] = summary["Travel_Days"] * 500
+
+            st.dataframe(summary, use_container_width=True)
+
+            c1, c2 = st.columns(2)
+            with c1:
+                fig_ta = px.bar(
+                    summary,
+                    x="worker_name",
+                    y="Travel_Days",
+                    title="Outstation Travel Days per Worker",
+                    color="Travel_Days",
+                )
+                st.plotly_chart(fig_ta, use_container_width=True)
+            with c2:
+                fig_allowance = px.bar(
+                    summary,
+                    x="worker_name",
+                    y="Estimated_TADA_Allowance",
+                    title="Calculated TA/DA Allowance (₹)",
+                    color="Estimated_TADA_Allowance",
+                )
+                st.plotly_chart(fig_allowance, use_container_width=True)
+
+# --- ADMIN: ADVANCED FIELD LOGS INSPECTOR ---
+elif menu == "Advanced Field Logs Inspector":
+    st.header("🔍 Advanced Field Logs & Photo Inspector")
+    st.caption("Audit complete field logs, examine attached site photos, and filter entries by date, worker, or site ID.")
+
+    df_logs = read_sheet("Worker_Daily_Logs")
+
+    if df_logs.empty:
+        st.warning("No worker field logs present in database.")
+    else:
+        col_f1, col_f2, col_f3 = st.columns(3)
+        with col_f1:
+            site_list = ["All Sites"] + sorted(df_logs["installation_id"].dropna().unique().tolist())
+            selected_site = st.selectbox("Filter Site", site_list)
+        with col_f2:
+            worker_list = ["All Workers"] + sorted(df_logs["worker_name"].dropna().unique().tolist())
+            selected_worker = st.selectbox("Filter Worker", worker_list)
+        with col_f3:
+            delay_list = ["All Categories"] + sorted(df_logs["delay_category"].dropna().unique().tolist()) if "delay_category" in df_logs.columns else ["All Categories"]
+            selected_delay = st.selectbox("Filter Delay Category", delay_list)
+
+        inspect_df = df_logs.copy()
+        if selected_site != "All Sites":
+            inspect_df = inspect_df[inspect_df["installation_id"] == selected_site]
+        if selected_worker != "All Workers":
+            inspect_df = inspect_df[inspect_df["worker_name"] == selected_worker]
+        if selected_delay != "All Categories" and "delay_category" in inspect_df.columns:
+            inspect_df = inspect_df[inspect_df["delay_category"] == selected_delay]
+
+        st.subheader(f"📋 Inspection Records ({len(inspect_df)} entries found)")
+        st.dataframe(inspect_df, use_container_width=True)
+
+        st.divider()
+        st.subheader("📷 Photo Audit Log")
+        photo_logs = inspect_df[inspect_df["site_photo"].astype(str).str.startswith("http")] if "site_photo" in inspect_df.columns else pd.DataFrame()
+
+        if photo_logs.empty:
+            st.info("No site photos attached for selected filters.")
+        else:
+            cols = st.columns(3)
+            for idx, (_, row) in enumerate(photo_logs.iterrows()):
+                with cols[idx % 3]:
+                    st.markdown(f"**Site:** `{row.get('installation_id')}` | **Worker:** {row.get('worker_name')}")
+                    st.caption(f"Date: {row.get('logged_date')} | Task: {row.get('task_name')}")
+                    st.markdown(f"[🔗 Open Google Drive Photo]({row.get('site_photo')})")
+
 # --- SUPERVISOR: NEW INSTALLATION REQUESTS ---
-if menu == "🔔 New Installation Requests":
+elif menu == "🔔 New Installation Requests":
     st.header("🔔 Pending Installation Requests & Sales Orders")
     st.caption("Review new installation orders raised by salespersons and assign team execution leads.")
 
@@ -1571,7 +1734,7 @@ elif menu == "Active Tasks Dashboard":
 
 # --- ADMIN: ANALYTICS DASHBOARD ---
 elif menu == "Admin Analytics Dashboard":
-    st.header("📊 Admin Operations & Expense Analytics")
+    st.header("📊 Admin Operations & Dynamic Expense Analytics")
 
     df_logs = read_sheet("Worker_Daily_Logs")
     df_expenses = read_sheet("Expense_Logs")
@@ -1590,23 +1753,37 @@ elif menu == "Admin Analytics Dashboard":
     if not df_logs.empty and active_site_ids:
         df_logs = df_logs[df_logs["installation_id"].isin(active_site_ids)]
 
-    if df_logs.empty:
-        st.info("No active log data available for running sites.")
+    if df_logs.empty and df_expenses.empty:
+        st.info("No active log or expense data available for running sites.")
     else:
         sites_visited = df_logs["installation_id"].nunique() if "installation_id" in df_logs.columns else 0
         days_worked = df_logs["logged_date"].nunique() if "logged_date" in df_logs.columns else 0
         days_travelled = len(df_logs[df_logs["is_travel_day"] == "Yes"]) if "is_travel_day" in df_logs.columns else 0
 
+        # Filter expense logs strictly to active/running sites
+        active_expenses = df_expenses[df_expenses["installation_id"].isin(active_site_ids)] if not df_expenses.empty and "installation_id" in df_expenses.columns else pd.DataFrame()
+
         travel_exp = (
-            pd.to_numeric(df_expenses["travel_expense"], errors="coerce").sum() 
-            if not df_expenses.empty and "travel_expense" in df_expenses.columns 
+            pd.to_numeric(active_expenses["travel_expense"], errors="coerce").sum() 
+            if not active_expenses.empty and "travel_expense" in active_expenses.columns 
             else 0
         )
         stay_exp = (
-            pd.to_numeric(df_expenses["stay_expense"], errors="coerce").sum() 
-            if not df_expenses.empty and "stay_expense" in df_expenses.columns 
+            pd.to_numeric(active_expenses["stay_expense"], errors="coerce").sum() 
+            if not active_expenses.empty and "stay_expense" in active_expenses.columns 
             else 0
         )
+        food_exp = (
+            pd.to_numeric(active_expenses["food_expense"], errors="coerce").sum() 
+            if not active_expenses.empty and "food_expense" in active_expenses.columns 
+            else 0
+        )
+        misc_exp = (
+            pd.to_numeric(active_expenses["misc_expense"], errors="coerce").sum() 
+            if not active_expenses.empty and "misc_expense" in active_expenses.columns 
+            else 0
+        )
+        total_site_expenses = travel_exp + stay_exp + food_exp + misc_exp
 
         k1, k2, k3, k4, k5 = st.columns(5)
         with k1:
@@ -1616,9 +1793,9 @@ elif menu == "Admin Analytics Dashboard":
         with k3:
             st.markdown(f'<div class="kpi-card"><div class="kpi-number">{days_travelled}</div><div class="kpi-label">Days Travelled</div></div>', unsafe_allow_html=True)
         with k4:
-            st.markdown(f'<div class="kpi-card"><div class="kpi-number">₹{travel_exp:,.0f}</div><div class="kpi-label">Travel Expense</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">₹{total_site_expenses:,.0f}</div><div class="kpi-label">Running Sites Total Cost</div></div>', unsafe_allow_html=True)
         with k5:
-            st.markdown(f'<div class="kpi-card"><div class="kpi-number">₹{stay_exp:,.0f}</div><div class="kpi-label">Stay Expense</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">₹{travel_exp:,.0f}</div><div class="kpi-label">Travel Expenses</div></div>', unsafe_allow_html=True)
 
         st.divider()
 
@@ -1639,16 +1816,18 @@ elif menu == "Admin Analytics Dashboard":
                     st.success("No delays or problems reported across running sites!")
 
         with g2:
-            st.subheader("💰 Worker Expenses Breakdown")
-            if not df_expenses.empty and "worker_name" in df_expenses.columns:
+            st.subheader("💰 Dynamic Everyday Site Expenses Breakdown")
+            if not active_expenses.empty and "installation_id" in active_expenses.columns:
                 fig_exp = px.bar(
-                    df_expenses,
-                    x="worker_name",
-                    y=["travel_expense", "stay_expense"],
-                    title="Travel vs. Stay Expense per Worker",
+                    active_expenses,
+                    x="installation_id",
+                    y=["travel_expense", "stay_expense", "food_expense", "misc_expense"],
+                    title="Active Site Expense Breakdown (Dynamic Daily Tracker)",
                     barmode="stack",
                 )
                 st.plotly_chart(fig_exp, use_container_width=True)
+            else:
+                st.info("No active site expenses recorded yet.")
 
 # --- ADMIN: USER MANAGEMENT ---
 elif menu == "User Management":
@@ -1693,7 +1872,11 @@ elif menu == "User Management":
                 c1, c2 = st.columns(2)
                 with c1:
                     new_name = st.text_input("Full Name *")
-                    new_email = st.text_input("Email Address *", placeholder="e.g. user@company.com")
+                    # Email is requested for all roles EXCEPT Workers
+                    if selected_role != "Worker":
+                        new_email = st.text_input("Email Address *", placeholder="e.g. user@company.com")
+                    else:
+                        new_email = ""
                     new_aadhaar = st.text_input("Aadhaar Number *", max_chars=12, placeholder="12-digit number")
                 with c2:
                     new_pin = st.text_input("4-Digit PIN / Password *", type="password")
@@ -1702,9 +1885,9 @@ elif menu == "User Management":
                 submit_new_user = st.form_submit_button("Create User & Sync to Database", use_container_width=True)
                 if submit_new_user:
                     clean_aadhaar = str(new_aadhaar).strip()
-                    if not new_name or not new_pin or not new_email:
-                        st.error("Please fill in Full Name, Email, and PIN.")
-                    elif not validate_email(new_email):
+                    if not new_name or not new_pin:
+                        st.error("Please fill in Full Name and PIN.")
+                    elif selected_role != "Worker" and (not new_email or not validate_email(new_email)):
                         st.error("Please enter a valid email address.")
                     elif clean_aadhaar and (len(clean_aadhaar) > 12 or not clean_aadhaar.isdigit()):
                         st.error("Aadhaar number must contain only numeric digits and cannot exceed 12 digits.")
@@ -1712,7 +1895,7 @@ elif menu == "User Management":
                         user_dict = {
                             "worker_id": auto_generated_id,
                             "name": new_name.strip(),
-                            "email": new_email.strip(),
+                            "email": new_email.strip() if selected_role != "Worker" else "",
                             "aadhaar_no": "[Identity Omitted]",
                             "pin": str(new_pin).strip(),
                             "role": selected_role,
@@ -1773,19 +1956,23 @@ elif menu == "User Management":
                         index=desig_idx
                     ) if e_role == "Worker" else e_role
 
-                    e_email = st.text_input("Update Email", value=str(user_data.get("email", "")))
+                    if e_role != "Worker":
+                        e_email = st.text_input("Update Email", value=str(user_data.get("email", "")))
+                    else:
+                        e_email = ""
+
                     e_pin = st.text_input("Update PIN", value=str(user_data.get("pin", "")))
                     e_base = st.text_input("Update Base Location", value=str(user_data.get("base_location", "Jaipur")))
 
                     submit_edit = st.form_submit_button("Update Profile in Database", use_container_width=True)
                     if submit_edit:
-                        if e_email and not validate_email(e_email):
+                        if e_role != "Worker" and e_email and not validate_email(e_email):
                             st.error("Please enter a valid email address.")
                         else:
                             updates = {
                                 "role": e_role,
                                 "designation": e_designation,
-                                "email": e_email.strip(),
+                                "email": e_email.strip() if e_role != "Worker" else "",
                                 "pin": e_pin,
                                 "base_location": e_base,
                             }
@@ -1935,11 +2122,12 @@ elif menu == "View Logs & Update Status":
 # --- OTHER SECTIONS & MASTER DATABASE ---
 elif menu == "Master Database":
     st.header("🗄️ Live Google Sheets Database")
-    m_tab1, m_tab2, m_tab3, m_tab4 = st.tabs([
+    m_tab1, m_tab2, m_tab3, m_tab4, m_tab5 = st.tabs([
         "Workers Master",
         "Sites Master",
         "Task Assignments",
         "Worker Daily Logs",
+        "Expense Logs",
     ])
 
     with m_tab1:
@@ -1950,3 +2138,5 @@ elif menu == "Master Database":
         st.dataframe(read_sheet("Task_Assignments"), use_container_width=True)
     with m_tab4:
         st.dataframe(read_sheet("Worker_Daily_Logs"), use_container_width=True)
+    with m_tab5:
+        st.dataframe(read_sheet("Expense_Logs"), use_container_width=True)
