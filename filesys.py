@@ -1,5 +1,3 @@
-# app.py
-
 import io
 import os
 import re
@@ -33,6 +31,9 @@ LOGO_PATH = BASE_DIR / "Company Logo.jpeg"
 
 # Email validation helper regex
 EMAIL_REGEX = r"^[\w\.-]+@[\w\.-]+\.\w+$"
+
+# Field Worker Designations
+WORKER_DESIGNATIONS = ["Installer", "Helper", "Manager"]
 
 # ==========================================
 # 1. HELPER FUNCTIONS & WORK ID GENERATOR
@@ -73,6 +74,28 @@ def generate_work_id(role: str, df_workers: pd.DataFrame) -> str:
     next_num = max(numbers) + 1 if numbers else 1
     padding = 2 if prefix == "ADM" else 3
     return f"{prefix}{next_num:0{padding}d}"
+
+
+def format_worker_dropdown_options(df_workers: pd.DataFrame) -> list:
+    """Formats worker options with designations for UI drop-downs."""
+    if df_workers.empty or "name" not in df_workers.columns:
+        return []
+    
+    options = []
+    for _, row in df_workers.iterrows():
+        name = str(row.get("name", "")).strip()
+        role = str(row.get("role", "")).strip()
+        desig = str(row.get("designation", "")).strip()
+        
+        if not name or role in ["Admin", "Salesperson"]:
+            continue
+            
+        if role == "Worker" and desig:
+            options.append(f"{name} ({desig})")
+        else:
+            options.append(name)
+            
+    return sorted(list(set(options)))
 
 
 def render_view_logs_and_update_status():
@@ -225,7 +248,7 @@ def render_view_logs_and_update_status():
             day_lbl = l.get("site_day", "")
             header_prefix = f"[{day_lbl}] " if day_lbl else ""
             with st.expander(
-                f"📅 {header_prefix}Date: {l.get('logged_date')} | Worker: {l.get('worker_name')} | Role: {l.get('worker_role', 'N/A')}"
+                f"📅 {header_prefix}Date: {l.get('logged_date')} | Worker: {l.get('worker_name')} | Role/Designation: {l.get('worker_role', 'N/A')}"
             ):
                 st.write(f"**Task Category:** {l.get('task_category')}")
                 st.write(f"**Task Description:** {l.get('task_name')}")
@@ -537,7 +560,7 @@ if not st.session_state.authenticated_user:
             username_input = st.text_input(
                 "Username / Name / Work ID",
                 value=st.session_state.remembered_username,
-                placeholder="e.g. Parvesh Kumar or SP001",
+                placeholder="e.g. Parvesh Kumar or W001",
             )
             password_input = st.text_input("Password / PIN", type="password", placeholder="Enter password")
 
@@ -580,6 +603,7 @@ if not st.session_state.authenticated_user:
 user = st.session_state.authenticated_user
 user_name = user.get("name", "User")
 user_role = user.get("role", "Worker")
+user_designation = user.get("designation", user_role)
 user_id = user.get("worker_id", "N/A")
 user_base_location = user.get("base_location", "Jaipur")
 
@@ -597,7 +621,7 @@ else:
     )
 
 st.sidebar.markdown(
-    f"**Active User:** {user_name} (`{user_id}`)  \n**Role:** {user_role}  \n**Base Station:** {user_base_location}"
+    f"**Active User:** {user_name} (`{user_id}`)  \n**Designation:** {user_designation}  \n**Role:** {user_role}  \n**Base Station:** {user_base_location}"
 )
 st.sidebar.divider()
 
@@ -630,7 +654,7 @@ elif user_role == "Supervisor":
         "Team Head Dashboard",
         "Master Database",
     ]
-else:  # Worker
+else:  # Worker (Helper, Installer, Manager)
     menu_options = [
         "My Work Dashboard",
         "Log Daily Tasks",
@@ -769,22 +793,21 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 
     site_city = site_meta["city"]
 
-    if not df_workers.empty and "name" in df_workers.columns:
-        if "role" in df_workers.columns:
-            filtered_workers = df_workers[
-                ~df_workers["role"].astype(str).str.strip().str.lower().isin(["supervisor", "admin", "salesperson"])
-            ]
-            worker_options = sorted(filtered_workers["name"].astype(str).str.strip().unique().tolist())
-        else:
-            worker_options = sorted(df_workers["name"].astype(str).str.strip().unique().tolist())
-    else:
+    worker_options = format_worker_dropdown_options(df_workers)
+    if not worker_options:
         worker_options = [target_worker_name]
 
     st.markdown("### 👥 Crew & Team Assignment")
     col_lead, col_helpers = st.columns(2)
 
     with col_lead:
-        default_lead_idx = worker_options.index(target_worker_name) if target_worker_name in worker_options else 0
+        # Find default match
+        default_lead_idx = 0
+        for idx, w_opt in enumerate(worker_options):
+            if target_worker_name in w_opt:
+                default_lead_idx = idx
+                break
+
         team_lead_selected = st.selectbox(
             "Team Lead Name *",
             options=worker_options,
@@ -872,14 +895,21 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
         records_saved = 0
 
         for idx, t in enumerate(valid_tasks):
-            worker = t["assigned_worker"]
+            raw_worker_string = t["assigned_worker"]
+            clean_worker_name = raw_worker_string.split(" (")[0].strip()
+            
             w_base = "Jaipur"
+            w_desig = "Worker"
+            
             if not df_workers.empty:
-                m = df_workers[df_workers["name"] == worker]
+                m = df_workers[df_workers["name"] == clean_worker_name]
                 if not m.empty:
                     w_base = m.iloc[0].get("base_location", "Jaipur")
+                    w_desig = m.iloc[0].get("designation", "Worker")
 
             w_is_travel = str(w_base).strip().lower() != str(site_city).strip().lower()
+
+            clean_lead_name = team_lead_selected.split(" (")[0].strip()
 
             log_id = f"LOG-{datetime.now().strftime('%Y%m%d%H%M%S')}-{idx+1}"
             log_entry = {
@@ -887,9 +917,9 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
                 "installation_id": selected_site_id,
                 "site_day": site_day_label,
                 "logged_date": str(log_date),
-                "worker_name": worker,
-                "worker_role": "Team Lead" if worker == team_lead_selected else "Helper",
-                "team_lead_name": team_lead_selected,
+                "worker_name": clean_worker_name,
+                "worker_role": w_desig,
+                "team_lead_name": clean_lead_name,
                 "task_category": t["category"],
                 "task_name": t["description"],
                 "hours_spent": t["hours"],
@@ -920,7 +950,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 # 7. ROUTING & MODULE IMPLEMENTATION
 # ==========================================
 
-# --- SUPERVISOR: NEW INSTALLATION REQUESTS (POPUPS & NOTIFICATIONS) ---
+# --- SUPERVISOR: NEW INSTALLATION REQUESTS ---
 if menu == "🔔 New Installation Requests":
     st.header("🔔 Pending Installation Requests & Sales Orders")
     st.caption("Review new installation orders raised by salespersons and assign team execution leads.")
@@ -931,7 +961,6 @@ if menu == "🔔 New Installation Requests":
     if df_sites.empty:
         st.info("No installation requests found.")
     else:
-        # Find unassigned or newly submitted salesperson orders
         unassigned_mask = (
             df_sites.get("team_lead", pd.Series()).astype(str).str.strip().replace(["", "nan", "None", "Unassigned"], "") == ""
         )
@@ -942,9 +971,7 @@ if menu == "🔔 New Installation Requests":
         else:
             st.warning(f"🚨 **{len(pending_requests)} New Installation Order(s) Awaiting Supervisor Action!**")
 
-            worker_options = []
-            if not df_workers.empty and "name" in df_workers.columns:
-                worker_options = sorted(df_workers[~df_workers["role"].isin(["Admin", "Salesperson"])]["name"].tolist())
+            worker_options = format_worker_dropdown_options(df_workers)
 
             for _, req in pending_requests.iterrows():
                 site_id = req.get("installation_id", "N/A")
@@ -976,13 +1003,15 @@ if menu == "🔔 New Installation Requests":
                             if not a_lead:
                                 st.error("Please select a Team Lead.")
                             else:
+                                clean_lead = a_lead.split(" (")[0].strip()
+                                clean_helpers = [h.split(" (")[0].strip() for h in a_helpers]
                                 updates = {
-                                    "team_lead": a_lead,
-                                    "team_members": ", ".join(a_helpers),
+                                    "team_lead": clean_lead,
+                                    "team_members": ", ".join(clean_helpers),
                                     "status": "In Progress",
                                 }
                                 update_sheet_row("Sites_Master", "installation_id", site_id, updates)
-                                st.success(f"Installation **{site_id}** activated and assigned to **{a_lead}**!")
+                                st.success(f"Installation **{site_id}** activated and assigned to **{clean_lead}**!")
                                 st.rerun()
 
 # --- SALESPERSON: MY SALES DASHBOARD ---
@@ -1328,7 +1357,7 @@ elif menu == "Sales Analytics Report":
 
 # --- WORKER: MY WORK DASHBOARD ---
 elif menu == "My Work Dashboard":
-    st.header(f"⚡ Daily Workspace & Task Pipeline — {user_name}")
+    st.header(f"⚡ Daily Workspace & Task Pipeline — {user_name} ({user_designation})")
     st.caption("Track your assigned site duties, update live task progress, and view performance metrics.")
 
     df_tasks = read_sheet("Task_Assignments")
@@ -1454,7 +1483,8 @@ elif menu == "My Profile & Settings":
             f"""
             <div class="card-box">
                 <h3 style="margin:0;">{user_name}</h3>
-                <p style="margin:5px 0;"><b>Role:</b> {user_role}</p>
+                <p style="margin:5px 0;"><b>Designation:</b> {user_designation}</p>
+                <p style="margin:5px 0;"><b>Access Role:</b> {user_role}</p>
                 <p style="margin:5px 0;"><b>Work ID:</b> {user_id}</p>
                 <p style="margin:5px 0;"><b>Base Station:</b> {user_base_location}</p>
             </div>
@@ -1496,16 +1526,14 @@ elif menu == "Team Head Dashboard":
     with tab_crew:
         st.subheader("Manage Active Crew Logs")
         df_workers = read_sheet("Workers_Master")
-        crew_members = (
-            df_workers[df_workers["role"] == "Worker"]["name"].tolist()
-            if not df_workers.empty and "role" in df_workers.columns
-            else []
-        )
+        
+        worker_options = format_worker_dropdown_options(df_workers)
 
-        if not crew_members:
+        if not worker_options:
             st.info("⚠️ No Active Crew Members Found")
         else:
-            selected_crew = st.selectbox("Select Worker to Log For", crew_members)
+            selected_crew_str = st.selectbox("Select Worker to Log For", worker_options)
+            selected_crew = selected_crew_str.split(" (")[0].strip()
             st.divider()
             render_restricted_work_input(target_worker_name=selected_crew, is_crew_log=True)
 
@@ -1642,7 +1670,21 @@ elif menu == "User Management":
         st.subheader("Add Employee / Salesperson / Supervisor")
         col_l, col_center, col_r = st.columns([0.1, 0.8, 0.1])
         with col_center:
-            selected_role = st.selectbox("System Role *", ["Worker", "Supervisor", "Salesperson", "Admin"], key="add_user_role_select")
+            selected_role = st.selectbox(
+                "System Access Role *", 
+                ["Worker", "Supervisor", "Salesperson", "Admin"], 
+                key="add_user_role_select"
+            )
+            
+            # Select Designation if System Role is Worker
+            worker_designation = ""
+            if selected_role == "Worker":
+                worker_designation = st.selectbox(
+                    "Field Designation *", 
+                    WORKER_DESIGNATIONS, 
+                    key="add_user_designation_select"
+                )
+
             auto_generated_id = generate_work_id(selected_role, df_workers)
 
             with st.form("add_user_form"):
@@ -1674,6 +1716,7 @@ elif menu == "User Management":
                             "aadhaar_no": "[Identity Omitted]",
                             "pin": str(new_pin).strip(),
                             "role": selected_role,
+                            "designation": worker_designation if selected_role == "Worker" else selected_role,
                             "base_location": new_base.strip(),
                         }
                         append_to_sheet("Workers_Master", user_dict)
@@ -1699,6 +1742,7 @@ elif menu == "User Management":
                             "aadhaar_no": "[Redacted Identity]",
                             "pin": m[3],
                             "role": m[4],
+                            "designation": "Installer" if m[4] == "Worker" else m[4],
                             "base_location": m[5],
                         },
                     )
@@ -1715,10 +1759,20 @@ elif menu == "User Management":
             with col_center:
                 with st.form("edit_user_form"):
                     e_role = st.selectbox(
-                        "Update Role",
+                        "Update System Access Role",
                         ["Worker", "Supervisor", "Salesperson", "Admin"],
                         index=["Worker", "Supervisor", "Salesperson", "Admin"].index(user_data.get("role", "Worker")),
                     )
+                    
+                    e_desig = user_data.get("designation", "")
+                    desig_idx = WORKER_DESIGNATIONS.index(e_desig) if e_desig in WORKER_DESIGNATIONS else 0
+                    
+                    e_designation = st.selectbox(
+                        "Update Field Designation",
+                        WORKER_DESIGNATIONS,
+                        index=desig_idx
+                    ) if e_role == "Worker" else e_role
+
                     e_email = st.text_input("Update Email", value=str(user_data.get("email", "")))
                     e_pin = st.text_input("Update PIN", value=str(user_data.get("pin", "")))
                     e_base = st.text_input("Update Base Location", value=str(user_data.get("base_location", "Jaipur")))
@@ -1730,6 +1784,7 @@ elif menu == "User Management":
                         else:
                             updates = {
                                 "role": e_role,
+                                "designation": e_designation,
                                 "email": e_email.strip(),
                                 "pin": e_pin,
                                 "base_location": e_base,
@@ -1744,12 +1799,10 @@ elif menu == "New Installation Order":
     df_workers = read_sheet("Workers_Master")
     df_sites = read_sheet("Sites_Master")
     
-    worker_options = []
+    worker_options = format_worker_dropdown_options(df_workers)
     salesperson_options = []
 
     if not df_workers.empty and "name" in df_workers.columns:
-        worker_options = sorted(df_workers[~df_workers["role"].isin(["Admin", "Salesperson"])]["name"].tolist())
-        
         sp_df = df_workers[df_workers["role"].astype(str).str.strip().str.title() == "Salesperson"]
         if not sp_df.empty:
             salesperson_options = (sp_df["worker_id"].astype(str) + " - " + sp_df["name"].astype(str)).tolist()
@@ -1757,7 +1810,6 @@ elif menu == "New Installation Order":
     if "products_count" not in st.session_state:
         st.session_state.products_count = 1
 
-    # Optional linkage to existing salesperson order or create custom ID
     st.markdown("### 🔗 Order Creation & Linkage")
     existing_sp_orders = {}
     if not df_sites.empty and "installation_id" in df_sites.columns:
@@ -1848,6 +1900,9 @@ elif menu == "New Installation Order":
         elif clean_email and not validate_email(clean_email):
             st.error("Please enter a valid email address.")
         else:
+            clean_lead = team_lead_name.split(" (")[0].strip()
+            clean_helpers = [h.split(" (")[0].strip() for h in team_helpers]
+
             order_data = {
                 "installation_id": visit_id,
                 "client_name": client_name.strip(),
@@ -1855,8 +1910,8 @@ elif menu == "New Installation Order":
                 "client_email": clean_email,
                 "salesperson_id": sp_id,
                 "salesperson_name": sp_name,
-                "team_lead": team_lead_name,
-                "team_members": ", ".join(team_helpers),
+                "team_lead": clean_lead,
+                "team_members": ", ".join(clean_helpers),
                 "site_city": city_name,
                 "site_address": site_address,
                 "order_date": str(inst_date),
@@ -1875,7 +1930,7 @@ elif menu == "New Installation Order":
 
 # --- SUPERVISOR: VIEW LOGS & UPDATE ---
 elif menu == "View Logs & Update Status":
-    render_restricted_work_input(target_worker_name=user_name, is_crew_log=False) if False else render_view_logs_and_update_status()
+    render_view_logs_and_update_status()
 
 # --- OTHER SECTIONS & MASTER DATABASE ---
 elif menu == "Master Database":
