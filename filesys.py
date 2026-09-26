@@ -428,7 +428,8 @@ def read_sheet(sheet_name: str) -> pd.DataFrame:
         data = sheet.get_all_records()
         return pd.DataFrame(data)
     except Exception as e:
-        # Avoid halting UI with st.error; return empty DataFrame quietly
+        # Temporary log to expose the real issue in terminal/app
+        print(f"DEBUG SHEET ERROR [{sheet_name}]: {e}")
         return pd.DataFrame()
 
 def read_sheet(tab_name):
