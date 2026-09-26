@@ -33,18 +33,47 @@ LOGO_PATH = BASE_DIR / "Company Logo.jpeg"
 
 
 # ==========================================
-# 1. HELPER FUNCTIONS & VIEW LOGS MODULE
+# 1. HELPER FUNCTIONS & WORK ID GENERATOR
 # ==========================================
+def generate_work_id(role: str, df_workers: pd.DataFrame) -> str:
+    """Auto-generates dynamic Work IDs like ADM01, SPV001, W001, SP001."""
+    role_prefix_map = {
+        "Admin": "ADM",
+        "Supervisor": "SPV",
+        "Worker": "W",
+        "Salesperson": "SP",
+    }
+    
+    prefix = role_prefix_map.get(role, "EMP")
+    
+    if df_workers.empty or "worker_id" not in df_workers.columns:
+        return f"{prefix}01" if prefix == "ADM" else f"{prefix}001"
+    
+    existing_ids = df_workers["worker_id"].dropna().astype(str).str.strip()
+    role_ids = [uid for uid in existing_ids if uid.startswith(prefix)]
+    
+    if not role_ids:
+        return f"{prefix}01" if prefix == "ADM" else f"{prefix}001"
+    
+    numbers = []
+    for uid in role_ids:
+        num_part = uid[len(prefix):]
+        if num_part.isdigit():
+            numbers.append(int(num_part))
+            
+    next_num = max(numbers) + 1 if numbers else 1
+    padding = 2 if prefix == "ADM" else 3
+    return f"{prefix}{next_num:0{padding}d}"
+
+
 def render_view_logs_and_update_status():
     st.markdown("## 🔍 View Daily Logs & Update Status")
 
-    # 1. Fetch data from Google Sheets
     df_sites = read_sheet("Sites_Master")
     if df_sites.empty:
         st.warning("No installation records found.")
         return
 
-    # 2. Standardize column headers
     df_sites.columns = [
         str(col).strip().lower().replace(" ", "_") for col in df_sites.columns
     ]
@@ -52,7 +81,6 @@ def render_view_logs_and_update_status():
     site_map = {}
     site_data = {}
 
-    # 3. Process each site record and filter out Handovered / Completed sites
     for _, s in df_sites.iterrows():
         site_id = str(s.get("installation_id", "")).strip()
         status = str(s.get("status") or "In Progress").strip().title()
@@ -90,7 +118,6 @@ def render_view_logs_and_update_status():
         st.info("No active installation sites found (all sites completed or handovered).")
         return
 
-    # 4. Dropdown for Site Selection
     selected_label = st.selectbox(
         "Select Installation ID",
         options=list(site_map.keys()),
@@ -100,7 +127,6 @@ def render_view_logs_and_update_status():
     selected_id = site_map[selected_label]
     info = site_data[selected_id]
 
-    # 5. Display Installation Details
     st.markdown(
         f"""
         <div style="background-color: #f0f4f8; padding: 20px; border-radius: 10px; border-left: 5px solid #1E3A8A; margin-top: 15px; margin-bottom: 20px;">
@@ -113,7 +139,6 @@ def render_view_logs_and_update_status():
         unsafe_allow_html=True,
     )
 
-    # 6. Dynamic Status Update Controls with Mandatory On-Hold Handling
     col_st, col_btn = st.columns([2, 1])
     with col_st:
         curr_st = info["status"]
@@ -177,7 +202,6 @@ def render_view_logs_and_update_status():
             st.success(f"Status updated to **{new_st}**!")
             st.rerun()
 
-    # 7. Submitted Field Logs
     st.divider()
     st.subheader("📜 Submitted Work Logs")
     df_logs = read_sheet("Worker_Daily_Logs")
@@ -340,12 +364,9 @@ SCOPES = [
 
 @st.cache_resource
 def get_credentials():
-    """Reads GCP credentials from Streamlit secrets and auto-corrects literal '\\n' in private key."""
     creds_dict = dict(st.secrets["gcp_service_account"])
-
     if "private_key" in creds_dict:
         creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
-
     return Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
 
 
@@ -365,21 +386,17 @@ DRIVE_FOLDER_ID = st.secrets.get("drive_folder_id", "0ADjIFMwZGB62Uk9PVA")
 
 
 def upload_file_to_drive(uploaded_file, file_name):
-    """Uploads a file to Google Drive and makes it accessible via link."""
     try:
         service = get_drive_service()
-
         file_metadata = {
             "name": file_name,
             "parents": [DRIVE_FOLDER_ID],
         }
-
         media = MediaIoBaseUpload(
             io.BytesIO(uploaded_file.getvalue()),
             mimetype=uploaded_file.type,
             resumable=True,
         )
-
         file = (
             service.files()
             .create(
@@ -390,22 +407,15 @@ def upload_file_to_drive(uploaded_file, file_name):
             )
             .execute()
         )
-
         file_id = file.get("id")
-
-        user_permission = {
-            "type": "anyone",
-            "role": "reader",
-        }
+        user_permission = {"type": "anyone", "role": "reader"}
         service.permissions().create(
             fileId=file_id,
             body=user_permission,
             fields="id",
             supportsAllDrives=True,
         ).execute()
-
         return file.get("webViewLink", "")
-
     except Exception as e:
         st.error(f"Error uploading image to Google Drive: {e}")
         return "Upload Failed"
@@ -428,11 +438,10 @@ def read_sheet(sheet_name: str) -> pd.DataFrame:
         data = sheet.get_all_records()
         return pd.DataFrame(data)
     except Exception as e:
-        # Temporary log to expose the real issue in terminal/app
         print(f"DEBUG SHEET ERROR [{sheet_name}]: {e}")
         return pd.DataFrame()
 
-        
+
 def append_to_sheet(sheet_name: str, row_data_dict: dict):
     try:
         wb = get_workbook()
@@ -493,10 +502,7 @@ if not st.session_state.authenticated_user:
     st.write("##")
     col_l, col_center, col_r = st.columns([1, 1.2, 1])
     with col_center:
-        st.markdown(
-            '<div style="max-width: 420px; margin: 0 auto;">',
-            unsafe_allow_html=True,
-        )
+        st.markdown('<div style="max-width: 420px; margin: 0 auto;">', unsafe_allow_html=True)
         with st.form("login_form"):
             if LOGO_PATH.exists():
                 st.image(str(LOGO_PATH), use_container_width=True)
@@ -514,26 +520,19 @@ if not st.session_state.authenticated_user:
             st.caption("Enterprise Operations & Field Portal")
 
             username_input = st.text_input(
-                "Username / Name",
+                "Username / Name / Work ID",
                 value=st.session_state.remembered_username,
-                placeholder="e.g. Parvesh Kumar or Vishak",
+                placeholder="e.g. Parvesh Kumar or SP001",
             )
-            password_input = st.text_input(
-                "Password / PIN", type="password", placeholder="Enter password"
-            )
+            password_input = st.text_input("Password / PIN", type="password", placeholder="Enter password")
 
             col_chk1, col_chk2 = st.columns(2)
             with col_chk1:
                 show_pass = st.checkbox("Show Password")
             with col_chk2:
-                remember_me = st.checkbox(
-                    "Remember Me",
-                    value=bool(st.session_state.remembered_username),
-                )
+                remember_me = st.checkbox("Remember Me", value=bool(st.session_state.remembered_username))
 
-            submit_button = st.form_submit_button(
-                "🔑 LOGIN TO DASHBOARD", use_container_width=True
-            )
+            submit_button = st.form_submit_button("🔑 LOGIN TO DASHBOARD", use_container_width=True)
 
             if submit_button:
                 if not username_input or not password_input:
@@ -543,32 +542,20 @@ if not st.session_state.authenticated_user:
                     if not df_workers.empty:
                         user_row = df_workers[
                             (
-                                df_workers["name"]
-                                .astype(str)
-                                .str.strip()
-                                .str.lower()
-                                == username_input.strip().lower()
+                                (df_workers["name"].astype(str).str.strip().str.lower() == username_input.strip().lower())
+                                | (df_workers["worker_id"].astype(str).str.strip().str.lower() == username_input.strip().lower())
                             )
-                            & (
-                                df_workers["pin"].astype(str)
-                                == str(password_input).strip()
-                            )
+                            & (df_workers["pin"].astype(str).str.strip() == str(password_input).strip())
                         ]
                         if not user_row.empty:
-                            st.session_state.authenticated_user = user_row.iloc[
-                                0
-                            ].to_dict()
-                            st.session_state.remembered_username = (
-                                username_input.strip() if remember_me else ""
-                            )
+                            st.session_state.authenticated_user = user_row.iloc[0].to_dict()
+                            st.session_state.remembered_username = username_input.strip() if remember_me else ""
                             st.success("Authentication Successful!")
                             st.rerun()
                         else:
                             st.error("Invalid Username or Password.")
                     else:
-                        st.error(
-                            "⚠️ Database Unreachable — Verify Google Sheets setup."
-                        )
+                        st.error("⚠️ Database Unreachable — Verify Google Sheets setup.")
         st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
 
@@ -578,6 +565,7 @@ if not st.session_state.authenticated_user:
 user = st.session_state.authenticated_user
 user_name = user.get("name", "User")
 user_role = user.get("role", "Worker")
+user_id = user.get("worker_id", "N/A")
 user_base_location = user.get("base_location", "Jaipur")
 
 if LOGO_PATH.exists():
@@ -594,19 +582,24 @@ else:
     )
 
 st.sidebar.markdown(
-    f"**Active User:** {user_name} (`{user_role}`)  \n**Base Station:**"
-    f" {user_base_location}"
+    f"**Active User:** {user_name} (`{user_id}`)  \n**Role:** {user_role}  \n**Base Station:** {user_base_location}"
 )
 st.sidebar.divider()
 
 if user_role == "Admin":
     menu_options = [
         "Admin Analytics Dashboard",
+        "Sales Analytics Report",
         "Employee Analytics & Reports",
         "User Management",
         "TA/DA Payroll & Travel Summary",
         "Advanced Field Logs Inspector",
         "Master Database",
+    ]
+elif user_role == "Salesperson":
+    menu_options = [
+        "My Sales Dashboard",
+        "My Profile & Settings",
     ]
 elif user_role == "Supervisor":
     menu_options = [
@@ -628,7 +621,6 @@ else:  # Worker
     ]
 
 menu = st.sidebar.radio("Navigation Menu", menu_options)
-
 st.sidebar.divider()
 
 if st.sidebar.button("🚪 LOG OUT", use_container_width=True):
@@ -637,7 +629,7 @@ if st.sidebar.button("🚪 LOG OUT", use_container_width=True):
 
 
 # ==========================================
-# 6. DYNAMIC WORK INPUT HELPER WITH SUCCESS MODAL
+# 6. DYNAMIC WORK INPUT HELPER
 # ==========================================
 @st.dialog("🎉 Daily Log Submitted Successfully!")
 def show_upload_success_modal(site_id, day_label, records_count):
@@ -762,19 +754,11 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
     if not df_workers.empty and "name" in df_workers.columns:
         if "role" in df_workers.columns:
             filtered_workers = df_workers[
-                ~df_workers["role"]
-                .astype(str)
-                .str.strip()
-                .str.lower()
-                .isin(["supervisor", "admin"])
+                ~df_workers["role"].astype(str).str.strip().str.lower().isin(["supervisor", "admin", "salesperson"])
             ]
-            worker_options = sorted(
-                filtered_workers["name"].astype(str).str.strip().unique().tolist()
-            )
+            worker_options = sorted(filtered_workers["name"].astype(str).str.strip().unique().tolist())
         else:
-            worker_options = sorted(
-                df_workers["name"].astype(str).str.strip().unique().tolist()
-            )
+            worker_options = sorted(df_workers["name"].astype(str).str.strip().unique().tolist())
     else:
         worker_options = [target_worker_name]
 
@@ -782,11 +766,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
     col_lead, col_helpers = st.columns(2)
 
     with col_lead:
-        default_lead_idx = (
-            worker_options.index(target_worker_name)
-            if target_worker_name in worker_options
-            else 0
-        )
+        default_lead_idx = worker_options.index(target_worker_name) if target_worker_name in worker_options else 0
         team_lead_selected = st.selectbox(
             "Team Lead Name *",
             options=worker_options,
@@ -795,9 +775,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
         )
 
     with col_helpers:
-        available_helpers = [
-            w for w in worker_options if w != team_lead_selected
-        ]
+        available_helpers = [w for w in worker_options if w != team_lead_selected]
         team_helpers_selected = st.multiselect(
             "Team Members / Helpers",
             options=available_helpers,
@@ -817,58 +795,28 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 
     for i in range(st.session_state[task_count_key]):
         st.caption(f"**Task Line #{i+1}**")
-        col_cat, col_desc, col_assigned, col_hrs, col_min = st.columns(
-            [2.5, 3, 2.5, 1.2, 1.2]
-        )
+        col_cat, col_desc, col_assigned, col_hrs, col_min = st.columns([2.5, 3, 2.5, 1.2, 1.2])
 
         with col_cat:
-            cat = st.selectbox(
-                f"Category #{i+1}",
-                TASK_CATEGORIES,
-                key=f"cat_{target_worker_name}_{is_crew_log}_{i}_v{v}",
-            )
+            cat = st.selectbox(f"Category #{i+1}", TASK_CATEGORIES, key=f"cat_{target_worker_name}_{is_crew_log}_{i}_v{v}")
         with col_desc:
-            desc = st.text_input(
-                f"Task #{i+1} Description",
-                placeholder="e.g., Track Leveling",
-                key=f"desc_{target_worker_name}_{is_crew_log}_{i}_v{v}",
-            )
+            desc = st.text_input(f"Task #{i+1} Description", placeholder="e.g., Track Leveling", key=f"desc_{target_worker_name}_{is_crew_log}_{i}_v{v}")
         with col_assigned:
-            assigned_worker = st.selectbox(
-                f"Assigned To #{i+1}",
-                options=active_crew,
-                key=f"assigned_{target_worker_name}_{is_crew_log}_{i}_v{v}",
-            )
+            assigned_worker = st.selectbox(f"Assigned To #{i+1}", options=active_crew, key=f"assigned_{target_worker_name}_{is_crew_log}_{i}_v{v}")
         with col_hrs:
-            hrs = st.number_input(
-                "Hours",
-                min_value=0,
-                max_value=24,
-                value=2,
-                step=1,
-                key=f"hrs_{target_worker_name}_{is_crew_log}_{i}_v{v}",
-            )
+            hrs = st.number_input("Hours", min_value=0, max_value=24, value=2, step=1, key=f"hrs_{target_worker_name}_{is_crew_log}_{i}_v{v}")
         with col_min:
-            mins = st.selectbox(
-                "Minutes",
-                [0, 15, 30, 45],
-                key=f"min_{target_worker_name}_{is_crew_log}_{i}_v{v}",
-            )
+            mins = st.selectbox("Minutes", [0, 15, 30, 45], key=f"min_{target_worker_name}_{is_crew_log}_{i}_v{v}")
 
-        task_entries.append(
-            {
-                "category": cat,
-                "description": desc,
-                "assigned_worker": assigned_worker,
-                "hours": hrs,
-                "minutes": mins,
-            }
-        )
+        task_entries.append({
+            "category": cat,
+            "description": desc,
+            "assigned_worker": assigned_worker,
+            "hours": hrs,
+            "minutes": mins,
+        })
 
-    if st.button(
-        "➕ ADD MORE TASK LINES",
-        key=f"add_task_btn_{target_worker_name}_{is_crew_log}_v{v}",
-    ):
+    if st.button("➕ ADD MORE TASK LINES", key=f"add_task_btn_{target_worker_name}_{is_crew_log}_v{v}"):
         st.session_state[task_count_key] += 1
         st.rerun()
 
@@ -878,36 +826,20 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
     col_delay_cat, col_delay_notes = st.columns([1, 2])
 
     with col_delay_cat:
-        delay_reason = st.selectbox(
-            "Primary Delay Category",
-            options=DELAY_REASONS,
-            key=f"delay_reason_{target_worker_name}_{is_crew_log}_v{v}",
-        )
+        delay_reason = st.selectbox("Primary Delay Category", options=DELAY_REASONS, key=f"delay_reason_{target_worker_name}_{is_crew_log}_v{v}")
 
     with col_delay_notes:
-        site_remarks = st.text_area(
-            "Specific Site Notes / Remarks",
-            placeholder="Provide details...",
-            key=f"rem_{target_worker_name}_{is_crew_log}_v{v}",
-        )
+        site_remarks = st.text_area("Specific Site Notes / Remarks", placeholder="Provide details...", key=f"rem_{target_worker_name}_{is_crew_log}_v{v}")
 
     st.markdown("### 📷 Site Photo Documentation")
-    uploaded_photo = st.file_uploader(
-        "Upload Photo of Site",
-        type=["jpg", "jpeg", "png"],
-        key=f"photo_{target_worker_name}_{is_crew_log}_v{v}",
-    )
+    uploaded_photo = st.file_uploader("Upload Photo of Site", type=["jpg", "jpeg", "png"], key=f"photo_{target_worker_name}_{is_crew_log}_v{v}")
 
     if uploaded_photo is not None:
         st.image(uploaded_photo, caption="Uploaded Site Photo Preview", width=280)
 
     st.write("##")
 
-    if st.button(
-        "💾 Sync Daily Log to Database",
-        key=f"btn_sync_{target_worker_name}_{is_crew_log}_v{v}",
-        use_container_width=True,
-    ):
+    if st.button("💾 Sync Daily Log to Database", key=f"btn_sync_{target_worker_name}_{is_crew_log}_v{v}", use_container_width=True):
         valid_tasks = [t for t in task_entries if t["description"].strip()]
         
         if not valid_tasks:
@@ -929,9 +861,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
                 if not m.empty:
                     w_base = m.iloc[0].get("base_location", "Jaipur")
 
-            w_is_travel = (
-                str(w_base).strip().lower() != str(site_city).strip().lower()
-            )
+            w_is_travel = str(w_base).strip().lower() != str(site_city).strip().lower()
 
             log_id = f"LOG-{datetime.now().strftime('%Y%m%d%H%M%S')}-{idx+1}"
             log_entry = {
@@ -940,9 +870,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
                 "site_day": site_day_label,
                 "logged_date": str(log_date),
                 "worker_name": worker,
-                "worker_role": (
-                    "Team Lead" if worker == team_lead_selected else "Helper"
-                ),
+                "worker_role": "Team Lead" if worker == team_lead_selected else "Helper",
                 "team_lead_name": team_lead_selected,
                 "task_category": t["category"],
                 "task_name": t["description"],
@@ -974,13 +902,174 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 # 7. ROUTING & MODULE IMPLEMENTATION
 # ==========================================
 
+# --- SALESPERSON: MY SALES DASHBOARD ---
+if menu == "My Sales Dashboard":
+    st.header(f"💼 Salesperson Project Portal — {user_name} ({user_id})")
+    st.caption("Live monitoring of ongoing site installations, site statuses, and field team updates.")
+
+    df_sites = read_sheet("Sites_Master")
+    df_logs = read_sheet("Worker_Daily_Logs")
+
+    if df_sites.empty:
+        st.info("No sites found in database.")
+    else:
+        # Match sites by Salesperson ID or Salesperson Name
+        my_sites = df_sites[
+            (df_sites.get("salesperson_id", pd.Series()).astype(str).str.strip().str.lower() == user_id.lower())
+            | (df_sites.get("salesperson_name", pd.Series()).astype(str).str.strip().str.lower() == user_name.lower())
+        ].copy() if "salesperson_id" in df_sites.columns or "salesperson_name" in df_sites.columns else pd.DataFrame()
+
+        if my_sites.empty:
+            st.info("⚠️ You currently have no sites assigned to your Sales ID.")
+        else:
+            # KPIS
+            total_my_sites = len(my_sites)
+            in_prog_my_sites = len(my_sites[my_sites["status"].astype(str).str.strip().str.title() == "In Progress"])
+            hold_my_sites = len(my_sites[my_sites["status"].astype(str).str.strip().str.title() == "On Hold"])
+            completed_my_sites = len(my_sites[my_sites["status"].astype(str).str.strip().str.title().isin(["Handovered", "Completed"])])
+
+            s1, s2, s3, s4 = st.columns(4)
+            with s1:
+                st.markdown(f'<div class="kpi-card"><div class="kpi-number">{total_my_sites}</div><div class="kpi-label">Total Sites Acquired</div></div>', unsafe_allow_html=True)
+            with s2:
+                st.markdown(f'<div class="kpi-card"><div class="kpi-number" style="color:#00A859;">{in_prog_my_sites}</div><div class="kpi-label">In Progress</div></div>', unsafe_allow_html=True)
+            with s3:
+                st.markdown(f'<div class="kpi-card"><div class="kpi-number" style="color:#D32F2F;">{hold_my_sites}</div><div class="kpi-label">On Hold</div></div>', unsafe_allow_html=True)
+            with s4:
+                st.markdown(f'<div class="kpi-card"><div class="kpi-number">{completed_my_sites}</div><div class="kpi-label">Completed Handovers</div></div>', unsafe_allow_html=True)
+
+            st.divider()
+
+            # Detailed Site Explorer
+            st.subheader("📋 My Acquired Sites & Progress Breakdown")
+            for _, site in my_sites.iterrows():
+                site_id = site.get("installation_id", "N/A")
+                c_name = site.get("client_name", "N/A")
+                st_val = str(site.get("status", "In Progress")).title()
+                t_lead = site.get("team_lead", "Unassigned")
+                
+                # Fetch recent logs for this site
+                site_logs = df_logs[df_logs["installation_id"] == site_id] if not df_logs.empty and "installation_id" in df_logs.columns else pd.DataFrame()
+                workers_on_site = site_logs["worker_name"].unique().tolist() if not site_logs.empty and "worker_name" in site_logs.columns else []
+
+                badge_color = "#00A859" if st_val in ["In Progress", "Handovered"] else "#D32F2F"
+
+                with st.expander(f"📍 {site_id} — {c_name} [{st_val}]", expanded=True):
+                    col_info, col_team = st.columns(2)
+                    with col_info:
+                        st.write(f"**Client Phone:** {site.get('client_phone', 'N/A')}")
+                        st.write(f"**City:** {site.get('site_city', 'N/A')}")
+                        st.write(f"**Order Date:** {site.get('order_date', 'N/A')}")
+                        st.write(f"**Target Handover:** {site.get('handover_date', 'N/A')}")
+                        st.write(f"**Current Status:** <span style='color:{badge_color}; font-weight:bold;'>{st_val}</span>", unsafe_allow_html=True)
+                        if site.get("hold_reason"):
+                            st.error(f"**Reason for Hold:** {site.get('hold_reason')}")
+                    with col_team:
+                        st.write(f"**Supervisor / Team Lead:** {t_lead}")
+                        st.write(f"**Team Helpers:** {site.get('team_members', 'None')}")
+                        st.write(f"**Active Field Workers Logged:** {', '.join(workers_on_site) if workers_on_site else 'No field logs yet'}")
+                        st.write(f"**Total Days Worked On Site:** {site_logs['logged_date'].nunique() if not site_logs.empty else 0} Days")
+
+# --- ADMIN: SALES ANALYTICS REPORT ---
+elif menu == "Sales Analytics Report":
+    st.header("📊 Salesperson Performance & Orders Analytics")
+    st.caption("Track order volume, project statuses, and revenue acquisition per Salesperson across custom time windows.")
+
+    df_sites = read_sheet("Sites_Master")
+    df_workers = read_sheet("Workers_Master")
+
+    if df_sites.empty:
+        st.warning("No site records found in Sites_Master.")
+    else:
+        # Time Period Filter Header
+        f1, f2 = st.columns([2, 2])
+        with f1:
+            time_filter = st.selectbox(
+                "📅 Select Report Time Period:",
+                [
+                    "All Time",
+                    "Last 15 Days",
+                    "Last 1 Month (30 Days)",
+                    "Last 3 Months (90 Days)",
+                    "Last 6 Months (180 Days)",
+                    "Last 9 Months (270 Days)",
+                    "Quarterly (90 Days)",
+                    "Last 1 Year (365 Days)",
+                ],
+            )
+
+        # Date Filtering Logic
+        filtered_sites = df_sites.copy()
+        if "order_date" in filtered_sites.columns:
+            filtered_sites["order_dt"] = pd.to_datetime(filtered_sites["order_date"], errors="coerce")
+            today = datetime.now()
+
+            days_map = {
+                "Last 15 Days": 15,
+                "Last 1 Month (30 Days)": 30,
+                "Last 3 Months (90 Days)": 90,
+                "Last 6 Months (180 Days)": 180,
+                "Last 9 Months (270 Days)": 270,
+                "Quarterly (90 Days)": 90,
+                "Last 1 Year (365 Days)": 365,
+            }
+
+            if time_filter in days_map:
+                cutoff_date = today - timedelta(days=days_map[time_filter])
+                filtered_sites = filtered_sites[filtered_sites["order_dt"] >= cutoff_date]
+
+        # Total Volume KPIs
+        k1, k2, k3, k4 = st.columns(4)
+        with k1:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{len(filtered_sites)}</div><div class="kpi-label">Orders Acquired</div></div>', unsafe_allow_html=True)
+        with k2:
+            in_prog = len(filtered_sites[filtered_sites["status"].astype(str).str.strip().str.title() == "In Progress"]) if "status" in filtered_sites.columns else 0
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number" style="color:#00A859;">{in_prog}</div><div class="kpi-label">Sites In Progress</div></div>', unsafe_allow_html=True)
+        with k3:
+            on_hold = len(filtered_sites[filtered_sites["status"].astype(str).str.strip().str.title() == "On Hold"]) if "status" in filtered_sites.columns else 0
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number" style="color:#D32F2F;">{on_hold}</div><div class="kpi-label">Sites On Hold</div></div>', unsafe_allow_html=True)
+        with k4:
+            handovered = len(filtered_sites[filtered_sites["status"].astype(str).str.strip().str.title().isin(["Handovered", "Completed"])]) if "status" in filtered_sites.columns else 0
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{handovered}</div><div class="kpi-label">Completed Handovers</div></div>', unsafe_allow_html=True)
+
+        st.divider()
+
+        # Visual Graphs & Breakdown
+        if "salesperson_name" in filtered_sites.columns or "salesperson_id" in filtered_sites.columns:
+            sp_col = "salesperson_name" if "salesperson_name" in filtered_sites.columns else "salesperson_id"
+            
+            c_chart1, c_chart2 = st.columns(2)
+            with c_chart1:
+                st.subheader("📦 Total Orders Brought per Salesperson")
+                fig_orders = px.bar(
+                    filtered_sites,
+                    x=sp_col,
+                    color="status",
+                    title=f"Orders & Status Breakdown ({time_filter})",
+                    barmode="stack",
+                )
+                st.plotly_chart(fig_orders, use_container_width=True)
+
+            with c_chart2:
+                st.subheader("🎯 Site Status Share")
+                fig_pie = px.pie(
+                    filtered_sites,
+                    names="status",
+                    title=f"Site Execution Distribution ({time_filter})",
+                    hole=0.4,
+                )
+                st.plotly_chart(fig_pie, use_container_width=True)
+
+            st.subheader("📜 Detailed Salesperson Order Records")
+            disp_cols = [c for c in ["installation_id", "client_name", sp_col, "order_date", "site_city", "status", "hold_reason"] if c in filtered_sites.columns]
+            st.dataframe(filtered_sites[disp_cols], use_container_width=True)
+        else:
+            st.info("No salesperson assignment columns found in Sites_Master yet.")
+
 # --- WORKER: MY WORK DASHBOARD ---
-if menu == "My Work Dashboard":
+elif menu == "My Work Dashboard":
     st.header(f"⚡ Daily Workspace & Task Pipeline — {user_name}")
-    st.caption(
-        "Track your assigned site duties, update live task progress, and view"
-        " performance metrics."
-    )
+    st.caption("Track your assigned site duties, update live task progress, and view performance metrics.")
 
     df_tasks = read_sheet("Task_Assignments")
     df_sites = read_sheet("Sites_Master")
@@ -990,214 +1079,42 @@ if menu == "My Work Dashboard":
 
     my_logs = pd.DataFrame()
     if not df_logs.empty and "worker_name" in df_logs.columns:
-        my_logs = df_logs[
-            df_logs["worker_name"].astype(str).str.strip().str.lower()
-            == user_name.strip().lower()
-        ]
+        my_logs = df_logs[df_logs["worker_name"].astype(str).str.strip().str.lower() == user_name.strip().lower()]
 
-    days_worked = (
-        my_logs["logged_date"].nunique()
-        if not my_logs.empty and "logged_date" in my_logs.columns
-        else 0
-    )
-    days_travelled = (
-        len(my_logs[my_logs["is_travel_day"] == "Yes"])
-        if not my_logs.empty and "is_travel_day" in my_logs.columns
-        else 0
-    )
-    total_hours = (
-        my_logs["hours_spent"].sum()
-        if not my_logs.empty and "hours_spent" in my_logs.columns
-        else 0
-    )
+    days_worked = my_logs["logged_date"].nunique() if not my_logs.empty and "logged_date" in my_logs.columns else 0
+    days_travelled = len(my_logs[my_logs["is_travel_day"] == "Yes"]) if not my_logs.empty and "is_travel_day" in my_logs.columns else 0
+    total_hours = my_logs["hours_spent"].sum() if not my_logs.empty and "hours_spent" in my_logs.columns else 0
 
     avg_handover_days = "N/A"
     if not df_sites.empty and "installation_id" in df_sites.columns:
-        my_site_ids = (
-            my_logs["installation_id"].unique() if not my_logs.empty else []
-        )
-        my_sites = df_sites[
-            df_sites["installation_id"].isin(my_site_ids)
-        ].copy()
+        my_site_ids = my_logs["installation_id"].unique() if not my_logs.empty else []
+        my_sites = df_sites[df_sites["installation_id"].isin(my_site_ids)].copy()
 
-        if (
-            not my_sites.empty
-            and "order_date" in my_sites.columns
-            and "handover_date" in my_sites.columns
-        ):
-            my_sites["order_dt"] = pd.to_datetime(
-                my_sites["order_date"], errors="coerce"
-            )
-            my_sites["handover_dt"] = pd.to_datetime(
-                my_sites["handover_date"], errors="coerce"
-            )
-            my_sites["duration"] = (
-                my_sites["handover_dt"] - my_sites["order_dt"]
-            ).dt.days
+        if not my_sites.empty and "order_date" in my_sites.columns and "handover_date" in my_sites.columns:
+            my_sites["order_dt"] = pd.to_datetime(my_sites["order_date"], errors="coerce")
+            my_sites["handover_dt"] = pd.to_datetime(my_sites["handover_date"], errors="coerce")
+            my_sites["duration"] = (my_sites["handover_dt"] - my_sites["order_dt"]).dt.days
             valid_durations = my_sites["duration"].dropna()
             if not valid_durations.empty:
                 avg_handover_days = f"{round(valid_durations.mean(), 1)} Days"
 
-    perf_score = int(
-        (total_hours * 2) + (days_travelled * 15) + (days_worked * 10)
-    )
+    perf_score = int((total_hours * 2) + (days_travelled * 15) + (days_worked * 10))
 
     k1, k2, k3, k4, k5 = st.columns(5)
     with k1:
-        st.markdown(
-            '<div class="kpi-card"><div'
-            f' class="kpi-number">{days_worked}</div><div'
-            ' class="kpi-label">Days Worked</div></div>',
-            unsafe_allow_html=True,
-        )
+        st.markdown(f'<div class="kpi-card"><div class="kpi-number">{days_worked}</div><div class="kpi-label">Days Worked</div></div>', unsafe_allow_html=True)
     with k2:
-        st.markdown(
-            '<div class="kpi-card"><div'
-            f' class="kpi-number">{days_travelled}</div><div'
-            ' class="kpi-label">Travel Days</div></div>',
-            unsafe_allow_html=True,
-        )
+        st.markdown(f'<div class="kpi-card"><div class="kpi-number">{days_travelled}</div><div class="kpi-label">Travel Days</div></div>', unsafe_allow_html=True)
     with k3:
-        st.markdown(
-            '<div class="kpi-card"><div'
-            f' class="kpi-number">{total_hours} hrs</div><div'
-            ' class="kpi-label">Total Hours</div></div>',
-            unsafe_allow_html=True,
-        )
+        st.markdown(f'<div class="kpi-card"><div class="kpi-number">{total_hours} hrs</div><div class="kpi-label">Total Hours</div></div>', unsafe_allow_html=True)
     with k4:
-        st.markdown(
-            '<div class="kpi-card"><div'
-            f' class="kpi-number">{avg_handover_days}</div><div'
-            ' class="kpi-label">Avg Handover Speed</div></div>',
-            unsafe_allow_html=True,
-        )
+        st.markdown(f'<div class="kpi-card"><div class="kpi-number">{avg_handover_days}</div><div class="kpi-label">Avg Handover Speed</div></div>', unsafe_allow_html=True)
     with k5:
-        st.markdown(
-            '<div class="kpi-card"><div class="kpi-number" style="color:'
-            f' #00A859;">{perf_score} pts</div><div'
-            ' class="kpi-label">Performance Score</div></div>',
-            unsafe_allow_html=True,
-        )
-
-    st.divider()
-
-    st.markdown("### 📋 Assigned Work Pipeline")
-
-    my_tasks = pd.DataFrame()
-    if not df_tasks.empty and "assigned_worker" in df_tasks.columns:
-        my_tasks = df_tasks[
-            df_tasks["assigned_worker"].astype(str).str.strip().str.lower()
-            == user_name.strip().lower()
-        ]
-
-    if my_tasks.empty:
-        st.info("ℹ️ No direct task assignments found in `Task_Assignments`.")
-    else:
-        pending_tasks = my_tasks[
-            my_tasks["status"]
-            .astype(str)
-            .str.lower()
-            .isin(["pending", "in progress"])
-        ]
-        completed_tasks = my_tasks[
-            my_tasks["status"].astype(str).str.lower() == "completed"
-        ]
-
-        t_tab1, t_tab2 = st.tabs([
-            f"⏳ Active & Pending Tasks ({len(pending_tasks)})",
-            f"✅ Completed Tasks ({len(completed_tasks)})",
-        ])
-
-        with t_tab1:
-            if pending_tasks.empty:
-                st.success("🎉 You are all caught up!")
-            else:
-                for idx, t_row in pending_tasks.iterrows():
-                    t_id = t_row.get("task_id", f"TSK-{idx}")
-                    site_id = t_row.get("installation_id", "N/A")
-                    t_name = t_row.get("task_name", "Unassigned Task")
-                    t_status = t_row.get("status", "Pending")
-
-                    site_detail = "N/A"
-                    if not df_sites.empty and "installation_id" in df_sites.columns:
-                        match = df_sites[df_sites["installation_id"] == site_id]
-                        if not match.empty:
-                            site_detail = (
-                                f"{match.iloc[0].get('site_city', '')} -"
-                                f" {match.iloc[0].get('site_address', '')}"
-                            )
-
-                    with st.expander(
-                        f"📍 Site: {site_id} | Task: {t_name} [{t_status}]",
-                        expanded=True,
-                    ):
-                        st.write(f"**Location / Address:** {site_detail}")
-                        st.write(
-                            "**Category:**"
-                            f" {t_row.get('task_category', 'General')}"
-                        )
-                        st.write(
-                            "**Target Completion:**"
-                            f" {t_row.get('target_date', 'Asap')}"
-                        )
-
-                        c_act1, c_act2 = st.columns([2, 1])
-                        with c_act1:
-                            new_status = st.selectbox(
-                                "Update Status:",
-                                ["Pending", "In Progress", "Completed"],
-                                index=(
-                                    [
-                                        "Pending",
-                                        "In Progress",
-                                        "Completed",
-                                    ].index(t_status)
-                                    if t_status
-                                    in ["Pending", "In Progress", "Completed"]
-                                    else 0
-                                ),
-                                key=f"status_select_{t_id}",
-                            )
-                        with c_act2:
-                            st.write(" ")
-                            st.write(" ")
-                            if st.button("Update Task Status", key=f"btn_upd_{t_id}"):
-                                update_sheet_row(
-                                    "Task_Assignments",
-                                    "task_id",
-                                    t_id,
-                                    {"status": new_status},
-                                )
-                                st.success(
-                                    f"Task status updated to {new_status}!"
-                                )
-                                st.rerun()
-
-        with t_tab2:
-            if completed_tasks.empty:
-                st.info("No completed tasks recorded yet.")
-            else:
-                disp_cols = [
-                    c
-                    for c in [
-                        "task_id",
-                        "installation_id",
-                        "task_category",
-                        "task_name",
-                        "status",
-                        "completed_date",
-                    ]
-                    if c in completed_tasks.columns
-                ]
-                st.dataframe(
-                    completed_tasks[disp_cols], use_container_width=True
-                )
+        st.markdown(f'<div class="kpi-card"><div class="kpi-number" style="color:#00A859;">{perf_score} pts</div><div class="kpi-label">Performance Score</div></div>', unsafe_allow_html=True)
 
 # --- COMMON: LOG DAILY TASKS ---
 elif menu == "Log Daily Tasks":
-    render_restricted_work_input(
-        target_worker_name=user_name, is_crew_log=False
-    )
+    render_restricted_work_input(target_worker_name=user_name, is_crew_log=False)
 
 # --- WORKER: MY WORK HISTORY & PERFORMANCE ---
 elif menu == "My Work History & Performance":
@@ -1208,24 +1125,17 @@ elif menu == "My Work History & Performance":
     if df_logs.empty or "worker_name" not in df_logs.columns:
         st.info("⚠️ No Field Logs Recorded Yet")
     else:
-        my_logs = df_logs[
-            df_logs["worker_name"].astype(str).str.strip().str.lower()
-            == user_name.strip().lower()
-        ]
+        my_logs = df_logs[df_logs["worker_name"].astype(str).str.strip().str.lower() == user_name.strip().lower()]
 
         if my_logs.empty:
             st.info("⚠️ You have not submitted any daily work logs yet.")
         else:
-            excel_bytes = generate_excel_download(
-                my_logs, f"{user_name}_Performance_Report.xlsx"
-            )
+            excel_bytes = generate_excel_download(my_logs, f"{user_name}_Performance_Report.xlsx")
             st.download_button(
                 "📥 Download Performance Excel Report",
                 data=excel_bytes,
                 file_name=f"{user_name}_Performance_Report.xlsx",
-                mime=(
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                ),
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
 
             st.write("##")
@@ -1272,48 +1182,11 @@ elif menu == "My Work History & Performance":
                 ]
                 if c in my_logs.columns
             ]
-            st.dataframe(
-                my_logs[disp_cols].sort_values(
-                    by="logged_date", ascending=False
-                ),
-                use_container_width=True,
-            )
+            st.dataframe(my_logs[disp_cols].sort_values(by="logged_date", ascending=False), use_container_width=True)
 
-# --- WORKER DASHBOARD SECTION ---
-elif menu == "My Work Dashboard":
-    st.header(f"⚡ My Personal Summary — {user_name}")
-    
-    df_logs = read_sheet("Worker_Daily_Logs")
-    df_expenses = read_sheet("Expense_Logs")
-    
-    my_logs = df_logs[df_logs["worker_name"].str.strip().str.lower() == user_name.strip().lower()] if not df_logs.empty else pd.DataFrame()
-    my_expenses = df_expenses[df_expenses["worker_name"].str.strip().str.lower() == user_name.strip().lower()] if not df_expenses.empty else pd.DataFrame()
-
-    if my_logs.empty:
-        st.info("No work history found.")
-    else:
-        # Personal KPI Cards
-        w1, w2, w3, w4, w5, w6 = st.columns(6)
-        w1.metric("Sites Visited", my_logs["installation_id"].nunique())
-        w2.metric("Days Worked", my_logs["logged_date"].nunique())
-        w3.metric("Travel Days", len(my_logs[my_logs["is_travel_day"] == "Yes"]))
-        w4.metric("Travel Expenses", f"₹{my_expenses['travel_expense'].sum():,.0f}" if "travel_expense" in my_expenses.columns else "₹0")
-        w5.metric("Stay Expenses", f"₹{my_expenses['stay_expense'].sum():,.0f}" if "stay_expense" in my_expenses.columns else "₹0")
-        w6.metric("Leaves/Absences", len(my_logs[my_logs["attendance_status"] == "Leave"]) if "attendance_status" in my_logs.columns else "0")
-
-        # Visual Chart of Personal Logged Problems
-        st.write("##")
-        fig_my_problems = px.pie(
-            my_logs, 
-            names="delay_category", 
-            title="Overview of Issues Faced on Sites",
-            hole=0.4
-        )
-        st.plotly_chart(fig_my_problems, use_container_width=True)
-        
-# --- WORKER: MY PROFILE & SETTINGS ---
+# --- WORKER/SALESPERSON: MY PROFILE & SETTINGS ---
 elif menu == "My Profile & Settings":
-    st.header("👤 Worker Profile & Security")
+    st.header("👤 Profile & Security Settings")
 
     col_l, col_center, col_r = st.columns([0.1, 0.8, 0.1])
     with col_center:
@@ -1322,7 +1195,7 @@ elif menu == "My Profile & Settings":
             <div class="card-box">
                 <h3 style="margin:0;">{user_name}</h3>
                 <p style="margin:5px 0;"><b>Role:</b> {user_role}</p>
-                <p style="margin:5px 0;"><b>Worker ID:</b> {user.get('worker_id', 'N/A')}</p>
+                <p style="margin:5px 0;"><b>Work ID:</b> {user_id}</p>
                 <p style="margin:5px 0;"><b>Base Station:</b> {user_base_location}</p>
             </div>
         """,
@@ -1332,16 +1205,10 @@ elif menu == "My Profile & Settings":
         st.subheader("🔑 Change Security PIN")
         with st.form("change_pin_form"):
             curr_pin = st.text_input("Current PIN", type="password")
-            new_pin1 = st.text_input(
-                "New 4-Digit PIN", type="password", max_chars=4
-            )
-            new_pin2 = st.text_input(
-                "Confirm New PIN", type="password", max_chars=4
-            )
+            new_pin1 = st.text_input("New 4-Digit PIN", type="password", max_chars=4)
+            new_pin2 = st.text_input("Confirm New PIN", type="password", max_chars=4)
 
-            update_pin_btn = st.form_submit_button(
-                "Update Security PIN", use_container_width=True
-            )
+            update_pin_btn = st.form_submit_button("Update Security PIN", use_container_width=True)
 
             if update_pin_btn:
                 if str(curr_pin).strip() != str(user.get("pin", "")).strip():
@@ -1351,31 +1218,20 @@ elif menu == "My Profile & Settings":
                 elif new_pin1 != new_pin2:
                     st.error("New PINs do not match!")
                 else:
-                    success = update_sheet_row(
-                        "Workers_Master",
-                        "name",
-                        user_name,
-                        {"pin": new_pin1.strip()},
-                    )
+                    success = update_sheet_row("Workers_Master", "name", user_name, {"pin": new_pin1.strip()})
                     if success:
-                        st.session_state.authenticated_user["pin"] = (
-                            new_pin1.strip()
-                        )
+                        st.session_state.authenticated_user["pin"] = new_pin1.strip()
                         st.success("PIN updated successfully!")
                         st.rerun()
 
 # --- SUPERVISOR: TEAM HEAD DASHBOARD ---
 elif menu == "Team Head Dashboard":
     st.header("👥 Dual-Tab Team Head Dashboard")
-    tab_personal, tab_crew = st.tabs(
-        ["👤 Personal Work Log", "👨‍🔧 Crew Task Logging"]
-    )
+    tab_personal, tab_crew = st.tabs(["👤 Personal Work Log", "👨‍🔧 Crew Task Logging"])
 
     with tab_personal:
         st.subheader(f"Personal Execution Log ({user_name})")
-        render_restricted_work_input(
-            target_worker_name=user_name, is_crew_log=False
-        )
+        render_restricted_work_input(target_worker_name=user_name, is_crew_log=False)
 
     with tab_crew:
         st.subheader("Manage Active Crew Logs")
@@ -1391,17 +1247,12 @@ elif menu == "Team Head Dashboard":
         else:
             selected_crew = st.selectbox("Select Worker to Log For", crew_members)
             st.divider()
-            render_restricted_work_input(
-                target_worker_name=selected_crew, is_crew_log=True
-            )
+            render_restricted_work_input(target_worker_name=selected_crew, is_crew_log=True)
 
 # --- SUPERVISOR: ACTIVE TASKS DASHBOARD ---
 elif menu == "Active Tasks Dashboard":
     st.header("📋 Active Tasks Dashboard")
-    st.caption(
-        "Track site installation progress, monitor individual task statuses,"
-        " and export site reports."
-    )
+    st.caption("Track site installation progress, monitor individual task statuses, and export site reports.")
 
     df_tasks = read_sheet("Task_Assignments")
     df_sites = read_sheet("Sites_Master")
@@ -1418,291 +1269,17 @@ elif menu == "Active Tasks Dashboard":
             )
             site_filter = st.selectbox("Filter by Site", site_options)
         with col_f2:
-            status_filter = st.selectbox(
-                "Filter by Task Status",
-                ["All Statuses", "In Progress", "Pending", "Completed"],
-            )
+            status_filter = st.selectbox("Filter by Task Status", ["All Statuses", "In Progress", "Pending", "Completed"])
 
         filtered_tasks = df_tasks.copy()
-        if (
-            site_filter != "All Sites"
-            and "installation_id" in filtered_tasks.columns
-        ):
-            filtered_tasks = filtered_tasks[
-                filtered_tasks["installation_id"] == site_filter
-            ]
-        if (
-            status_filter != "All Statuses"
-            and "status" in filtered_tasks.columns
-        ):
-            filtered_tasks = filtered_tasks[
-                filtered_tasks["status"] == status_filter
-            ]
+        if site_filter != "All Sites" and "installation_id" in filtered_tasks.columns:
+            filtered_tasks = filtered_tasks[filtered_tasks["installation_id"] == site_filter]
+        if status_filter != "All Statuses" and "status" in filtered_tasks.columns:
+            filtered_tasks = filtered_tasks[filtered_tasks["status"] == status_filter]
 
         st.write("##")
-        if site_filter != "All Sites":
-            site_task_subset = (
-                df_tasks[df_tasks["installation_id"] == site_filter]
-                if "installation_id" in df_tasks.columns
-                else pd.DataFrame()
-            )
-
-            tot_site_tasks = len(site_task_subset)
-            completed_tasks = (
-                len(site_task_subset[site_task_subset["status"] == "Completed"])
-                if "status" in site_task_subset.columns
-                else 0
-            )
-            in_prog_tasks = (
-                len(
-                    site_task_subset[
-                        site_task_subset["status"] == "In Progress"
-                    ]
-                )
-                if "status" in site_task_subset.columns
-                else 0
-            )
-
-            overall_pct = (
-                int((completed_tasks / tot_site_tasks) * 100)
-                if tot_site_tasks > 0
-                else 0
-            )
-
-            st.subheader(f"📊 Site Progress Tracker — {site_filter}")
-            st.progress(overall_pct / 100)
-
-            k1, k2, k3, k4 = st.columns(4)
-            with k1:
-                st.markdown(
-                    '<div class="kpi-card"><div'
-                    f' class="kpi-number">{overall_pct}%</div><div'
-                    ' class="kpi-label">Overall Completion</div></div>',
-                    unsafe_allow_html=True,
-                )
-            with k2:
-                st.markdown(
-                    '<div class="kpi-card"><div'
-                    f' class="kpi-number">{tot_site_tasks}</div><div'
-                    ' class="kpi-label">Total Site Tasks</div></div>',
-                    unsafe_allow_html=True,
-                )
-            with k3:
-                st.markdown(
-                    '<div class="kpi-card"><div'
-                    f' class="kpi-number">{in_prog_tasks}</div><div'
-                    ' class="kpi-label">In Progress</div></div>',
-                    unsafe_allow_html=True,
-                )
-            with k4:
-                st.markdown(
-                    '<div class="kpi-card"><div'
-                    f' class="kpi-number">{completed_tasks}</div><div'
-                    ' class="kpi-label">Completed</div></div>',
-                    unsafe_allow_html=True,
-                )
-
-            st.divider()
-
         st.subheader(f"Task List ({len(filtered_tasks)} Records)")
         st.dataframe(filtered_tasks, use_container_width=True)
-
-# --- PAGE: EMPLOYEE ANALYTICS & REPORTS ---
-elif menu == "Employee Analytics & Reports":
-    st.header("👤 Employee Deep Dive & Individual Analytics")
-    st.caption(
-        "Select any worker to isolate their performance, daily progress"
-        " graphs, and travel logs."
-    )
-
-    df_workers = read_sheet("Workers_Master")
-    df_logs = read_sheet("Worker_Daily_Logs")
-
-    if df_workers.empty:
-        st.warning("⚠️ Workers database is empty.")
-    else:
-        worker_names = sorted(
-            df_workers["name"].astype(str).str.strip().unique().tolist()
-        )
-        default_index = (
-            worker_names.index("Parvesh Kumar")
-            if "Parvesh Kumar" in worker_names
-            else 0
-        )
-        selected_emp = st.selectbox(
-            "🔍 Select Employee to Generate Report:",
-            worker_names,
-            index=default_index,
-        )
-
-        emp_info = df_workers[df_workers["name"] == selected_emp].iloc[0]
-
-        st.markdown(
-            f"""
-            <div class="card-box">
-                <h3 style="margin:0;">{emp_info.get('name')} ({emp_info.get('worker_id')})</h3>
-                <p style="margin:5px 0;"><b>Role:</b> {emp_info.get('role')} | <b>Base Location:</b> {emp_info.get('base_location')}</p>
-            </div>
-        """,
-            unsafe_allow_html=True,
-        )
-
-        if df_logs.empty or "worker_name" not in df_logs.columns:
-            st.info(f"No task logs recorded yet for {selected_emp}.")
-        else:
-            emp_logs = df_logs[
-                df_logs["worker_name"].astype(str).str.strip().str.lower()
-                == selected_emp.strip().lower()
-            ].copy()
-
-            if emp_logs.empty:
-                st.warning(f"⚠️ No field logs recorded for **{selected_emp}**.")
-            else:
-                st.subheader("⚙️ Filter Report")
-                col_f1, col_f2, col_f3 = st.columns(3)
-
-                with col_f1:
-                    site_list = [
-                        "All Sites"
-                    ] + emp_logs["installation_id"].unique().tolist()
-                    filter_site = st.selectbox(
-                        "Filter by Installation Site", site_list
-                    )
-                with col_f2:
-                    travel_opt = [
-                        "All Days",
-                        "Travel Days Only (Yes)",
-                        "Local Days Only (No)",
-                    ]
-                    filter_travel = st.selectbox(
-                        "Filter by Travel Status", travel_opt
-                    )
-                with col_f3:
-                    cat_col = (
-                        "task_category"
-                        if "task_category" in emp_logs.columns
-                        else "task_name"
-                    )
-                    task_list = [
-                        "All Categories"
-                    ] + emp_logs[cat_col].unique().tolist()
-                    filter_task = st.selectbox("Filter by Category", task_list)
-
-                filtered_emp_logs = emp_logs.copy()
-                if filter_site != "All Sites":
-                    filtered_emp_logs = filtered_emp_logs[
-                        filtered_emp_logs["installation_id"] == filter_site
-                    ]
-                if filter_travel == "Travel Days Only (Yes)":
-                    filtered_emp_logs = filtered_emp_logs[
-                        filtered_emp_logs["is_travel_day"] == "Yes"
-                    ]
-                elif filter_travel == "Local Days Only (No)":
-                    filtered_emp_logs = filtered_emp_logs[
-                        filtered_emp_logs["is_travel_day"] == "No"
-                    ]
-                if filter_task != "All Categories":
-                    filtered_emp_logs = filtered_emp_logs[
-                        filtered_emp_logs[cat_col] == filter_task
-                    ]
-
-                tot_hours = (
-                    filtered_emp_logs["hours_spent"].sum()
-                    if "hours_spent" in filtered_emp_logs.columns
-                    else 0
-                )
-                tot_travel_days = (
-                    len(
-                        filtered_emp_logs[
-                            filtered_emp_logs["is_travel_day"] == "Yes"
-                        ]
-                    )
-                    if "is_travel_day" in filtered_emp_logs.columns
-                    else 0
-                )
-                tot_projects = (
-                    filtered_emp_logs["installation_id"].nunique()
-                    if "installation_id" in filtered_emp_logs.columns
-                    else 0
-                )
-
-                st.write("##")
-                k1, k2, k3 = st.columns(3)
-                with k1:
-                    st.markdown(
-                        '<div class="kpi-card"><div'
-                        f' class="kpi-number">{tot_hours} hrs</div><div'
-                        ' class="kpi-label">Total Logged Hours</div></div>',
-                        unsafe_allow_html=True,
-                    )
-                with k2:
-                    st.markdown(
-                        '<div class="kpi-card"><div'
-                        f' class="kpi-number">{tot_travel_days} Days</div><div'
-                        ' class="kpi-label">Travel Days (TA/DA)</div></div>',
-                        unsafe_allow_html=True,
-                    )
-                with k3:
-                    st.markdown(
-                        '<div class="kpi-card"><div'
-                        f' class="kpi-number">{tot_projects}</div><div'
-                        ' class="kpi-label">Unique Sites Worked</div></div>',
-                        unsafe_allow_html=True,
-                    )
-
-                st.divider()
-
-                st.subheader("📊 Individual Work Breakdown")
-                g1, g2 = st.columns(2)
-
-                with g1:
-                    fig_hrs = px.bar(
-                        filtered_emp_logs,
-                        x="logged_date",
-                        y="hours_spent",
-                        color="installation_id",
-                        title=f"Daily Hours Logged by {selected_emp}",
-                    )
-                    st.plotly_chart(fig_hrs, use_container_width=True)
-
-                with g2:
-                    if "task_category" in filtered_emp_logs.columns:
-                        fig_cat = px.pie(
-                            filtered_emp_logs,
-                            names="task_category",
-                            values="hours_spent",
-                            title="Time Spent per Category",
-                        )
-                        st.plotly_chart(fig_cat, use_container_width=True)
-
-                st.subheader(
-                    f"📋 Detailed Work Logs ({len(filtered_emp_logs)} Records)"
-                )
-                disp_cols = [
-                    c
-                    for c in [
-                        "log_id",
-                        "site_day",
-                        "logged_date",
-                        "installation_id",
-                        "worker_role",
-                        "team_lead_name",
-                        "task_category",
-                        "task_name",
-                        "hours_spent",
-                        "minutes_spent",
-                        "is_travel_day",
-                        "site_remarks",
-                        "site_photo",
-                    ]
-                    if c in filtered_emp_logs.columns
-                ]
-                st.dataframe(
-                    filtered_emp_logs[disp_cols].sort_values(
-                        by="logged_date", ascending=False
-                    ),
-                    use_container_width=True,
-                )
 
 # --- ADMIN: ANALYTICS DASHBOARD ---
 elif menu == "Admin Analytics Dashboard":
@@ -1712,31 +1289,26 @@ elif menu == "Admin Analytics Dashboard":
     df_expenses = read_sheet("Expense_Logs")
     df_sites = read_sheet("Sites_Master")
 
-    # 1. Dynamic Site Details Filtering for "Running" Sites
     active_site_ids = []
     if not df_sites.empty and "installation_id" in df_sites.columns:
         df_sites_copy = df_sites.copy()
         df_sites_copy.columns = [str(col).strip().lower().replace(" ", "_") for col in df_sites_copy.columns]
         
-        # Filter active / running sites
         running_sites = df_sites_copy[
             ~df_sites_copy["status"].astype(str).str.strip().str.title().isin(["Handovered", "Handover", "Completed"])
         ]
         active_site_ids = running_sites["installation_id"].unique().tolist()
 
-    # Filter daily logs only for Running/Active sites
     if not df_logs.empty and active_site_ids:
         df_logs = df_logs[df_logs["installation_id"].isin(active_site_ids)]
 
     if df_logs.empty:
         st.info("No active log data available for running sites.")
     else:
-        # 2. KPI Metrics Calculations
         sites_visited = df_logs["installation_id"].nunique() if "installation_id" in df_logs.columns else 0
         days_worked = df_logs["logged_date"].nunique() if "logged_date" in df_logs.columns else 0
         days_travelled = len(df_logs[df_logs["is_travel_day"] == "Yes"]) if "is_travel_day" in df_logs.columns else 0
 
-        # Expense calculations from Expense_Logs sheet
         travel_exp = (
             pd.to_numeric(df_expenses["travel_expense"], errors="coerce").sum() 
             if not df_expenses.empty and "travel_expense" in df_expenses.columns 
@@ -1747,14 +1319,8 @@ elif menu == "Admin Analytics Dashboard":
             if not df_expenses.empty and "stay_expense" in df_expenses.columns 
             else 0
         )
-        leave_days = (
-            len(df_logs[df_logs["attendance_status"] == "Leave"]) 
-            if "attendance_status" in df_logs.columns 
-            else 0
-        )
 
-        # 3. Interactive KPI Cards Row
-        k1, k2, k3, k4, k5, k6 = st.columns(6)
+        k1, k2, k3, k4, k5 = st.columns(5)
         with k1:
             st.markdown(f'<div class="kpi-card"><div class="kpi-number">{sites_visited}</div><div class="kpi-label">Active Sites Visited</div></div>', unsafe_allow_html=True)
         with k2:
@@ -1765,12 +1331,9 @@ elif menu == "Admin Analytics Dashboard":
             st.markdown(f'<div class="kpi-card"><div class="kpi-number">₹{travel_exp:,.0f}</div><div class="kpi-label">Travel Expense</div></div>', unsafe_allow_html=True)
         with k5:
             st.markdown(f'<div class="kpi-card"><div class="kpi-number">₹{stay_exp:,.0f}</div><div class="kpi-label">Stay Expense</div></div>', unsafe_allow_html=True)
-        with k6:
-            st.markdown(f'<div class="kpi-card"><div class="kpi-number" style="color:#D32F2F;">{leave_days}</div><div class="kpi-label">On-Site Leaves</div></div>', unsafe_allow_html=True)
 
         st.divider()
 
-        # 4. Operations & Expense Visualizations
         g1, g2 = st.columns(2)
         with g1:
             st.subheader("⚠️ Problems & Delays Encountered")
@@ -1782,7 +1345,6 @@ elif menu == "Admin Analytics Dashboard":
                         x="delay_category",
                         color="installation_id",
                         title="Site Problems by Category (Running Sites)",
-                        labels={"delay_category": "Problem Type", "count": "Occurrences"}
                     )
                     st.plotly_chart(fig_delay, use_container_width=True)
                 else:
@@ -1797,23 +1359,18 @@ elif menu == "Admin Analytics Dashboard":
                     y=["travel_expense", "stay_expense"],
                     title="Travel vs. Stay Expense per Worker",
                     barmode="stack",
-                    labels={"value": "Amount (₹)", "worker_name": "Worker"}
                 )
                 st.plotly_chart(fig_exp, use_container_width=True)
-            else:
-                st.info("No expense entries submitted yet.")
-                
+
 # --- ADMIN: USER MANAGEMENT ---
 elif menu == "User Management":
-    st.header("👥 User & Access Management")
+    st.header("👥 Dynamic User & Access Management")
     df_workers = read_sheet("Workers_Master")
 
     if st.session_state.get("user_created_success"):
         new_user = st.session_state.get("created_user_name", "User")
         st.toast(f"👤 Account for {new_user} created successfully!", icon="✅")
         del st.session_state["user_created_success"]
-        if "created_user_name" in st.session_state:
-            del st.session_state["created_user_name"]
 
     tab_add, tab_batch, tab_edit = st.tabs([
         "➕ Add Single User",
@@ -1822,49 +1379,37 @@ elif menu == "User Management":
     ])
 
     with tab_add:
-        st.subheader("Add Worker / Supervisor to System")
+        st.subheader("Add Employee / Salesperson / Supervisor")
         col_l, col_center, col_r = st.columns([0.1, 0.8, 0.1])
         with col_center:
+            # Dynamic ID Generation Preview
+            selected_role = st.selectbox("System Role *", ["Worker", "Supervisor", "Salesperson", "Admin"], key="add_user_role_select")
+            auto_generated_id = generate_work_id(selected_role, df_workers)
+
             with st.form("add_user_form"):
+                st.info(f"**Auto-Generated Work ID:** `{auto_generated_id}`")
+                
                 c1, c2 = st.columns(2)
                 with c1:
-                    new_w_id = st.text_input(
-                        "Worker ID", value=f"W{len(df_workers)+1:03d}"
-                    )
-                    new_name = st.text_input("Full Name")
-                    new_id_num = st.text_input(
-                        "12-Digit Government ID",
-                        max_chars=12,
-                        placeholder="e.g. 123456789012",
-                    )
+                    new_name = st.text_input("Full Name *")
+                    new_id_num = st.text_input("12-Digit Government ID", max_chars=12, placeholder="e.g. 123456789012")
                 with c2:
-                    new_pin = st.text_input(
-                        "4-Digit PIN / Password", type="password"
-                    )
-                    new_role = st.selectbox(
-                        "System Role", ["Worker", "Supervisor", "Admin"]
-                    )
-                    new_base = st.text_input(
-                        "Base Station / City", value="Jaipur"
-                    )
+                    new_pin = st.text_input("4-Digit PIN / Password *", type="password")
+                    new_base = st.text_input("Base Station / City", value="Jaipur")
 
-                submit_new_user = st.form_submit_button(
-                    "Create User & Sync to Data Base", use_container_width=True
-                )
+                submit_new_user = st.form_submit_button("Create User & Sync to Database", use_container_width=True)
                 if submit_new_user:
                     clean_id = str(new_id_num).strip()
-                    if not new_name or not new_pin or not clean_id:
-                        st.error("Please fill in Full Name, ID Number, and PIN.")
-                    elif len(clean_id) != 12 or not clean_id.isdigit():
-                        st.error("Invalid ID Number! Must be 12 digits.")
+                    if not new_name or not new_pin:
+                        st.error("Please fill in Full Name and PIN.")
                     else:
                         user_dict = {
-                            "worker_id": new_w_id,
-                            "name": new_name,
+                            "worker_id": auto_generated_id,
+                            "name": new_name.strip(),
                             "aadhaar_no": clean_id,
-                            "pin": str(new_pin),
-                            "role": new_role,
-                            "base_location": new_base,
+                            "pin": str(new_pin).strip(),
+                            "role": selected_role,
+                            "base_location": new_base.strip(),
                         }
                         append_to_sheet("Workers_Master", user_dict)
                         st.session_state["user_created_success"] = True
@@ -1872,12 +1417,12 @@ elif menu == "User Management":
                         st.rerun()
 
     with tab_batch:
-        st.subheader("⚡ Batch Import Workers")
+        st.subheader("⚡ Batch Import Employees")
         raw_text_input = st.text_area("Paste Continuous Data String Here:")
-        if st.button("🔍 Parse and Import Worker Data"):
+        if st.button("🔍 Parse and Import Data"):
             if raw_text_input:
                 pattern = re.compile(
-                    r"(W\d{3})([A-Za-z\s]+?)(\d{12})(\d{4})(Supervisor|Worker|Admin)([A-Za-z]+)"
+                    r"([A-Z]{1,3}\d{2,3})([A-Za-z\s]+?)(\d{12})(\d{4})(Supervisor|Worker|Admin|Salesperson)([A-Za-z]+)"
                 )
                 matches = pattern.findall(raw_text_input)
                 for m in matches:
@@ -1892,156 +1437,52 @@ elif menu == "User Management":
                             "base_location": m[5],
                         },
                     )
-                st.success("All extracted workers synced!")
+                st.success("All extracted users synced!")
                 st.rerun()
 
     with tab_edit:
-        st.subheader("Update User Profile")
+        st.subheader("Update Profile")
         if not df_workers.empty and "name" in df_workers.columns:
-            selected_edit_user = st.selectbox(
-                "Select User to Edit", sorted(df_workers["name"].tolist())
-            )
-            user_data = df_workers[
-                df_workers["name"] == selected_edit_user
-            ].iloc[0]
+            selected_edit_user = st.selectbox("Select User to Edit", sorted(df_workers["name"].tolist()))
+            user_data = df_workers[df_workers["name"] == selected_edit_user].iloc[0]
 
             col_l, col_center, col_r = st.columns([0.1, 0.8, 0.1])
             with col_center:
                 with st.form("edit_user_form"):
                     e_role = st.selectbox(
                         "Update Role",
-                        ["Worker", "Supervisor", "Admin"],
-                        index=["Worker", "Supervisor", "Admin"].index(
-                            user_data.get("role", "Worker")
-                        ),
+                        ["Worker", "Supervisor", "Salesperson", "Admin"],
+                        index=["Worker", "Supervisor", "Salesperson", "Admin"].index(user_data.get("role", "Worker")),
                     )
-                    e_pin = st.text_input(
-                        "Update PIN", value=str(user_data.get("pin", ""))
-                    )
-                    e_base = st.text_input(
-                        "Update Base Location",
-                        value=str(user_data.get("base_location", "Jaipur")),
-                    )
+                    e_pin = st.text_input("Update PIN", value=str(user_data.get("pin", "")))
+                    e_base = st.text_input("Update Base Location", value=str(user_data.get("base_location", "Jaipur")))
 
-                    submit_edit = st.form_submit_button(
-                        "Update Profile in Data Base", use_container_width=True
-                    )
+                    submit_edit = st.form_submit_button("Update Profile in Database", use_container_width=True)
                     if submit_edit:
                         updates = {
                             "role": e_role,
                             "pin": e_pin,
                             "base_location": e_base,
                         }
-                        update_sheet_row(
-                            "Workers_Master", "name", selected_edit_user, updates
-                        )
+                        update_sheet_row("Workers_Master", "name", selected_edit_user, updates)
                         st.success(f"Updated **{selected_edit_user}** successfully!")
                         st.rerun()
 
-# --- ADMIN: TA/DA PAYROLL ---
-elif menu == "TA/DA Payroll & Travel Summary":
-    st.header("✈️ TA/DA Travel Allowance & Payroll Report")
-    df_logs = read_sheet("Worker_Daily_Logs")
-
-    if df_logs.empty or "is_travel_day" not in df_logs.columns:
-        st.info("⚠️ No Travel Days Claimed Yet")
-    else:
-        travel_logs = df_logs[df_logs["is_travel_day"] == "Yes"]
-        if travel_logs.empty:
-            st.warning("⚠️ No Travel Days Claimed Yet")
-        else:
-            summary_df = (
-                travel_logs.groupby(["worker_name", "base_location"])
-                .agg(
-                    total_travel_days=("is_travel_day", "count"),
-                    total_hours_worked=("hours_spent", "sum"),
-                )
-                .reset_index()
-            )
-
-            ta_rate = st.number_input(
-                "Daily TA/DA Allowance Rate (₹)", value=500, step=50
-            )
-            summary_df["Estimated Allowance (₹)"] = (
-                summary_df["total_travel_days"] * ta_rate
-            )
-
-            excel_bytes = generate_excel_download(
-                summary_df, "TADA_Payroll_Report.xlsx"
-            )
-            st.download_button(
-                "📥 Download Payroll Excel Report",
-                data=excel_bytes,
-                file_name="TADA_Payroll_Report.xlsx",
-                mime=(
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                ),
-            )
-
-            st.write("##")
-            st.dataframe(summary_df, use_container_width=True)
-
-# --- ADMIN: ADVANCED FIELD LOGS INSPECTOR ---
-elif menu == "Advanced Field Logs Inspector":
-    st.header("🔍 Advanced Field Log Inspector & Exporter")
-    df_logs = read_sheet("Worker_Daily_Logs")
-
-    if not df_logs.empty:
-        excel_bytes = generate_excel_download(df_logs, "All_Field_Logs.xlsx")
-        st.download_button(
-            "📥 Download All Logs (Excel)",
-            data=excel_bytes,
-            file_name="All_Field_Logs.xlsx",
-            mime=(
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            ),
-        )
-        st.write("##")
-        st.dataframe(df_logs, use_container_width=True)
-
-# --- SUPERVISOR: HANDOVER DASHBOARD ---
-elif menu == "Handover Date Dashboard":
-    st.header("📅 Site Handover Date Dashboard")
-    df_sites = read_sheet("Sites_Master")
-
-    if not df_sites.empty and "handover_date" in df_sites.columns:
-        df_sites["handover_date_dt"] = pd.to_datetime(
-            df_sites["handover_date"], errors="coerce"
-        )
-        df_sites["days_remaining"] = (
-            df_sites["handover_date_dt"] - datetime.now()
-        ).dt.days
-
-        for _, site in df_sites.iterrows():
-            days = site.get("days_remaining", 0)
-            badge_color = (
-                COLOR_ACCENT
-                if days > 15
-                else ("#E6A100" if days >= 0 else "#D32F2F")
-            )
-
-            st.markdown(
-                f"""
-                <div class="card-box">
-                    <h3 style="margin:0;">{site.get('site_name', 'N/A')} ({site.get('installation_id', 'N/A')})</h3>
-                    <p style="margin:5px 0;"><b>Client:</b> {site.get('client_name', 'N/A')} | <b>Contact:</b> {site.get('client_phone', 'N/A')}</p>
-                    <p style="margin:5px 0;"><b>City:</b> {site.get('site_city', 'N/A')} | <b>Team Lead:</b> {site.get('team_lead', 'N/A')}</p>
-                    <p style="margin:5px 0;"><b>Target Handover:</b> {site.get('handover_date', 'N/A')}</p>
-                    <p style="margin:5px 0;"><b>Status:</b> <span style="color:{badge_color}; font-weight:bold;">{site.get('status', 'In Progress')} ({days} Days Remaining)</span></p>
-                </div>
-            """,
-                unsafe_allow_html=True,
-            )
-
-# --- SUPERVISOR: NEW ORDER ---
+# --- SUPERVISOR: NEW ORDER (WITH SALESPERSON SELECTION) ---
 elif menu == "New Installation Order":
     st.header("Create New Installation Order")
     df_workers = read_sheet("Workers_Master")
-    worker_options = (
-        sorted(df_workers["name"].tolist())
-        if not df_workers.empty and "name" in df_workers.columns
-        else [user_name]
-    )
+    
+    worker_options = []
+    salesperson_options = []
+
+    if not df_workers.empty and "name" in df_workers.columns:
+        worker_options = sorted(df_workers[~df_workers["role"].isin(["Admin", "Salesperson"])]["name"].tolist())
+        
+        # Populate Salesperson Dropdown
+        sp_df = df_workers[df_workers["role"].astype(str).str.strip().str.title() == "Salesperson"]
+        if not sp_df.empty:
+            salesperson_options = (sp_df["worker_id"].astype(str) + " - " + sp_df["name"].astype(str)).tolist()
 
     if "products_count" not in st.session_state:
         st.session_state.products_count = 1
@@ -2053,47 +1494,26 @@ elif menu == "New Installation Order":
 
     with col_client:
         st.markdown("### 🏢 Client Info")
-        client_name = st.text_input(
-            "Client / Company Name *", placeholder="e.g. Reliance Logistics"
-        )
-        client_phone = st.text_input(
-            "Client Mobile No. *", placeholder="e.g. 9876543210", max_chars=10
-        )
+        client_name = st.text_input("Client / Company Name *", placeholder="e.g. Reliance Logistics")
+        client_phone = st.text_input("Client Mobile No. *", placeholder="e.g. 9876543210", max_chars=10)
+        
+        # Salesperson Dropdown Link
+        selected_sp = st.selectbox("💼 Link Salesperson", options=["Unassigned"] + salesperson_options)
+        sp_id = selected_sp.split(" - ")[0] if selected_sp != "Unassigned" else ""
+        sp_name = selected_sp.split(" - ")[1] if selected_sp != "Unassigned" else "Unassigned"
 
     with col_team:
         st.markdown("### 👨‍💼 Team & Site Structure")
-        team_lead_name = st.selectbox(
-            "Team Lead Name *", options=worker_options, key="inst_team_lead"
-        )
-        team_helpers = st.multiselect(
-            "Team Members / Helpers",
-            options=[w for w in worker_options if w != team_lead_name],
-            key="inst_helpers",
-        )
-        city_name = st.text_input(
-            "City Name *", value="Mumbai", key="inst_city_name"
-        )
-        site_address = st.text_area(
-            "Site Address *",
-            placeholder="Full installation site address...",
-            key="inst_site_address",
-        )
+        team_lead_name = st.selectbox("Team Lead Name *", options=worker_options, key="inst_team_lead")
+        team_helpers = st.multiselect("Team Members / Helpers", options=[w for w in worker_options if w != team_lead_name], key="inst_helpers")
+        city_name = st.text_input("City Name *", value="Mumbai", key="inst_city_name")
+        site_address = st.text_area("Site Address *", placeholder="Full installation site address...", key="inst_site_address")
 
     with col_dates:
         st.markdown("### 📅 Order Dates")
-        inst_date = st.date_input(
-            "Installation Date", value=datetime.now(), key="inst_order_date"
-        )
-        site_clearance_date = st.date_input(
-            "Site Clearance Date",
-            value=datetime.now(),
-            key="inst_clearance_date",
-        )
-        target_handover_date = st.date_input(
-            "Target Handover Date",
-            value=datetime.now() + timedelta(days=15),
-            key="inst_handover_date",
-        )
+        inst_date = st.date_input("Installation Date", value=datetime.now(), key="inst_order_date")
+        site_clearance_date = st.date_input("Site Clearance Date", value=datetime.now(), key="inst_clearance_date")
+        target_handover_date = st.date_input("Target Handover Date", value=datetime.now() + timedelta(days=15), key="inst_handover_date")
 
     st.divider()
 
@@ -2105,22 +1525,12 @@ elif menu == "New Installation Order":
         st.markdown(f"#### Product #{p_idx + 1}")
         col_p1, col_p2 = st.columns(2)
         with col_p1:
-            product_type = st.selectbox(
-                "Select Product", catalog_main_categories, key=f"prod_type_{p_idx}"
-            )
-            dimensions = st.text_input(
-                "Dimensions (WxH)",
-                placeholder="e.g., 5330X6000",
-                key=f"prod_dim_{p_idx}",
-            )
+            product_type = st.selectbox("Select Product", catalog_main_categories, key=f"prod_type_{p_idx}")
+            dimensions = st.text_input("Dimensions (WxH)", placeholder="e.g., 5330X6000", key=f"prod_dim_{p_idx}")
         with col_p2:
             sub_cat_options = PRODUCT_CATALOG.get(product_type, ["Other"])
-            sub_category = st.selectbox(
-                "Select Sub-Category", sub_cat_options, key=f"prod_sub_{p_idx}"
-            )
-            quantity = st.number_input(
-                "Quantity", min_value=1, value=1, step=1, key=f"prod_qty_{p_idx}"
-            )
+            sub_category = st.selectbox("Select Sub-Category", sub_cat_options, key=f"prod_sub_{p_idx}")
+            quantity = st.number_input("Quantity", min_value=1, value=1, step=1, key=f"prod_qty_{p_idx}")
 
         products_data.append({
             "product_type": product_type,
@@ -2134,32 +1544,19 @@ elif menu == "New Installation Order":
         st.rerun()
 
     st.write("##")
-    if st.button(
-        "💾 Submit Installation Order",
-        use_container_width=True,
-        key="btn_submit_inst_order",
-    ):
+    if st.button("💾 Submit Installation Order", use_container_width=True, key="btn_submit_inst_order"):
         clean_phone = str(client_phone).strip()
-        if (
-            not client_name
-            or not clean_phone
-            or not team_lead_name
-            or not city_name
-            or not site_address
-        ):
-            st.error(
-                "Please fill in all mandatory fields including Client Name and"
-                " Contact Number."
-            )
+        if not client_name or not clean_phone or not team_lead_name or not city_name or not site_address:
+            st.error("Please fill in all mandatory fields.")
         elif len(clean_phone) != 10 or not clean_phone.isdigit():
-            st.error(
-                "Please enter a valid 10-digit mobile number for the client."
-            )
+            st.error("Please enter a valid 10-digit mobile number.")
         else:
             order_data = {
                 "installation_id": visit_id,
                 "client_name": client_name.strip(),
                 "client_phone": clean_phone,
+                "salesperson_id": sp_id,
+                "salesperson_name": sp_name,
                 "team_lead": team_lead_name,
                 "team_members": ", ".join(team_helpers),
                 "site_city": city_name,
@@ -2171,76 +1568,14 @@ elif menu == "New Installation Order":
                 "status": "In Progress",
             }
             append_to_sheet("Sites_Master", order_data)
-            st.success(
-                f"Installation Order **{visit_id}** for **{client_name}**"
-                " recorded successfully!"
-            )
+            st.success(f"Installation Order **{visit_id}** for **{client_name}** linked to **{sp_name}** successfully!")
             st.session_state.products_count = 1
 
 # --- SUPERVISOR: VIEW LOGS & UPDATE ---
 elif menu == "View Logs & Update Status":
     render_view_logs_and_update_status()
 
-# --- SUPERVISOR: SITE DASHBOARD ---
-elif menu == "Team Head Dashboard":
-    st.header("🏢 Site Performance & Supervisor Dashboard")
-    st.caption("Live operational metrics and reported site updates for running projects.")
-
-    df_logs = read_sheet("Worker_Daily_Logs")
-    df_sites = read_sheet("Sites_Master")
-
-    if df_sites.empty:
-        st.warning("No site data found in database.")
-    else:
-        # Standardize site columns
-        df_sites.columns = [str(c).strip().lower().replace(" ", "_") for c in df_sites.columns]
-        
-        # Filter for active/running sites
-        active_sites_df = df_sites[
-            ~df_sites["status"].astype(str).str.strip().str.title().isin(["Handovered", "Handover", "Completed"])
-        ]
-        
-        site_options = ["All Active Sites"] + active_sites_df["installation_id"].tolist()
-        selected_site = st.selectbox("🎯 Select Active Installation Site", site_options)
-
-        sub_logs = df_logs.copy() if not df_logs.empty else pd.DataFrame()
-
-        if selected_site != "All Active Sites" and not sub_logs.empty:
-            sub_logs = sub_logs[sub_logs["installation_id"] == selected_site]
-
-        # Top Metric Cards
-        s1, s2, s3, s4 = st.columns(4)
-        with s1:
-            site_count = len(active_sites_df) if selected_site == "All Active Sites" else 1
-            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{site_count}</div><div class="kpi-label">Active Sites</div></div>', unsafe_allow_html=True)
-        with s2:
-            days_count = sub_logs["logged_date"].nunique() if not sub_logs.empty and "logged_date" in sub_logs.columns else 0
-            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{days_count}</div><div class="kpi-label">Days Worked</div></div>', unsafe_allow_html=True)
-        with s3:
-            travel_count = len(sub_logs[sub_logs["is_travel_day"] == "Yes"]) if not sub_logs.empty and "is_travel_day" in sub_logs.columns else 0
-            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{travel_count}</div><div class="kpi-label">Travel Days Logged</div></div>', unsafe_allow_html=True)
-        with s4:
-            total_hrs = sub_logs["hours_spent"].sum() if not sub_logs.empty and "hours_spent" in sub_logs.columns else 0
-            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{total_hrs} hrs</div><div class="kpi-label">Total Field Hours</div></div>', unsafe_allow_html=True)
-
-        st.divider()
-
-        # Operational Remarks and Delays Log
-        st.subheader("🚨 Field Remarks & Delay Logs")
-        if not sub_logs.empty and "site_remarks" in sub_logs.columns:
-            remarks_df = sub_logs[
-                sub_logs["site_remarks"].astype(str).str.strip().str.lower().ne("none") & 
-                sub_logs["site_remarks"].astype(str).str.strip().ne("")
-            ]
-            if not remarks_df.empty:
-                disp_cols = [c for c in ["logged_date", "installation_id", "worker_name", "delay_category", "site_remarks", "site_photo"] if c in remarks_df.columns]
-                st.dataframe(remarks_df[disp_cols].sort_values(by="logged_date", ascending=False), use_container_width=True)
-            else:
-                st.info("No delays or site issues reported.")
-        else:
-            st.info("No field logs found for the selected view.")
-    
-# --- MASTER DATABASE ---
+# --- OTHER SECTIONS & MASTER DATABASE ---
 elif menu == "Master Database":
     st.header("🗄️ Live Google Sheets Database")
     m_tab1, m_tab2, m_tab3, m_tab4 = st.tabs([
