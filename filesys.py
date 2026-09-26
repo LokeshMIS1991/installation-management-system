@@ -1704,30 +1704,59 @@ elif menu == "Employee Analytics & Reports":
                 )
 
 # --- ADMIN: ANALYTICS DASHBOARD ---
-# --- ADMIN DASHBOARD SECTION ---
 elif menu == "Admin Analytics Dashboard":
     st.header("📊 Admin Operations & Expense Analytics")
-    
-    df_logs = read_sheet("Worker_Daily_Logs")
-    df_expenses = read_sheet("Expense_Logs")  # Ensure you have a sheet/tab for expenses
-    
-    if df_logs.empty:
-        st.info("No log data available.")
-    else:
-        # 1. Global KPI Metrics Calculations
-        sites_visited = df_logs["installation_id"].nunique()
-        days_worked = df_logs["logged_date"].nunique()
-        days_travelled = len(df_logs[df_logs["is_travel_day"] == "Yes"])
-        
-        # Calculate Expenses & Absences (if columns exist)
-        travel_exp = df_expenses["travel_expense"].sum() if not df_expenses.empty and "travel_expense" in df_expenses.columns else 0
-        stay_exp = df_expenses["stay_expense"].sum() if not df_expenses.empty and "stay_expense" in df_expenses.columns else 0
-        leave_days = len(df_logs[df_logs["attendance_status"] == "Leave"]) if "attendance_status" in df_logs.columns else 0
 
-        # 2. Interactive KPI Cards (Top Row)
+    df_logs = read_sheet("Worker_Daily_Logs")
+    df_expenses = read_sheet("Expense_Logs")
+    df_sites = read_sheet("Sites_Master")
+
+    # 1. Dynamic Site Details Filtering for "Running" Sites
+    active_site_ids = []
+    if not df_sites.empty and "installation_id" in df_sites.columns:
+        # Standardize column headers for site filtering
+        df_sites_copy = df_sites.copy()
+        df_sites_copy.columns = [str(col).strip().lower().replace(" ", "_") for col in df_sites_copy.columns]
+        
+        # Filter active / running sites
+        running_sites = df_sites_copy[
+            ~df_sites_copy["status"].astype(str).str.strip().str.title().isin(["Handovered", "Handover", "Completed"])
+        ]
+        active_site_ids = running_sites["installation_id"].unique().tolist()
+
+    # Filter daily logs only for Running/Active sites
+    if not df_logs.empty and active_site_ids:
+        df_logs = df_logs[df_logs["installation_id"].isin(active_site_ids)]
+
+    if df_logs.empty:
+        st.info("No active log data available for running sites.")
+    else:
+        # 2. KPI Metrics Calculations
+        sites_visited = df_logs["installation_id"].nunique() if "installation_id" in df_logs.columns else 0
+        days_worked = df_logs["logged_date"].nunique() if "logged_date" in df_logs.columns else 0
+        days_travelled = len(df_logs[df_logs["is_travel_day"] == "Yes"]) if "is_travel_day" in df_logs.columns else 0
+
+        # Safe expense aggregation (Handles missing tab or missing expense columns)
+        travel_exp = (
+            df_expenses["travel_expense"].sum() 
+            if not df_expenses.empty and "travel_expense" in df_expenses.columns 
+            else 0
+        )
+        stay_exp = (
+            df_expenses["stay_expense"].sum() 
+            if not df_expenses.empty and "stay_expense" in df_expenses.columns 
+            else 0
+        )
+        leave_days = (
+            len(df_logs[df_logs["attendance_status"] == "Leave"]) 
+            if "attendance_status" in df_logs.columns 
+            else 0
+        )
+
+        # 3. Interactive KPI Cards Row
         k1, k2, k3, k4, k5, k6 = st.columns(6)
         with k1:
-            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{sites_visited}</div><div class="kpi-label">Sites Visited</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{sites_visited}</div><div class="kpi-label">Active Sites Visited</div></div>', unsafe_allow_html=True)
         with k2:
             st.markdown(f'<div class="kpi-card"><div class="kpi-number">{days_worked}</div><div class="kpi-label">Days Worked</div></div>', unsafe_allow_html=True)
         with k3:
@@ -1741,20 +1770,24 @@ elif menu == "Admin Analytics Dashboard":
 
         st.divider()
 
-        # 3. Interactive Charts
+        # 4. Operations Visualizations
         g1, g2 = st.columns(2)
         with g1:
             st.subheader("⚠️ Problems & Delays Encountered")
             if "delay_category" in df_logs.columns:
-                fig_delay = px.bar(
-                    df_logs[df_logs["delay_category"] != "No Delay"],
-                    x="delay_category",
-                    color="installation_id",
-                    title="Site Problems by Category",
-                    labels={"delay_category": "Problem Type", "count": "Occurrences"}
-                )
-                st.plotly_chart(fig_delay, use_container_width=True)
-                
+                delay_df = df_logs[df_logs["delay_category"] != "No Delay"]
+                if not delay_df.empty:
+                    fig_delay = px.bar(
+                        delay_df,
+                        x="delay_category",
+                        color="installation_id",
+                        title="Site Problems by Category (Running Sites)",
+                        labels={"delay_category": "Problem Type", "count": "Occurrences"}
+                    )
+                    st.plotly_chart(fig_delay, use_container_width=True)
+                else:
+                    st.success("No delays or problems reported across running sites!")
+
         with g2:
             st.subheader("💰 Worker Expenses Comparison")
             if not df_expenses.empty and "worker_name" in df_expenses.columns:
@@ -1767,7 +1800,8 @@ elif menu == "Admin Analytics Dashboard":
                     labels={"value": "Amount (₹)", "worker_name": "Worker"}
                 )
                 st.plotly_chart(fig_exp, use_container_width=True)
-
+            else:
+                st.info("Expense data tab is empty or not configured in Google Sheets.")
 # --- ADMIN: USER MANAGEMENT ---
 elif menu == "User Management":
     st.header("👥 User & Access Management")
@@ -2146,32 +2180,64 @@ elif menu == "New Installation Order":
 elif menu == "View Logs & Update Status":
     render_view_logs_and_update_status()
 
-# --- SUPERVISOR DASHBOARD SECTION ---
+# --- SUPERVISOR: SITE DASHBOARD ---
 elif menu == "Team Head Dashboard":
-    st.header("👥 Supervisor Crew & Site Performance")
-    
+    st.header("🏢 Site Performance & Supervisor Dashboard")
+    st.caption("Live operational metrics and reported site updates for running projects.")
+
     df_logs = read_sheet("Worker_Daily_Logs")
-    df_expenses = read_sheet("Expense_Logs")
-    
-    # Filter options by site/crew
-    site_list = ["All Sites"] + df_logs["installation_id"].unique().tolist()
-    selected_site = st.selectbox("Select Installation Site", site_list)
-    
-    sub_df = df_logs.copy()
-    if selected_site != "All Sites":
-        sub_df = sub_df[sub_df["installation_id"] == selected_site]
+    df_sites = read_sheet("Sites_Master")
+
+    if df_sites.empty:
+        st.warning("No site data found in database.")
+    else:
+        # Standardize site columns
+        df_sites.columns = [str(c).strip().lower().replace(" ", "_") for c in df_sites.columns]
         
-    # KPI Row
-    s1, s2, s3, s4, s5 = st.columns(5)
-    s1.metric("Sites Tracked", sub_df["installation_id"].nunique())
-    s2.metric("Total Days Worked", sub_df["logged_date"].nunique())
-    s3.metric("Travel Days", len(sub_df[sub_df["is_travel_day"] == "Yes"]))
-    s4.metric("Leaves Reported", len(sub_df[sub_df["attendance_status"] == "Leave"]) if "attendance_status" in sub_df.columns else 0)
-    
-    # Problems/Remarks Table
-    st.subheader("🚨 Reported Problems & Remarks")
-    problems_df = sub_df[sub_df["site_remarks"].str.strip() != ""][["logged_date", "worker_name", "installation_id", "delay_category", "site_remarks"]]
-    st.dataframe(problems_df, use_container_width=True)
+        # Filter for active/running sites
+        active_sites_df = df_sites[
+            ~df_sites["status"].astype(str).str.strip().str.title().isin(["Handovered", "Handover", "Completed"])
+        ]
+        
+        site_options = ["All Active Sites"] + active_sites_df["installation_id"].tolist()
+        selected_site = st.selectbox("🎯 Select Active Installation Site", site_options)
+
+        sub_logs = df_logs.copy() if not df_logs.empty else pd.DataFrame()
+
+        if selected_site != "All Active Sites" and not sub_logs.empty:
+            sub_logs = sub_logs[sub_logs["installation_id"] == selected_site]
+
+        # Top Metric Cards
+        s1, s2, s3, s4 = st.columns(4)
+        with s1:
+            site_count = len(active_sites_df) if selected_site == "All Active Sites" else 1
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{site_count}</div><div class="kpi-label">Active Sites</div></div>', unsafe_allow_html=True)
+        with s2:
+            days_count = sub_logs["logged_date"].nunique() if not sub_logs.empty and "logged_date" in sub_logs.columns else 0
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{days_count}</div><div class="kpi-label">Days Worked</div></div>', unsafe_allow_html=True)
+        with s3:
+            travel_count = len(sub_logs[sub_logs["is_travel_day"] == "Yes"]) if not sub_logs.empty and "is_travel_day" in sub_logs.columns else 0
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{travel_count}</div><div class="kpi-label">Travel Days Logged</div></div>', unsafe_allow_html=True)
+        with s4:
+            total_hrs = sub_logs["hours_spent"].sum() if not sub_logs.empty and "hours_spent" in sub_logs.columns else 0
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{total_hrs} hrs</div><div class="kpi-label">Total Field Hours</div></div>', unsafe_allow_html=True)
+
+        st.divider()
+
+        # Operational Remarks and Delays Log
+        st.subheader("🚨 Field Remarks & Delay Logs")
+        if not sub_logs.empty and "site_remarks" in sub_logs.columns:
+            remarks_df = sub_logs[
+                sub_logs["site_remarks"].astype(str).str.strip().str.lower().ne("none") & 
+                sub_logs["site_remarks"].astype(str).str.strip().ne("")
+            ]
+            if not remarks_df.empty:
+                disp_cols = [c for c in ["logged_date", "installation_id", "worker_name", "delay_category", "site_remarks", "site_photo"] if c in remarks_df.columns]
+                st.dataframe(remarks_df[disp_cols].sort_values(by="logged_date", ascending=False), use_container_width=True)
+            else:
+                st.info("No delays or site issues reported.")
+        else:
+            st.info("No field logs found for the selected view.")
     
 # --- MASTER DATABASE ---
 elif menu == "Master Database":
