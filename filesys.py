@@ -461,7 +461,6 @@ def get_workbook():
     return client.open_by_url(sheet_url)
 
 
-# --- UPDATE IN read_sheet FUNCTION ---
 @st.cache_data(ttl=60)
 def read_sheet(sheet_name: str) -> pd.DataFrame:
     try:
@@ -470,7 +469,7 @@ def read_sheet(sheet_name: str) -> pd.DataFrame:
         data = sheet.get_all_records()
         df = pd.DataFrame(data)
         
-        # Redact government identity columns for privacy compliance
+        # Redact identity columns for privacy compliance
         if sheet_name == "Workers_Master" and "aadhaar_no" in df.columns:
             df["aadhaar_no"] = "[Redacted Identity]"
             
@@ -478,20 +477,6 @@ def read_sheet(sheet_name: str) -> pd.DataFrame:
     except Exception as e:
         print(f"DEBUG SHEET ERROR [{sheet_name}]: {e}")
         return pd.DataFrame()
-
-
-# --- UPDATE IN USER CREATION FORM (User Management Tab) ---
-user_dict = {
-    "worker_id": auto_generated_id,
-    "name": new_name.strip(),
-    "email": new_email.strip() if selected_role != "Worker" else "",
-    "aadhaar_no": "[Identity Omitted]",  # Strictly masked on write
-    "pin": str(new_pin).strip(),
-    "role": selected_role,
-    "designation": worker_designation if selected_role == "Worker" else selected_role,
-    "base_location": new_base.strip(),
-}
-append_to_sheet("Workers_Master", user_dict)
 
 
 def append_to_sheet(sheet_name: str, row_data_dict: dict):
@@ -892,8 +877,6 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 
     if uploaded_photo is not None:
         st.image(uploaded_photo, caption="Uploaded Site Photo Preview", width=280)
-
-    st.write("##")
 
     st.write("##")
 
@@ -1873,6 +1856,7 @@ elif menu == "User Management":
                     key="add_user_designation_select"
                 )
 
+            # Generate Work ID dynamically before rendering form fields
             auto_generated_id = generate_work_id(selected_role, df_workers)
 
             with st.form("add_user_form"):
