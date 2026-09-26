@@ -1,5 +1,3 @@
-# app.py
-
 import io
 import os
 import re
@@ -438,9 +436,9 @@ def read_sheet(sheet_name: str) -> pd.DataFrame:
         data = sheet.get_all_records()
         df = pd.DataFrame(data)
         
-        # Redact any government identity columns for privacy compliance
+        # Redact government identity columns for privacy compliance
         if sheet_name == "Workers_Master" and "aadhaar_no" in df.columns:
-            df["aadhaar_no"] = "[Aadhaar Redacted]"
+            df["aadhaar_no"] = "[Redacted Identity]"
             
         return df
     except Exception as e:
@@ -921,7 +919,6 @@ if menu == "My Sales Dashboard":
     if df_sites.empty:
         st.info("No sites found in database.")
     else:
-        # Match sites by Salesperson ID or Salesperson Name
         my_sites = df_sites[
             (df_sites.get("salesperson_id", pd.Series()).astype(str).str.strip().str.lower() == user_id.lower())
             | (df_sites.get("salesperson_name", pd.Series()).astype(str).str.strip().str.lower() == user_name.lower())
@@ -930,7 +927,6 @@ if menu == "My Sales Dashboard":
         if my_sites.empty:
             st.info("⚠️ You currently have no sites assigned to your Sales ID.")
         else:
-            # KPIS
             total_my_sites = len(my_sites)
             in_prog_my_sites = len(my_sites[my_sites["status"].astype(str).str.strip().str.title() == "In Progress"])
             hold_my_sites = len(my_sites[my_sites["status"].astype(str).str.strip().str.title() == "On Hold"])
@@ -948,7 +944,6 @@ if menu == "My Sales Dashboard":
 
             st.divider()
 
-            # Detailed Site Explorer
             st.subheader("📋 My Acquired Sites & Progress Breakdown")
             for _, site in my_sites.iterrows():
                 site_id = site.get("installation_id", "N/A")
@@ -958,7 +953,6 @@ if menu == "My Sales Dashboard":
                 deal_amt = site.get("deal_amount", "N/A")
                 deal_amt_formatted = f"₹{float(deal_amt):,.2f}" if str(deal_amt).replace('.', '', 1).isdigit() else deal_amt
                 
-                # Fetch recent logs for this site
                 site_logs = df_logs[df_logs["installation_id"] == site_id] if not df_logs.empty and "installation_id" in df_logs.columns else pd.DataFrame()
                 workers_on_site = site_logs["worker_name"].unique().tolist() if not site_logs.empty and "worker_name" in site_logs.columns else []
 
@@ -988,7 +982,6 @@ elif menu == "📝 Log Visit & Order Deal":
 
     df_sites = read_sheet("Sites_Master")
 
-    # Generate a new unique site ID for new entries
     new_visit_id = f"INST-2026-{os.urandom(2).hex().upper()}"
 
     st.info(f"🆔 **Automated Site / Order ID:** `{new_visit_id}`")
@@ -1062,7 +1055,6 @@ elif menu == "🔍 Track Site Progress":
     if df_sites.empty:
         st.warning("No installation records found in the database.")
     else:
-        # Search & Filter Controls
         col_search1, col_search2 = st.columns([2, 1])
         with col_search1:
             search_query = st.text_input("🔍 Search by Site ID or Client Name:", placeholder="e.g. INST-2026 or Reliance").strip()
@@ -1071,7 +1063,6 @@ elif menu == "🔍 Track Site Progress":
 
         filtered_df = df_sites.copy()
 
-        # Salesperson filter: limit to salesperson's own sites or allow search
         if "salesperson_id" in filtered_df.columns or "salesperson_name" in filtered_df.columns:
             my_sites_mask = (
                 (filtered_df.get("salesperson_id", pd.Series()).astype(str).str.strip().str.lower() == user_id.lower())
@@ -1079,7 +1070,6 @@ elif menu == "🔍 Track Site Progress":
             )
             filtered_df = filtered_df[my_sites_mask]
 
-        # Apply search query
         if search_query:
             q = search_query.lower()
             filtered_df = filtered_df[
@@ -1087,7 +1077,6 @@ elif menu == "🔍 Track Site Progress":
                 | filtered_df["client_name"].astype(str).str.lower().str.contains(q)
             ]
 
-        # Apply status filter
         if status_filter != "All Statuses":
             filtered_df = filtered_df[filtered_df["status"].astype(str).str.strip().str.title() == status_filter]
 
@@ -1125,7 +1114,6 @@ elif menu == "🔍 Track Site Progress":
                     if site.get("hold_reason"):
                         st.warning(f"**Hold Remarks / Notes:** {site.get('hold_reason')}")
 
-                    # Site Work Logs Accordion
                     st.divider()
                     st.markdown("#### 📜 Live Field Logs for this Site")
                     site_logs = df_logs[df_logs["installation_id"] == site_id] if not df_logs.empty and "installation_id" in df_logs.columns else pd.DataFrame()
@@ -1158,7 +1146,6 @@ elif menu == "Sales Analytics Report":
     if df_sites.empty:
         st.warning("No site records found in Sites_Master.")
     else:
-        # Time Period Filter Header
         f1, f2 = st.columns([2, 2])
         with f1:
             time_filter = st.selectbox(
@@ -1175,7 +1162,6 @@ elif menu == "Sales Analytics Report":
                 ],
             )
 
-        # Date Filtering Logic
         filtered_sites = df_sites.copy()
         if "order_date" in filtered_sites.columns:
             filtered_sites["order_dt"] = pd.to_datetime(filtered_sites["order_date"], errors="coerce")
@@ -1195,7 +1181,6 @@ elif menu == "Sales Analytics Report":
                 cutoff_date = today - timedelta(days=days_map[time_filter])
                 filtered_sites = filtered_sites[filtered_sites["order_dt"] >= cutoff_date]
 
-        # Total Volume KPIs
         k1, k2, k3, k4 = st.columns(4)
         with k1:
             st.markdown(f'<div class="kpi-card"><div class="kpi-number">{len(filtered_sites)}</div><div class="kpi-label">Orders Acquired</div></div>', unsafe_allow_html=True)
@@ -1211,7 +1196,6 @@ elif menu == "Sales Analytics Report":
 
         st.divider()
 
-        # Visual Graphs & Breakdown
         if "salesperson_name" in filtered_sites.columns or "salesperson_id" in filtered_sites.columns:
             sp_col = "salesperson_name" if "salesperson_name" in filtered_sites.columns else "salesperson_id"
             
@@ -1559,7 +1543,6 @@ elif menu == "User Management":
         st.subheader("Add Employee / Salesperson / Supervisor")
         col_l, col_center, col_r = st.columns([0.1, 0.8, 0.1])
         with col_center:
-            # Dynamic ID Generation Preview
             selected_role = st.selectbox("System Role *", ["Worker", "Supervisor", "Salesperson", "Admin"], key="add_user_role_select")
             auto_generated_id = generate_work_id(selected_role, df_workers)
 
@@ -1582,7 +1565,7 @@ elif menu == "User Management":
                         user_dict = {
                             "worker_id": auto_generated_id,
                             "name": new_name.strip(),
-                            "aadhaar_no": "[Aadhaar Omitted]",
+                            "aadhaar_no": "[Identity Omitted]",
                             "pin": str(new_pin).strip(),
                             "role": selected_role,
                             "base_location": new_base.strip(),
@@ -1607,7 +1590,7 @@ elif menu == "User Management":
                         {
                             "worker_id": m[0],
                             "name": m[1].strip(),
-                            "aadhaar_no": "[Aadhaar Redacted]",
+                            "aadhaar_no": "[Redacted Identity]",
                             "pin": m[3],
                             "role": m[4],
                             "base_location": m[5],
@@ -1655,7 +1638,6 @@ elif menu == "New Installation Order":
     if not df_workers.empty and "name" in df_workers.columns:
         worker_options = sorted(df_workers[~df_workers["role"].isin(["Admin", "Salesperson"])]["name"].tolist())
         
-        # Populate Salesperson Dropdown
         sp_df = df_workers[df_workers["role"].astype(str).str.strip().str.title() == "Salesperson"]
         if not sp_df.empty:
             salesperson_options = (sp_df["worker_id"].astype(str) + " - " + sp_df["name"].astype(str)).tolist()
@@ -1673,7 +1655,6 @@ elif menu == "New Installation Order":
         client_name = st.text_input("Client / Company Name *", placeholder="e.g. Reliance Logistics")
         client_phone = st.text_input("Client Mobile No. *", placeholder="e.g. 9876543210", max_chars=10)
         
-        # Salesperson Dropdown Link
         selected_sp = st.selectbox("💼 Link Salesperson", options=["Unassigned"] + salesperson_options)
         sp_id = selected_sp.split(" - ")[0] if selected_sp != "Unassigned" else ""
         sp_name = selected_sp.split(" - ")[1] if selected_sp != "Unassigned" else "Unassigned"
@@ -1749,7 +1730,7 @@ elif menu == "New Installation Order":
 
 # --- SUPERVISOR: VIEW LOGS & UPDATE ---
 elif menu == "View Logs & Update Status":
-    render_restricted_work_input(target_worker_name=user_name, is_crew_log=False) if False else render_view_logs_and_update_status()
+    render_view_logs_and_update_status()
 
 # --- OTHER SECTIONS & MASTER DATABASE ---
 elif menu == "Master Database":
