@@ -1708,35 +1708,40 @@ elif menu == "Admin Analytics Dashboard":
     st.header("📊 Admin Operations & Expense Analytics")
 
     df_logs = read_sheet("Worker_Daily_Logs")
-    df_expenses = read_sheet("Expense_Logs")
     df_sites = read_sheet("Sites_Master")
+    
+    # Safe read for Expense_Logs to prevent dashboard crashes
+    try:
+        df_expenses = read_sheet("Expense_Logs")
+    except Exception as e:
+        df_expenses = pd.DataFrame()
+        st.warning("⚠️ Could not load 'Expense_Logs' tab. Displaying operational data only.")
 
-    # 1. Dynamic Site Details Filtering for "Running" Sites
+    # 1. Filter Active ("Running") Sites
     active_site_ids = []
     if not df_sites.empty and "installation_id" in df_sites.columns:
-        # Standardize column headers for site filtering
         df_sites_copy = df_sites.copy()
         df_sites_copy.columns = [str(col).strip().lower().replace(" ", "_") for col in df_sites_copy.columns]
         
-        # Filter active / running sites
+        # Exclude completed/handovered sites
         running_sites = df_sites_copy[
             ~df_sites_copy["status"].astype(str).str.strip().str.title().isin(["Handovered", "Handover", "Completed"])
         ]
         active_site_ids = running_sites["installation_id"].unique().tolist()
 
-    # Filter daily logs only for Running/Active sites
+    # Filter logs for active sites
     if not df_logs.empty and active_site_ids:
         df_logs = df_logs[df_logs["installation_id"].isin(active_site_ids)]
 
     if df_logs.empty:
-        st.info("No active log data available for running sites.")
+        st.info("No log data available for running sites.")
     else:
-        # 2. KPI Metrics Calculations
+        # 2. Dynamic KPI Calculations
         sites_visited = df_logs["installation_id"].nunique() if "installation_id" in df_logs.columns else 0
         days_worked = df_logs["logged_date"].nunique() if "logged_date" in df_logs.columns else 0
         days_travelled = len(df_logs[df_logs["is_travel_day"] == "Yes"]) if "is_travel_day" in df_logs.columns else 0
 
-        # Safe expense aggregation (Handles missing tab or missing expense columns)
+        # Safe aggregation for expense metrics
         travel_exp = (
             df_expenses["travel_expense"].sum() 
             if not df_expenses.empty and "travel_expense" in df_expenses.columns 
@@ -1753,7 +1758,7 @@ elif menu == "Admin Analytics Dashboard":
             else 0
         )
 
-        # 3. Interactive KPI Cards Row
+        # 3. Render KPI Cards
         k1, k2, k3, k4, k5, k6 = st.columns(6)
         with k1:
             st.markdown(f'<div class="kpi-card"><div class="kpi-number">{sites_visited}</div><div class="kpi-label">Active Sites Visited</div></div>', unsafe_allow_html=True)
@@ -1770,10 +1775,10 @@ elif menu == "Admin Analytics Dashboard":
 
         st.divider()
 
-        # 4. Operations Visualizations
+        # 4. Analytics Visualizations
         g1, g2 = st.columns(2)
         with g1:
-            st.subheader("⚠️ Problems & Delays Encountered")
+            st.subheader("⚠️ Problems & Delays Reported")
             if "delay_category" in df_logs.columns:
                 delay_df = df_logs[df_logs["delay_category"] != "No Delay"]
                 if not delay_df.empty:
@@ -1781,27 +1786,28 @@ elif menu == "Admin Analytics Dashboard":
                         delay_df,
                         x="delay_category",
                         color="installation_id",
-                        title="Site Problems by Category (Running Sites)",
-                        labels={"delay_category": "Problem Type", "count": "Occurrences"}
+                        title="Site Issues by Category",
+                        labels={"delay_category": "Issue Type", "count": "Occurrences"}
                     )
                     st.plotly_chart(fig_delay, use_container_width=True)
                 else:
-                    st.success("No delays or problems reported across running sites!")
+                    st.success("No active issues reported!")
 
         with g2:
-            st.subheader("💰 Worker Expenses Comparison")
+            st.subheader("💰 Expenses by Worker")
             if not df_expenses.empty and "worker_name" in df_expenses.columns:
                 fig_exp = px.bar(
                     df_expenses,
                     x="worker_name",
                     y=["travel_expense", "stay_expense"],
-                    title="Travel vs. Stay Expense per Worker",
+                    title="Travel vs Stay Expenses",
                     barmode="stack",
                     labels={"value": "Amount (₹)", "worker_name": "Worker"}
                 )
                 st.plotly_chart(fig_exp, use_container_width=True)
             else:
-                st.info("Expense data tab is empty or not configured in Google Sheets.")
+                st.info("Expense log sheet is empty or unavailable.")
+                
 # --- ADMIN: USER MANAGEMENT ---
 elif menu == "User Management":
     st.header("👥 User & Access Management")
