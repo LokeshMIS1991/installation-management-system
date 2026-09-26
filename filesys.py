@@ -895,7 +895,9 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 
     st.write("##")
 
-        if st.button("💾 Sync Daily Log to Database", key=f"btn_sync_{target_worker_name}_{is_crew_log}_v{v}", use_container_width=True):
+    st.write("##")
+
+    if st.button("💾 Sync Daily Log to Database", key=f"btn_sync_{target_worker_name}_{is_crew_log}_v{v}", use_container_width=True):
         valid_tasks = [t for t in task_entries if t["description"].strip()]
         
         if not valid_tasks:
@@ -905,9 +907,9 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
             if uploaded_photo is not None:
                 photo_name = f"{selected_site_id}_{target_worker_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
                 photo_link = upload_file_to_drive(uploaded_photo, photo_name)
-    
+
             records_saved = 0
-    
+
             for idx, t in enumerate(valid_tasks):
                 clean_worker_name = t["assigned_worker"].split(" (")[0].strip()
                 w_base = "Jaipur"
@@ -918,10 +920,10 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
                     if not m.empty:
                         w_base = m.iloc[0].get("base_location", "Jaipur")
                         w_desig = m.iloc[0].get("designation", "Worker")
-    
+
                 w_is_travel = str(w_base).strip().lower() != str(site_city).strip().lower()
                 clean_lead_name = team_lead_selected.split(" (")[0].strip()
-    
+
                 log_id = f"LOG-{datetime.now().strftime('%Y%m%d%H%M%S')}-{idx+1}"
                 log_entry = {
                     "log_id": log_id,
@@ -945,7 +947,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
                 }
                 append_to_sheet("Worker_Daily_Logs", log_entry)
                 records_saved += 1
-    
+
             if records_saved > 0:
                 st.session_state["show_success_modal"] = True
                 st.session_state["modal_info"] = {
@@ -955,7 +957,6 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
                 }
                 st.session_state[form_version_key] += 1  # Resets input fields dynamically
                 st.rerun()
-
 
 # ==========================================
 # 7. ROUTING & MODULE IMPLEMENTATION
