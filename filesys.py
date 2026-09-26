@@ -31,10 +31,19 @@ DRIVE_FOLDER_ID = "0ADjIFMwZGB62Uk9PVA"
 BASE_DIR = Path(__file__).resolve().parent
 LOGO_PATH = BASE_DIR / "Company Logo.jpeg"
 
+# Email validation helper regex
+EMAIL_REGEX = r"^[\w\.-]+@[\w\.-]+\.\w+$"
 
 # ==========================================
 # 1. HELPER FUNCTIONS & WORK ID GENERATOR
 # ==========================================
+def validate_email(email_str: str) -> bool:
+    """Validates structure of email address."""
+    if not email_str:
+        return False
+    return bool(re.match(EMAIL_REGEX, email_str.strip()))
+
+
 def generate_work_id(role: str, df_workers: pd.DataFrame) -> str:
     """Auto-generates dynamic Work IDs like ADM01, SPV001, W001, SP001."""
     role_prefix_map = {
@@ -611,6 +620,7 @@ elif user_role == "Salesperson":
     ]
 elif user_role == "Supervisor":
     menu_options = [
+        "🔔 New Installation Requests",
         "New Installation Order",
         "Log Daily Tasks",
         "View Logs & Update Status",
@@ -910,8 +920,73 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 # 7. ROUTING & MODULE IMPLEMENTATION
 # ==========================================
 
+# --- SUPERVISOR: NEW INSTALLATION REQUESTS (POPUPS & NOTIFICATIONS) ---
+if menu == "🔔 New Installation Requests":
+    st.header("🔔 Pending Installation Requests & Sales Orders")
+    st.caption("Review new installation orders raised by salespersons and assign team execution leads.")
+
+    df_sites = read_sheet("Sites_Master")
+    df_workers = read_sheet("Workers_Master")
+
+    if df_sites.empty:
+        st.info("No installation requests found.")
+    else:
+        # Find unassigned or newly submitted salesperson orders
+        unassigned_mask = (
+            df_sites.get("team_lead", pd.Series()).astype(str).str.strip().replace(["", "nan", "None", "Unassigned"], "") == ""
+        )
+        pending_requests = df_sites[unassigned_mask].copy()
+
+        if pending_requests.empty:
+            st.success("✅ All installation orders have been processed and assigned to team leads!")
+        else:
+            st.warning(f"🚨 **{len(pending_requests)} New Installation Order(s) Awaiting Supervisor Action!**")
+
+            worker_options = []
+            if not df_workers.empty and "name" in df_workers.columns:
+                worker_options = sorted(df_workers[~df_workers["role"].isin(["Admin", "Salesperson"])]["name"].tolist())
+
+            for _, req in pending_requests.iterrows():
+                site_id = req.get("installation_id", "N/A")
+                c_name = req.get("client_name", "N/A")
+                c_phone = req.get("client_phone", "N/A")
+                sp_name = req.get("salesperson_name", "Salesperson")
+                deal_amt = req.get("deal_amount", "N/A")
+
+                with st.expander(f"🆕 Order ID: {site_id} — Client: {c_name} (Salesperson: {sp_name})", expanded=True):
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.write(f"**Client Mobile:** {c_phone}")
+                        st.write(f"**City:** {req.get('site_city', 'N/A')}")
+                        st.write(f"**Address:** {req.get('site_address', 'N/A')}")
+                        st.write(f"**Order Date:** {req.get('order_date', 'N/A')}")
+                    with col2:
+                        st.write(f"**Deal Value:** ₹{deal_amt}")
+                        st.write(f"**Target Handover:** {req.get('handover_date', 'N/A')}")
+                        st.write(f"**Products Summary:** {req.get('products_summary', 'None')}")
+
+                    st.markdown("#### ⚡ Assign Execution Team & Activate Site")
+                    with st.form(f"assign_team_form_{site_id}"):
+                        a_lead = st.selectbox("Assign Team Lead *", options=worker_options, key=f"lead_{site_id}")
+                        a_helpers = st.multiselect("Assign Helpers / Crew", options=[w for w in worker_options if w != a_lead], key=f"helpers_{site_id}")
+
+                        submit_assignment = st.form_submit_button("✅ Accept Order & Assign Team", use_container_width=True)
+
+                        if submit_assignment:
+                            if not a_lead:
+                                st.error("Please select a Team Lead.")
+                            else:
+                                updates = {
+                                    "team_lead": a_lead,
+                                    "team_members": ", ".join(a_helpers),
+                                    "status": "In Progress",
+                                }
+                                update_sheet_row("Sites_Master", "installation_id", site_id, updates)
+                                st.success(f"Installation **{site_id}** activated and assigned to **{a_lead}**!")
+                                st.rerun()
+
 # --- SALESPERSON: MY SALES DASHBOARD ---
-if menu == "My Sales Dashboard":
+elif menu == "My Sales Dashboard":
     st.header(f"💼 Salesperson Project Portal — {user_name} ({user_id})")
     st.caption("Live monitoring of ongoing site installations, site statuses, and field team updates.")
 
@@ -921,7 +996,6 @@ if menu == "My Sales Dashboard":
     if df_sites.empty:
         st.info("No sites found in database.")
     else:
-        # Strict user-specific filtering for Salespersons
         if user_role == "Salesperson":
             sp_id_match = df_sites.get("salesperson_id", pd.Series()).astype(str).str.strip().str.lower() == str(user_id).strip().lower() if "salesperson_id" in df_sites.columns else pd.Series(False, index=df_sites.index)
             sp_name_match = df_sites.get("salesperson_name", pd.Series()).astype(str).str.strip().str.lower() == str(user_name).strip().lower() if "salesperson_name" in df_sites.columns else pd.Series(False, index=df_sites.index)
@@ -997,6 +1071,7 @@ elif menu == "📝 Log Visit & Order Deal":
         with c1:
             client_name = st.text_input("Client / Business Name *", placeholder="e.g. Apex Warehousing")
             client_phone = st.text_input("Client Mobile Number *", max_chars=10, placeholder="e.g. 9876543210")
+            client_email = st.text_input("Client Email Address", placeholder="e.g. client@company.com")
             visit_date = st.date_input("Visit Date", value=datetime.now())
         with c2:
             site_city = st.text_input("Site City *", value=user_base_location)
@@ -1021,10 +1096,14 @@ elif menu == "📝 Log Visit & Order Deal":
 
         if submit_deal:
             clean_phone = str(client_phone).strip()
+            clean_email = str(client_email).strip()
+
             if not client_name.strip() or not clean_phone or not site_city.strip():
                 st.error("Please fill in Client Name, Mobile Number, and Site City.")
             elif len(clean_phone) != 10 or not clean_phone.isdigit():
                 st.error("Please enter a valid 10-digit mobile number.")
+            elif clean_email and not validate_email(clean_email):
+                st.error("Please enter a valid email address (e.g. name@domain.com).")
             else:
                 order_status_mapped = "In Progress" if order_confirmed == "Confirmed Order" else ("On Hold" if order_confirmed == "Under Negotiation / Lead" else "Cancelled")
                 
@@ -1032,8 +1111,11 @@ elif menu == "📝 Log Visit & Order Deal":
                     "installation_id": new_visit_id,
                     "client_name": client_name.strip(),
                     "client_phone": clean_phone,
+                    "client_email": clean_email,
                     "salesperson_id": user_id,
                     "salesperson_name": user_name,
+                    "team_lead": "",
+                    "team_members": "",
                     "site_city": site_city.strip(),
                     "site_address": site_address.strip(),
                     "order_date": str(visit_date),
@@ -1049,7 +1131,7 @@ elif menu == "📝 Log Visit & Order Deal":
                 st.success(f"🎉 Deal for **{client_name}** recorded successfully under **{new_visit_id}**! Total Value: **₹{deal_amount:,.2f}**")
                 st.rerun()
 
-# --- SALESPERSON: TRACK SITE PROGRESS (UPDATED FOR STRICT USER ISOLATION) ---
+# --- SALESPERSON: TRACK SITE PROGRESS ---
 elif menu == "🔍 Track Site Progress":
     st.header(f"🔍 Site Progress & Order Tracker — {user_name}")
     st.caption("Search site records by Site ID or Client Name to view live progress, worker logs, and timeline updates.")
@@ -1068,7 +1150,6 @@ elif menu == "🔍 Track Site Progress":
 
         filtered_df = df_sites.copy()
 
-        # Strict data isolation for Salesperson role
         if user_role == "Salesperson":
             sp_id_match = (
                 filtered_df.get("salesperson_id", pd.Series())
@@ -1570,19 +1651,26 @@ elif menu == "User Management":
                 c1, c2 = st.columns(2)
                 with c1:
                     new_name = st.text_input("Full Name *")
-                    new_id_num = st.text_input("Government Identity / Reference ID", placeholder="Optional internal reference ID")
+                    new_email = st.text_input("Email Address *", placeholder="e.g. user@company.com")
+                    new_aadhaar = st.text_input("Aadhaar Number *", max_chars=12, placeholder="12-digit number")
                 with c2:
                     new_pin = st.text_input("4-Digit PIN / Password *", type="password")
                     new_base = st.text_input("Base Station / City", value="Jaipur")
 
                 submit_new_user = st.form_submit_button("Create User & Sync to Database", use_container_width=True)
                 if submit_new_user:
-                    if not new_name or not new_pin:
-                        st.error("Please fill in Full Name and PIN.")
+                    clean_aadhaar = str(new_aadhaar).strip()
+                    if not new_name or not new_pin or not new_email:
+                        st.error("Please fill in Full Name, Email, and PIN.")
+                    elif not validate_email(new_email):
+                        st.error("Please enter a valid email address.")
+                    elif clean_aadhaar and (len(clean_aadhaar) > 12 or not clean_aadhaar.isdigit()):
+                        st.error("Aadhaar number must contain only numeric digits and cannot exceed 12 digits.")
                     else:
                         user_dict = {
                             "worker_id": auto_generated_id,
                             "name": new_name.strip(),
+                            "email": new_email.strip(),
                             "aadhaar_no": "[Identity Omitted]",
                             "pin": str(new_pin).strip(),
                             "role": selected_role,
@@ -1631,24 +1719,30 @@ elif menu == "User Management":
                         ["Worker", "Supervisor", "Salesperson", "Admin"],
                         index=["Worker", "Supervisor", "Salesperson", "Admin"].index(user_data.get("role", "Worker")),
                     )
+                    e_email = st.text_input("Update Email", value=str(user_data.get("email", "")))
                     e_pin = st.text_input("Update PIN", value=str(user_data.get("pin", "")))
                     e_base = st.text_input("Update Base Location", value=str(user_data.get("base_location", "Jaipur")))
 
                     submit_edit = st.form_submit_button("Update Profile in Database", use_container_width=True)
                     if submit_edit:
-                        updates = {
-                            "role": e_role,
-                            "pin": e_pin,
-                            "base_location": e_base,
-                        }
-                        update_sheet_row("Workers_Master", "name", selected_edit_user, updates)
-                        st.success(f"Updated **{selected_edit_user}** successfully!")
-                        st.rerun()
+                        if e_email and not validate_email(e_email):
+                            st.error("Please enter a valid email address.")
+                        else:
+                            updates = {
+                                "role": e_role,
+                                "email": e_email.strip(),
+                                "pin": e_pin,
+                                "base_location": e_base,
+                            }
+                            update_sheet_row("Workers_Master", "name", selected_edit_user, updates)
+                            st.success(f"Updated **{selected_edit_user}** successfully!")
+                            st.rerun()
 
-# --- SUPERVISOR: NEW ORDER (WITH SALESPERSON SELECTION) ---
+# --- SUPERVISOR: NEW ORDER ---
 elif menu == "New Installation Order":
     st.header("Create New Installation Order")
     df_workers = read_sheet("Workers_Master")
+    df_sites = read_sheet("Sites_Master")
     
     worker_options = []
     salesperson_options = []
@@ -1663,8 +1757,31 @@ elif menu == "New Installation Order":
     if "products_count" not in st.session_state:
         st.session_state.products_count = 1
 
-    visit_id = f"INST-2026-{os.urandom(2).hex().upper()}"
-    st.info(f"**Automated Visit ID:** {visit_id}")
+    # Optional linkage to existing salesperson order or create custom ID
+    st.markdown("### 🔗 Order Creation & Linkage")
+    existing_sp_orders = {}
+    if not df_sites.empty and "installation_id" in df_sites.columns:
+        unassigned_df = df_sites[
+            df_sites.get("team_lead", pd.Series()).astype(str).str.strip().replace(["", "nan", "None"], "") == ""
+        ]
+        for _, r in unassigned_df.iterrows():
+            s_id = str(r.get("installation_id")).strip()
+            c_n = str(r.get("client_name")).strip()
+            existing_sp_orders[f"{s_id} — {c_n}"] = s_id
+
+    link_type = st.radio(
+        "Order Source:",
+        options=["Create Custom Site ID (Direct Supervisor Order)", "Select Existing Salesperson Order ID"],
+        horizontal=True
+    )
+
+    if link_type == "Select Existing Salesperson Order ID" and existing_sp_orders:
+        selected_sp_label = st.selectbox("Select Pending Sales Order *", options=list(existing_sp_orders.keys()))
+        visit_id = existing_sp_orders[selected_sp_label]
+        st.info(f"📌 **Linking to Existing Salesperson Order ID:** `{visit_id}`")
+    else:
+        visit_id = f"INST-2026-{os.urandom(2).hex().upper()}"
+        st.info(f"🆔 **Automated Site / Order ID:** `{visit_id}`")
 
     col_client, col_team, col_dates = st.columns(3)
 
@@ -1672,6 +1789,7 @@ elif menu == "New Installation Order":
         st.markdown("### 🏢 Client Info")
         client_name = st.text_input("Client / Company Name *", placeholder="e.g. Reliance Logistics")
         client_phone = st.text_input("Client Mobile No. *", placeholder="e.g. 9876543210", max_chars=10)
+        client_email = st.text_input("Client Email Address", placeholder="e.g. client@company.com")
         
         selected_sp = st.selectbox("💼 Link Salesperson", options=["Unassigned"] + salesperson_options)
         sp_id = selected_sp.split(" - ")[0] if selected_sp != "Unassigned" else ""
@@ -1721,15 +1839,20 @@ elif menu == "New Installation Order":
     st.write("##")
     if st.button("💾 Submit Installation Order", use_container_width=True, key="btn_submit_inst_order"):
         clean_phone = str(client_phone).strip()
+        clean_email = str(client_email).strip()
+
         if not client_name or not clean_phone or not team_lead_name or not city_name or not site_address:
             st.error("Please fill in all mandatory fields.")
         elif len(clean_phone) != 10 or not clean_phone.isdigit():
             st.error("Please enter a valid 10-digit mobile number.")
+        elif clean_email and not validate_email(clean_email):
+            st.error("Please enter a valid email address.")
         else:
             order_data = {
                 "installation_id": visit_id,
                 "client_name": client_name.strip(),
                 "client_phone": clean_phone,
+                "client_email": clean_email,
                 "salesperson_id": sp_id,
                 "salesperson_name": sp_name,
                 "team_lead": team_lead_name,
@@ -1742,7 +1865,11 @@ elif menu == "New Installation Order":
                 "products_summary": str(products_data),
                 "status": "In Progress",
             }
-            append_to_sheet("Sites_Master", order_data)
+            if link_type == "Select Existing Salesperson Order ID" and existing_sp_orders:
+                update_sheet_row("Sites_Master", "installation_id", visit_id, order_data)
+            else:
+                append_to_sheet("Sites_Master", order_data)
+
             st.success(f"Installation Order **{visit_id}** for **{client_name}** linked to **{sp_name}** successfully!")
             st.session_state.products_count = 1
 
