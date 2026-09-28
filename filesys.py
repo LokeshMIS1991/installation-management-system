@@ -982,7 +982,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 # ==========================================
 
 # --- SUPERVISOR: VIEW LOGS & UPDATE STATUS ---
-if menu == "View Logs & Update Status":
+if menu == "🔍 View Logs & Update Status":
     render_restricted_work_input if False else render_view_logs_and_update_status()
 
 # --- SUPERVISOR: HANDOVER DATE DASHBOARD ---
