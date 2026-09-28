@@ -129,29 +129,18 @@ def render_view_logs_and_update_status():
     for _, s in df_sites.iterrows():
         site_id = str(s.get("installation_id", "")).strip()
         status = str(s.get("status") or "In Progress").strip().title()
-
+    
         if not site_id:
             continue
-
-        # Removed status filter to allow finished/handovered sites to be viewed in dropdown
-
-        c_name = str(
-            s.get("client_name")
-            or s.get("client")
-            or s.get("company_name")
-            or "N/A"
-        ).strip()
-        c_phone = str(
-            s.get("client_phone")
-            or s.get("mobile_no")
-            or s.get("phone")
-            or "N/A"
-        ).strip()
+    
+        # Clean field extractions
+        c_name = str(s.get("client_name") or s.get("client") or s.get("company_name") or "N/A").strip()
+        c_phone = str(s.get("client_phone") or s.get("mobile_no") or s.get("phone") or "N/A").strip()
         city = str(s.get("site_city") or s.get("city") or "N/A").strip()
         lead = str(s.get("team_lead") or s.get("lead") or "N/A").strip()
-
+    
         display_label = f"{site_id} — {c_name} [{status}]" if c_name != "N/A" else f"{site_id} [{status}]"
-
+    
         site_map[display_label] = site_id
         site_data[site_id] = {
             "client_name": c_name,
@@ -661,40 +650,41 @@ st.sidebar.divider()
 
 if user_role == "Admin":
     menu_options = [
-        "Admin Analytics Dashboard",
-        "Sales Analytics Report",
-        "Employee Analytics & Reports",
+        "📈 Admin Analytics Dashboard",
+        "💰 Sales Analytics Report",
+        "👨‍💼 Employee Analytics & Reports",
         "👥 Dynamic User & Access Management",
-        "TA/DA Payroll & Travel Summary",
-        "Advanced Field Logs Inspector",
-        "Master Database",
+        "🚗 TA/DA Payroll & Travel Summary",
+        "🕵️ Advanced Field Logs Inspector",
+        "🛢️ Master Database",
     ]
 elif user_role == "Salesperson":
     menu_options = [
-        "My Sales Dashboard",
+        "💼 My Sales Dashboard",
         "📝 Log Visit & Order Deal",
         "🔍 Track Site Progress",
-        "My Profile & Settings",
+        "⚙️ My Profile & Settings",
     ]
 elif user_role == "Supervisor":
     menu_options = [
         "🔔 New Installation Requests",
-        "New Installation Order",
-        "Log Daily Tasks",
+        "➕ New Installation Order",
+        "✍️ Log Daily Tasks",
         "💰 Log Site Daily Expenses",
-        "View Logs & Update Status",
-        "Handover Date Dashboard",
-        "Active Tasks Dashboard",
-        "Employee Analytics & Reports",
-        "Team Head Dashboard",
-        "Master Database",
+        "🔍 View Logs & Update Status",
+        "🗓️ Handover Date Dashboard",
+        "📌 Active Tasks Dashboard",
+        "👔 Employee Analytics & Reports",
+        "👨‍🏫 Team Head Dashboard",
+        "🛢️ Master Database",
     ]
+    
 else:  # Worker (Helper, Installer, Manager)
     menu_options = [
-        "My Work Dashboard",
-        "Log Daily Tasks",
-        "My Work History & Performance",
-        "My Profile & Settings",
+        "📊 My Work Dashboard",
+        "✍️ Log Daily Tasks",
+        "🏆 My Work History & Performance",
+        "👤 My Profile & Settings",
     ]
 
 menu = st.sidebar.radio("Navigation Menu", menu_options)
