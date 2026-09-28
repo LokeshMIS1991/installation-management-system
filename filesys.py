@@ -674,7 +674,7 @@ elif user_role == "Salesperson":
         "💼 My Sales Dashboard",
         "📝 Log Visit & Order Deal",
         "🔍 Track Site Progress",
-        "⚙️ My Profile & Settings",
+        "👤 My Profile & Settings",
     ]
 elif user_role == "Supervisor":
     menu_options = [
@@ -685,7 +685,7 @@ elif user_role == "Supervisor":
         "🔍 View Logs & Update Status",
         "🗓️ Handover Date Dashboard",
         "📌 Active Tasks Dashboard",
-        "👔 Employee Analytics & Reports",
+        "👨‍💼 Employee Analytics & Reports",
         "👨‍🏫 Team Head Dashboard",
         "🛢️ Master Database",
     ]
