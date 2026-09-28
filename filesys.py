@@ -133,7 +133,9 @@ def render_view_logs_and_update_status():
         if not site_id:
             continue
 
-        # Removed status filter to allow finished/handovered sites to be viewed in dropdown
+        # Skip sites that are already finished/handovered
+        if status in ["Completed", "Handovered"]:
+            continue
 
         c_name = str(
             s.get("client_name")
@@ -162,7 +164,7 @@ def render_view_logs_and_update_status():
         }
 
     if not site_map:
-        st.info("No installation sites found in database.")
+        st.info("No active installation sites found in database.")
         return
 
     selected_label = st.selectbox(
@@ -982,6 +984,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 # ==========================================
 
 # --- SUPERVISOR: VIEW LOGS & UPDATE STATUS ---
+
 if menu == "View Logs & Update Status":
     render_restricted_work_input if False else render_view_logs_and_update_status()
 
