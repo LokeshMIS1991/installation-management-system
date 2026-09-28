@@ -111,7 +111,6 @@ def show_order_executed_modal(order_id: str, client_name: str, lead_name: str):
     if st.button("Close & Continue", use_container_width=True, key="btn_close_exec_dialog"):
         st.rerun()
 
-
 def render_view_logs_and_update_status():
     st.markdown("## 🔍 View Daily Logs & Update Status")
 
@@ -133,6 +132,8 @@ def render_view_logs_and_update_status():
 
         if not site_id:
             continue
+
+        # Removed status filter to allow finished/handovered sites to be viewed in dropdown
 
         c_name = str(
             s.get("client_name")
@@ -161,7 +162,7 @@ def render_view_logs_and_update_status():
         }
 
     if not site_map:
-        st.info("No active installation sites found in database.")
+        st.info("No installation sites found in database.")
         return
 
     selected_label = st.selectbox(
@@ -276,7 +277,6 @@ def render_view_logs_and_update_status():
                 )
     else:
         st.info("No submitted field logs found for this installation ID.")
-
 
 # ==========================================
 # 2. PAGE CONFIG & RESPONSIVE GLOBAL THEME
