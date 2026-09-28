@@ -471,7 +471,7 @@ def read_sheet(sheet_name: str) -> pd.DataFrame:
         
         # Redact government identity columns for privacy compliance
         if sheet_name == "Workers_Master" and "aadhaar_no" in df.columns:
-            df["aadhaar_no"] = "[Redacted Identity]"
+            df["aadhaar_no"] = df["aadhaar_no"].astype(str)
             
         return df
     except Exception as e:
@@ -506,7 +506,7 @@ def update_sheet_row(
         match_idx = df[df[key_col].astype(str) == str(key_val)].index
         if match_idx.empty:
             return False
-        row_num = match_idx[0] + 2
+        row_num = int(match_idx[0]) + 2
         headers = sheet.row_values(1)
         for col_name, new_val in update_dict.items():
             if col_name in headers:
@@ -530,7 +530,7 @@ def delete_sheet_row(sheet_name: str, key_col: str, key_val: str) -> bool:
         match_idx = df[df[key_col].astype(str).str.strip() == str(key_val).strip()].index
         if match_idx.empty:
             return False
-        row_num = match_idx[0] + 2
+        row_num = int(match_idx[0]) + 2
         sheet.delete_rows(row_num)
         st.cache_data.clear()
         return True
@@ -1973,11 +1973,11 @@ elif menu == "👥 Dynamic User & Access Management":
         st.toast(f"👤 Account for {new_user} created successfully!", icon="✅")
         del st.session_state["user_created_success"]
 
-    # Tab selection includes Update User and Delete User
-    tabs_list = ["➕ Add Single User", "✏️ Update User", "❌ Delete User (Admin Only)", "⚡ Batch Process Raw String"]
-    tab_add, tab_edit, tab_del, tab_batch = st.tabs(tabs_list)
+    # Updated tabs without Batch Process Raw String
+    tabs_list = ["➕ Add Single User", "✏️ Update User", "❌ Delete User (Admin Only)"]
+    tab_add, tab_edit, tab_del = st.tabs(tabs_list)
 
-    # 1. ADD USER TAB (WITH UNIQUE AADHAAR AND PHONE NUMBER)
+    # 1. ADD USER TAB (WITH UNIQUE AADHAAR CHECK)
     with tab_add:
         st.subheader("Add Employee / Salesperson / Supervisor")
         col_l, col_center, col_r = st.columns([0.1, 0.8, 0.1])
@@ -2085,19 +2085,33 @@ elif menu == "👥 Dynamic User & Access Management":
                     else:
                         e_email = ""
 
+                    e_aadhaar = st.text_input("Update Aadhaar Number", value=str(user_data.get("aadhaar_no", "")), max_chars=12)
                     e_pin = st.text_input("Update PIN", value=str(user_data.get("pin", "")))
                     e_base = st.text_input("Update Base Location", value=str(user_data.get("base_location", "Jaipur")))
 
                     submit_edit = st.form_submit_button("Update Profile in Database", use_container_width=True)
                     if submit_edit:
+                        clean_e_aadhaar = str(e_aadhaar).strip()
+                        
+                        # Validate Aadhaar duplicate during update (excluding current user's existing aadhaar)
+                        other_users_aadhaar = []
+                        if not df_workers.empty and "aadhaar_no" in df_workers.columns:
+                            other_users = df_workers[df_workers["name"] != selected_edit_user]
+                            other_users_aadhaar = other_users["aadhaar_no"].astype(str).str.strip().tolist()
+
                         if e_role != "Worker" and e_email and not validate_email(e_email):
                             st.error("Please enter a valid email address.")
+                        elif clean_e_aadhaar and (len(clean_e_aadhaar) != 12 or not clean_e_aadhaar.isdigit()):
+                            st.error("Aadhaar number must contain exactly 12 numeric digits.")
+                        elif clean_e_aadhaar in other_users_aadhaar:
+                            st.error("⚠️ Duplicate Aadhaar Number detected! Another employee with this Aadhaar already exists.")
                         else:
                             updates = {
                                 "role": e_role,
                                 "designation": e_designation,
                                 "phone_no": e_phone.strip(),
                                 "email": e_email.strip() if e_role != "Worker" else "",
+                                "aadhaar_no": clean_e_aadhaar,
                                 "pin": e_pin,
                                 "base_location": e_base,
                             }
@@ -2133,32 +2147,6 @@ elif menu == "👥 Dynamic User & Access Management":
                             st.rerun()
                         else:
                             st.error("Failed to delete user. Please retry.")
-
-    # 4. BATCH IMPORT TAB
-    with tab_batch:
-        st.subheader("⚡ Batch Import Employees")
-        raw_text_input = st.text_area("Paste Continuous Data String Here:")
-        if st.button("🔍 Parse and Import Data"):
-            if raw_text_input:
-                pattern = re.compile(
-                    r"([A-Z]{1,3}\d{2,3})([A-Za-z\s]+?)(\d{12})(\d{4})(Supervisor|Worker|Admin|Salesperson)([A-Za-z]+)"
-                )
-                matches = pattern.findall(raw_text_input)
-                for m in matches:
-                    append_to_sheet(
-                        "Workers_Master",
-                        {
-                            "worker_id": m[0],
-                            "name": m[1].strip(),
-                            "aadhaar_no": m[2],
-                            "pin": m[3],
-                            "role": m[4],
-                            "designation": "Installer" if m[4] == "Worker" else m[4],
-                            "base_location": m[5],
-                        },
-                    )
-                st.success("All extracted users synced!")
-                st.rerun()
 
 # --- SUPERVISOR: NEW ORDER ---
 elif menu == "New Installation Order":
@@ -2209,106 +2197,4 @@ elif menu == "New Installation Order":
             st.markdown("### 🏢 Client Info")
             client_name = st.text_input("Client / Company Name *", placeholder="e.g. Reliance Logistics")
             client_phone = st.text_input("Client Mobile No. *", placeholder="e.g. 9876543210", max_chars=10)
-            client_email = st.text_input("Client Email Address", placeholder="e.g. client@company.com")
-            selected_sp = st.selectbox("💼 Link Salesperson", options=["Unassigned"] + salesperson_options)
-
-        with col_team:
-            st.markdown("### 👥 Execution Team")
-            assigned_lead = st.selectbox("Assign Team Lead *", options=worker_options)
-            assigned_helpers = st.multiselect("Assign Helpers / Crew", options=[w for w in worker_options if w != assigned_lead])
-            site_city = st.text_input("Site City *", value=user_base_location)
-            site_address = st.text_area("Site Address *", placeholder="Detailed address...")
-
-        with col_dates:
-            st.markdown("### 📅 Timeline & Financials")
-            order_date = st.date_input("Order Date", value=datetime.now())
-            handover_date = st.date_input("Target Handover Date", value=datetime.now() + timedelta(days=15))
-            deal_amount = st.number_input("Total Deal Amount (₹)", min_value=0.0, step=1000.0)
-
-        st.divider()
-        st.markdown("### 📦 Product Selection & Quantities")
-
-        selected_products = []
-        for i in range(st.session_state.products_count):
-            c_p1, c_p2 = st.columns([3, 1])
-            with c_p1:
-                p_item = st.selectbox(f"Product Category #{i+1}", options=PRODUCT_CATALOG, key=f"prod_cat_{i}")
-            with c_p2:
-                p_qty = st.number_input(f"Quantity #{i+1}", min_value=1, value=1, key=f"prod_qty_{i}")
-            selected_products.append(f"{p_item} (Qty: {p_qty})")
-
-        submit_order = st.form_submit_button("🚀 Submit Installation Order", use_container_width=True)
-
-        if submit_order:
-            clean_phone = str(client_phone).strip()
-            clean_email = str(client_email).strip()
-
-            if not client_name.strip() or not clean_phone or not site_city.strip():
-                st.error("Please fill in required fields: Client Name, Phone Number, and Site City.")
-            elif len(clean_phone) != 10 or not clean_phone.isdigit():
-                st.error("Please enter a valid 10-digit mobile number.")
-            elif clean_email and not validate_email(clean_email):
-                st.error("Please enter a valid email address.")
-            else:
-                sp_id = selected_sp.split(" - ")[0].strip() if selected_sp != "Unassigned" else ""
-                sp_name = selected_sp.split(" - ")[1].strip() if selected_sp != "Unassigned" else ""
-
-                clean_lead = assigned_lead.split(" (")[0].strip()
-                clean_helpers = [h.split(" (")[0].strip() for h in assigned_helpers]
-
-                order_payload = {
-                    "installation_id": visit_id,
-                    "client_name": client_name.strip(),
-                    "client_phone": clean_phone,
-                    "client_email": clean_email,
-                    "salesperson_id": sp_id,
-                    "salesperson_name": sp_name,
-                    "team_lead": clean_lead,
-                    "team_members": ", ".join(clean_helpers),
-                    "site_city": site_city.strip(),
-                    "site_address": site_address.strip(),
-                    "order_date": str(order_date),
-                    "handover_date": str(handover_date),
-                    "deal_amount": str(deal_amount),
-                    "products_summary": "; ".join(selected_products),
-                    "status": "In Progress",
-                }
-
-                if link_type == "Select Existing Salesperson Order ID" and existing_sp_orders:
-                    update_sheet_row("Sites_Master", "installation_id", visit_id, order_payload)
-                else:
-                    append_to_sheet("Sites_Master", order_payload)
-
-                st.success(f"🎉 Installation Order **{visit_id}** created successfully and assigned to **{clean_lead}**!")
-                st.rerun()
-
-# --- COMMON: MASTER DATABASE & VIEW LOGS ROUTING ---
-elif menu == "View Logs & Update Status":
-    render_view_logs_and_update_status()
-
-elif menu == "Master Database":
-    st.header("🗄️ Master Database Sheets Viewer")
-    sheet_choice = st.selectbox(
-        "Select Sheet Table to View",
-        ["Sites_Master", "Worker_Daily_Logs", "Expense_Logs", "Workers_Master", "Task_Assignments"]
-    )
-    df_choice = read_sheet(sheet_choice)
-    if df_choice.empty:
-        st.info(f"No records available in {sheet_choice}.")
-    else:
-        st.dataframe(df_choice, use_container_width=True)
-        excel_db = generate_excel_download(df_choice, f"{sheet_choice}_Export.xlsx")
-        st.download_button(
-            f"📥 Export {sheet_choice} to Excel",
-            data=excel_db,
-            file_name=f"{sheet_choice}_Export.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-
-elif menu == "Handover Date Dashboard":
-    st.header("📅 Handover Date & Timeline Tracking")
-    df_sites = read_sheet("Sites_Master")
-    if df_sites.empty:
-        st.info("No installation site records found.")
-    else:
-        st.dataframe(df_sites, use_container_width=True)
+            client_email = st.text_input("Client Email")
