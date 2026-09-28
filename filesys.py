@@ -111,6 +111,7 @@ def show_order_executed_modal(order_id: str, client_name: str, lead_name: str):
     if st.button("Close & Continue", use_container_width=True, key="btn_close_exec_dialog"):
         st.rerun()
 
+
 def render_view_logs_and_update_status():
     st.markdown("## 🔍 View Daily Logs & Update Status")
 
@@ -131,10 +132,6 @@ def render_view_logs_and_update_status():
         status = str(s.get("status") or "In Progress").strip().title()
 
         if not site_id:
-            continue
-
-        # Skip sites that are already finished/handovered
-        if status in ["Completed", "Handovered"]:
             continue
 
         c_name = str(
@@ -279,6 +276,7 @@ def render_view_logs_and_update_status():
                 )
     else:
         st.info("No submitted field logs found for this installation ID.")
+
 
 # ==========================================
 # 2. PAGE CONFIG & RESPONSIVE GLOBAL THEME
@@ -663,41 +661,40 @@ st.sidebar.divider()
 
 if user_role == "Admin":
     menu_options = [
-        "📈 Admin Analytics Dashboard",
-        "💰 Sales Analytics Report",
-        "👨‍💼 Employee Analytics & Reports",
+        "Admin Analytics Dashboard",
+        "Sales Analytics Report",
+        "Employee Analytics & Reports",
         "👥 Dynamic User & Access Management",
-        "🚗 TA/DA Payroll & Travel Summary",
-        "🕵️ Advanced Field Logs Inspector",
-        "🛢️ Master Database",
+        "TA/DA Payroll & Travel Summary",
+        "Advanced Field Logs Inspector",
+        "Master Database",
     ]
 elif user_role == "Salesperson":
     menu_options = [
-        "💼 My Sales Dashboard",
+        "My Sales Dashboard",
         "📝 Log Visit & Order Deal",
         "🔍 Track Site Progress",
-        "⚙️ My Profile & Settings",
+        "My Profile & Settings",
     ]
 elif user_role == "Supervisor":
     menu_options = [
         "🔔 New Installation Requests",
-        "➕ New Installation Order",
-        "✍️ Log Daily Tasks",
+        "New Installation Order",
+        "Log Daily Tasks",
         "💰 Log Site Daily Expenses",
-        "🔍 View Logs & Update Status",
-        "🗓️ Handover Date Dashboard",
-        "📌 Active Tasks Dashboard",
-        "👔 Employee Analytics & Reports",
-        "👨‍🏫 Team Head Dashboard",
-        "🛢️ Master Database",
+        "View Logs & Update Status",
+        "Handover Date Dashboard",
+        "Active Tasks Dashboard",
+        "Employee Analytics & Reports",
+        "Team Head Dashboard",
+        "Master Database",
     ]
-    
 else:  # Worker (Helper, Installer, Manager)
     menu_options = [
-        "📊 My Work Dashboard",
-        "✍️ Log Daily Tasks",
-        "🏆 My Work History & Performance",
-        "👤 My Profile & Settings",
+        "My Work Dashboard",
+        "Log Daily Tasks",
+        "My Work History & Performance",
+        "My Profile & Settings",
     ]
 
 menu = st.sidebar.radio("Navigation Menu", menu_options)
@@ -984,7 +981,6 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 # ==========================================
 
 # --- SUPERVISOR: VIEW LOGS & UPDATE STATUS ---
-
 if menu == "View Logs & Update Status":
     render_restricted_work_input if False else render_view_logs_and_update_status()
 
