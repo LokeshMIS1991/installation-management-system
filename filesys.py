@@ -33,7 +33,7 @@ LOGO_PATH = BASE_DIR / "Company Logo.jpeg"
 EMAIL_REGEX = r"^[\w\.-]+@[\w\.-]+\.\w+$"
 
 # Field Worker Designations
-WORKER_DESIGNATIONS = ["Installer", "Helper", "Manager"]
+WORKER_DESIGNATIONS = ["Installer", "Helper", "Manager","Painter,"Electrician"]
 
 # ==========================================
 # 1. HELPER FUNCTIONS & WORK ID GENERATOR
