@@ -44,7 +44,13 @@ def validate_email(email_str: str) -> bool:
         return False
     return bool(re.match(EMAIL_REGEX, email_str.strip()))
 
-
+def validate_aadhaar(aadhaar_str: str) -> bool:
+    """Validates structure of 12-digit Aadhaar number."""
+    if not aadhaar_str:
+        return False
+    clean_str = str(aadhaar_str).strip()
+    return len(clean_str) == 12 and clean_str.isdigit()
+    
 def generate_work_id(role: str, df_workers: pd.DataFrame) -> str:
     """Auto-generates dynamic Work IDs like ADM01, SPV001, W001, SP001."""
     role_prefix_map = {
@@ -462,15 +468,15 @@ def get_workbook():
 
 
 @st.cache_data(ttl=60)
-def read_sheet(sheet_name: str) -> pd.DataFrame:
+def read_sheet(sheet_name: str, unredacted: bool = False) -> pd.DataFrame:
     try:
         wb = get_workbook()
         sheet = wb.worksheet(sheet_name)
         data = sheet.get_all_records()
         df = pd.DataFrame(data)
         
-        # Redact government identity columns for privacy compliance
-        if sheet_name == "Workers_Master" and "aadhaar_no" in df.columns:
+        # Redact identity columns for UI view unless explicitly needed for validation
+        if sheet_name == "Workers_Master" and "aadhaar_no" in df.columns and not unredacted:
             df["aadhaar_no"] = "[Redacted Identity]"
             
         return df
@@ -1031,7 +1037,7 @@ if menu == "💰 Log Site Daily Expenses":
 
 # --- ADMIN: TA/DA PAYROLL & TRAVEL SUMMARY (REARRANGED: GRAPHS ON TOP, EXCEL BELOW) ---
 elif menu == "TA/DA Payroll & Travel Summary":
-    st.header("✈️ TA/DA Payroll & Field Travel Summary")
+    st.header(" ✈️ TA/DA Payroll & Field Travel Summary")
     st.caption("Calculate daily allowance, travel metrics, and worker site reimbursements.")
 
     df_logs = read_sheet("Worker_Daily_Logs")
@@ -1039,7 +1045,7 @@ elif menu == "TA/DA Payroll & Travel Summary":
     if df_logs.empty:
         st.info("No field daily logs found for TA/DA calculations.")
     else:
-        st.subheader("📊 TA/DA & Travel Visual Analytics")
+        st.subheader(" 📊 TA/DA & Travel Visual Analytics")
 
         travel_logs = df_logs[df_logs["is_travel_day"].astype(str).str.title() == "Yes"] if "is_travel_day" in df_logs.columns else df_logs
 
@@ -1091,7 +1097,7 @@ elif menu == "TA/DA Payroll & Travel Summary":
 
 # --- ADMIN: ADVANCED FIELD LOGS INSPECTOR (REARRANGED: CARDS ABOVE, EXCEL/TABLE BELOW) ---
 elif menu == "Advanced Field Logs Inspector":
-    st.header("🔍 Advanced Field Logs & Photo Inspector")
+    st.header(" 🔍 Advanced Field Logs & Photo Inspector")
     st.caption("Audit complete field logs, examine attached site photos, and filter entries by date, worker, or site ID.")
 
     df_logs = read_sheet("Worker_Daily_Logs")
@@ -2050,7 +2056,49 @@ elif menu == "👥 Dynamic User & Access Management":
                         st.session_state["user_created_success"] = True
                         st.session_state["created_user_name"] = new_name
                         st.rerun()
-
+    # 1. Fetch unredacted records for validation check
+    df_workers_raw = read_sheet("Workers_Master", unredacted=True)
+    
+    if submit_new_user:
+        clean_aadhaar = str(new_aadhaar).strip()
+        clean_phone = str(new_phone).strip()
+    
+        # Extract existing Aadhaar numbers from DB
+        existing_aadhaars = []
+        if not df_workers_raw.empty and "aadhaar_no" in df_workers_raw.columns:
+            existing_aadhaars = [
+                str(a).strip() for a in df_workers_raw["aadhaar_no"].dropna().tolist()
+            ]
+    
+        # Validation Checks
+        if not new_name or not new_pin or not clean_phone:
+            st.error("Please fill in Full Name, Phone Number, and PIN.")
+        elif len(clean_phone) != 10 or not clean_phone.isdigit():
+            st.error("Please enter a valid 10-digit phone number.")
+        elif selected_role != "Worker" and (not new_email or not validate_email(new_email)):
+            st.error("Please enter a valid email address.")
+        elif not clean_aadhaar or not validate_aadhaar(clean_aadhaar):
+            st.error("Aadhaar number must contain exactly 12 numeric digits.")
+        elif clean_aadhaar in existing_aadhaars:
+            # Prevent duplicate insertion
+            st.error("⚠️ Duplicate Entry Denied: An employee with this Aadhaar number already exists in the system!")
+        else:
+            user_dict = {
+                "worker_id": auto_generated_id,
+                "name": new_name.strip(),
+                "phone_no": clean_phone,
+                "email": new_email.strip() if selected_role != "Worker" else "",
+                "aadhaar_no": clean_aadhaar,
+                "pin": str(new_pin).strip(),
+                "role": selected_role,
+                "designation": worker_designation if selected_role == "Worker" else selected_role,
+                "base_location": new_base.strip(),
+            }
+            append_to_sheet("Workers_Master", user_dict)
+            st.session_state["user_created_success"] = True
+            st.session_state["created_user_name"] = new_name
+            st.rerun()
+            
     # 2. UPDATE USER TAB
     with tab_edit:
         st.subheader("✏️ Update User Profile & Access")
@@ -2140,25 +2188,45 @@ elif menu == "👥 Dynamic User & Access Management":
         raw_text_input = st.text_area("Paste Continuous Data String Here:")
         if st.button("🔍 Parse and Import Data"):
             if raw_text_input:
+                df_workers_raw = read_sheet("Workers_Master", unredacted=True)
+                existing_aadhaars = set(
+                    df_workers_raw["aadhaar_no"].astype(str).str.strip().tolist()
+                ) if not df_workers_raw.empty and "aadhaar_no" in df_workers_raw.columns else set()
+    
                 pattern = re.compile(
                     r"([A-Z]{1,3}\d{2,3})([A-Za-z\s]+?)(\d{12})(\d{4})(Supervisor|Worker|Admin|Salesperson)([A-Za-z]+)"
                 )
                 matches = pattern.findall(raw_text_input)
+                
+                imported_count = 0
+                skipped_count = 0
+    
                 for m in matches:
+                    aadhaar_val = m[2].strip()
+                    if aadhaar_val in existing_aadhaars:
+                        skipped_count += 1
+                        continue
+                    
                     append_to_sheet(
                         "Workers_Master",
                         {
                             "worker_id": m[0],
                             "name": m[1].strip(),
-                            "aadhaar_no": m[2],
+                            "aadhaar_no": aadhaar_val,
                             "pin": m[3],
                             "role": m[4],
                             "designation": "Installer" if m[4] == "Worker" else m[4],
                             "base_location": m[5],
                         },
                     )
-                st.success("All extracted users synced!")
-                st.rerun()
+                    existing_aadhaars.add(aadhaar_val)
+                    imported_count += 1
+    
+                if imported_count > 0:
+                    st.success(f"Successfully imported {imported_count} new worker(s)!")
+                if skipped_count > 0:
+                    st.warning(f"Skipped {skipped_count} duplicate record(s) matching existing Aadhaar numbers.")
+                st.rerun()   
 
 # --- SUPERVISOR: NEW ORDER ---
 elif menu == "New Installation Order":
