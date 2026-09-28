@@ -986,7 +986,7 @@ if menu == "🔍 View Logs & Update Status":
     render_restricted_work_input if False else render_view_logs_and_update_status()
 
 # --- SUPERVISOR: HANDOVER DATE DASHBOARD ---
-elif menu == "Handover Date Dashboard":
+elif menu == "🗓️ Handover Date Dashboard":
     st.header("📅 Site Handover Date Dashboard & Delivery Tracker")
     st.caption("Monitor upcoming project handovers, identify delayed/overdue installations, and update delivery targets.")
 
@@ -1133,7 +1133,7 @@ elif menu == "💰 Log Site Daily Expenses":
                 st.dataframe(df_expenses.sort_values(by="logged_date", ascending=False), use_container_width=True)
 
 # --- ADMIN: TA/DA PAYROLL & TRAVEL SUMMARY ---
-elif menu == "TA/DA Payroll & Travel Summary":
+elif menu == "🚗 TA/DA Payroll & Travel Summary":
     st.header("✈️ TA/DA Payroll & Field Travel Summary")
     st.caption("Calculate daily allowance, travel metrics, and worker site reimbursements.")
 
@@ -1193,7 +1193,7 @@ elif menu == "TA/DA Payroll & Travel Summary":
             )
 
 # --- ADMIN: ADVANCED FIELD LOGS INSPECTOR ---
-elif menu == "Advanced Field Logs Inspector":
+elif menu == "🕵️ Advanced Field Logs Inspector":
     st.header("🔍 Advanced Field Logs & Photo Inspector")
     st.caption("Audit complete field logs, examine attached site photos, and filter entries by date, worker, or site ID.")
 
@@ -1264,7 +1264,7 @@ elif menu == "Advanced Field Logs Inspector":
                     st.markdown(f"[🔗 Open Google Drive Photo]({row.get('site_photo')})")
 
 # --- SUPERVISOR / ADMIN: EMPLOYEE ANALYTICS & REPORTS ---
-elif menu == "Employee Analytics & Reports":
+elif menu == "👨‍💼 Employee Analytics & Reports":
     st.header("👥 Employee Work Analytics & Dynamic Performance Reports")
     st.caption("Comprehensive productivity tracking, time distribution, and individual employee analytics.")
 
@@ -1452,7 +1452,7 @@ elif menu == "🔔 New Installation Requests":
                                 st.rerun()
 
 # --- SALESPERSON: MY SALES DASHBOARD ---
-elif menu == "My Sales Dashboard":
+elif menu == "💼 My Sales Dashboard":
     st.header(f"💼 Salesperson Project Portal — {user_name} ({user_id})")
     st.caption("Live monitoring of ongoing site installations, site statuses, and field team updates.")
 
@@ -1701,7 +1701,7 @@ elif menu == "🔍 Track Site Progress":
                         st.dataframe(site_logs[disp_cols].sort_values(by="logged_date", ascending=False), use_container_width=True)
 
 # --- ADMIN: SALES ANALYTICS REPORT ---
-elif menu == "Sales Analytics Report":
+elif menu == "💰 Sales Analytics Report":
     st.header("📊 Salesperson Performance & Orders Analytics")
     st.caption("Track order volume, project statuses, and revenue acquisition per Salesperson across custom time windows.")
 
@@ -1793,7 +1793,7 @@ elif menu == "Sales Analytics Report":
             st.info("No salesperson assignment columns found in Sites_Master yet.")
 
 # --- WORKER: MY WORK DASHBOARD ---
-elif menu == "My Work Dashboard":
+elif menu == "📊 My Work Dashboard":
     st.header(f"⚡ Daily Workspace & Task Pipeline — {user_name} ({user_designation})")
     st.caption("Track your assigned site duties, update live task progress, and view performance metrics.")
 
@@ -1839,11 +1839,11 @@ elif menu == "My Work Dashboard":
         st.markdown(f'<div class="kpi-card"><div class="kpi-number" style="color:#00A859;">{perf_score} pts</div><div class="kpi-label">Performance Score</div></div>', unsafe_allow_html=True)
 
 # --- COMMON: LOG DAILY TASKS ---
-elif menu == "Log Daily Tasks":
+elif menu == "✍️ Log Daily Tasks":
     render_restricted_work_input(target_worker_name=user_name, is_crew_log=False)
 
 # --- WORKER: MY WORK HISTORY & PERFORMANCE ---
-elif menu == "My Work History & Performance":
+elif menu == "🏆 My Work History & Performance":
     st.header(f"📊 Detailed Performance Report — {user_name}")
 
     df_logs = read_sheet("Worker_Daily_Logs")
@@ -1911,7 +1911,7 @@ elif menu == "My Work History & Performance":
             st.dataframe(my_logs[disp_cols].sort_values(by="logged_date", ascending=False), use_container_width=True)
 
 # --- WORKER/SALESPERSON: MY PROFILE & SETTINGS ---
-elif menu == "My Profile & Settings":
+elif menu == "👤 My Profile & Settings":
     st.header("👤 Profile & Security Settings")
 
     col_l, col_center, col_r = st.columns([0.1, 0.8, 0.1])
@@ -1953,7 +1953,7 @@ elif menu == "My Profile & Settings":
                         st.rerun()
 
 # --- SUPERVISOR: TEAM HEAD DASHBOARD ---
-elif menu == "Team Head Dashboard":
+elif menu == "👨‍🏫 Team Head Dashboard":
     st.header("👥 Dual-Tab Team Head Dashboard")
     tab_personal, tab_crew = st.tabs(["👤 Personal Work Log", "👨‍🔧 Crew Task Logging"])
 
@@ -1976,7 +1976,7 @@ elif menu == "Team Head Dashboard":
             render_restricted_work_input(target_worker_name=selected_crew, is_crew_log=True)
 
 # --- SUPERVISOR: ACTIVE TASKS DASHBOARD ---
-elif menu == "Active Tasks Dashboard":
+elif menu == "📌 Active Tasks Dashboard":
     st.header("📋 Active Tasks Dashboard")
     st.caption("Track site installation progress, monitor individual task statuses, and export site reports.")
 
@@ -2008,7 +2008,7 @@ elif menu == "Active Tasks Dashboard":
         st.dataframe(filtered_tasks, use_container_width=True)
 
 # --- ADMIN: ANALYTICS DASHBOARD ---
-elif menu == "Admin Analytics Dashboard":
+elif menu == "📈 Admin Analytics Dashboard":
     st.header("📊 Admin Operations & Dynamic Expense Analytics")
 
     df_logs = read_sheet("Worker_Daily_Logs")
@@ -2287,7 +2287,7 @@ elif menu == "👥 Dynamic User & Access Management":
                             st.error("Failed to delete user. Please retry.")
 
 # --- SUPERVISOR: NEW INSTALLATION ORDER ---
-elif menu == "New Installation Order":
+elif menu == "➕ New Installation Order":
     st.header("⚡ Create & Execute New Installation Order")
     st.caption("Convert pending sales orders or create custom supervisor installation orders.")
 
@@ -2423,7 +2423,7 @@ elif menu == "New Installation Order":
                 show_order_executed_modal(visit_id, client_name.strip(), clean_lead)
 
 # --- MASTER DATABASE (ADMIN / SUPERVISOR) ---
-elif menu == "Master Database":
+elif menu == "🛢️ Master Database":
     st.header("🗄️ Master Database Tables")
     st.caption("View raw system records across database collections.")
 
