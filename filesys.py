@@ -981,7 +981,7 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 # ==========================================
 
 # --- SUPERVISOR: VIEW LOGS & UPDATE STATUS ---
-elif menu == "📋View Logs & Update Status":
+if menu == "📋View Logs & Update Status":
     st.header("📋 Site Logs & Status Updates")
     
     df_sites = read_sheet("Sites_Master")
