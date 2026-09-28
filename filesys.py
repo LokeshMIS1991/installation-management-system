@@ -482,9 +482,8 @@ def read_sheet(sheet_name: str, unredacted: bool = False) -> pd.DataFrame:
         return df
     except Exception as e:
         print(f"DEBUG SHEET ERROR [{sheet_name}]: {e}")
-        return pd.DataFrame()
-
-
+        return pd.DataFrame()        
+        
 def append_to_sheet(sheet_name: str, row_data_dict: dict):
     try:
         wb = get_workbook()
@@ -2056,48 +2055,51 @@ elif menu == "👥 Dynamic User & Access Management":
                         st.session_state["user_created_success"] = True
                         st.session_state["created_user_name"] = new_name
                         st.rerun()
-    # 1. Fetch unredacted records for validation check
-    df_workers_raw = read_sheet("Workers_Master", unredacted=True)
-    
-    if submit_new_user:
-        clean_aadhaar = str(new_aadhaar).strip()
-        clean_phone = str(new_phone).strip()
-    
-        # Extract existing Aadhaar numbers from DB
-        existing_aadhaars = []
-        if not df_workers_raw.empty and "aadhaar_no" in df_workers_raw.columns:
-            existing_aadhaars = [
-                str(a).strip() for a in df_workers_raw["aadhaar_no"].dropna().tolist()
-            ]
-    
-        # Validation Checks
-        if not new_name or not new_pin or not clean_phone:
-            st.error("Please fill in Full Name, Phone Number, and PIN.")
-        elif len(clean_phone) != 10 or not clean_phone.isdigit():
-            st.error("Please enter a valid 10-digit phone number.")
-        elif selected_role != "Worker" and (not new_email or not validate_email(new_email)):
-            st.error("Please enter a valid email address.")
-        elif not clean_aadhaar or not validate_aadhaar(clean_aadhaar):
-            st.error("Aadhaar number must contain exactly 12 numeric digits.")
-        elif clean_aadhaar in existing_aadhaars:
-            # Prevent duplicate insertion
-            st.error("⚠️ Duplicate Entry Denied: An employee with this Aadhaar number already exists in the system!")
-        else:
-            user_dict = {
-                "worker_id": auto_generated_id,
-                "name": new_name.strip(),
-                "phone_no": clean_phone,
-                "email": new_email.strip() if selected_role != "Worker" else "",
-                "aadhaar_no": clean_aadhaar,
-                "pin": str(new_pin).strip(),
-                "role": selected_role,
-                "designation": worker_designation if selected_role == "Worker" else selected_role,
-                "base_location": new_base.strip(),
-            }
-            append_to_sheet("Workers_Master", user_dict)
-            st.session_state["user_created_success"] = True
-            st.session_state["created_user_name"] = new_name
-            st.rerun()
+    # 1. Fetch unredacted records directly for validation check
+df_workers_raw = read_sheet("Workers_Master", unredacted=True)
+
+if submit_new_user:
+    # Clean and standardize the input Aadhaar string (remove spaces/dashes)
+    clean_aadhaar = "".join(filter(str.isdigit, str(new_aadhaar)))
+    clean_phone = "".join(filter(str.isdigit, str(new_phone)))
+
+    # Standardize existing Aadhaar entries from the database into a set of clean digit strings
+    existing_aadhaars = set()
+    if not df_workers_raw.empty and "aadhaar_no" in df_workers_raw.columns:
+        existing_aadhaars = {
+            "".join(filter(str.isdigit, str(a))) 
+            for a in df_workers_raw["aadhaar_no"].dropna().tolist()
+        }
+
+    # Validation & Duplicate Check Block
+    if not new_name or not new_pin or not clean_phone:
+        st.error("Please fill in Full Name, Phone Number, and PIN.")
+    elif len(clean_phone) != 10:
+        st.error("Please enter a valid 10-digit phone number.")
+    elif selected_role != "Worker" and (not new_email or not validate_email(new_email)):
+        st.error("Please enter a valid email address.")
+    elif not clean_aadhaar or len(clean_aadhaar) != 12:
+        st.error("Aadhaar number must contain exactly 12 numeric digits.")
+    elif clean_aadhaar in existing_aadhaars:
+        # ⚠️ Display requested warning popup/alert for duplicate Aadhaar
+        st.error("⚠️ This Aadhar number is already registered.")
+    else:
+        user_dict = {
+            "worker_id": auto_generated_id,
+            "name": new_name.strip(),
+            "phone_no": clean_phone,
+            "email": new_email.strip() if selected_role != "Worker" else "",
+            "aadhaar_no": clean_aadhaar,
+            "pin": str(new_pin).strip(),
+            "role": selected_role,
+            "designation": worker_designation if selected_role == "Worker" else selected_role,
+            "base_location": new_base.strip(),
+        }
+        append_to_sheet("Workers_Master", user_dict)
+        st.cache_data.clear()  # Clear cache so immediately subsequent checks reflect the new row
+        st.session_state["user_created_success"] = True
+        st.session_state["created_user_name"] = new_name
+        st.rerun()
             
     # 2. UPDATE USER TAB
     with tab_edit:
@@ -2189,9 +2191,10 @@ elif menu == "👥 Dynamic User & Access Management":
         if st.button("🔍 Parse and Import Data"):
             if raw_text_input:
                 df_workers_raw = read_sheet("Workers_Master", unredacted=True)
-                existing_aadhaars = set(
-                    df_workers_raw["aadhaar_no"].astype(str).str.strip().tolist()
-                ) if not df_workers_raw.empty and "aadhaar_no" in df_workers_raw.columns else set()
+                existing_aadhaars = {
+                    "".join(filter(str.isdigit, str(a)))
+                    for a in df_workers_raw["aadhaar_no"].dropna().tolist()
+                } if not df_workers_raw.empty and "aadhaar_no" in df_workers_raw.columns else set()
     
                 pattern = re.compile(
                     r"([A-Z]{1,3}\d{2,3})([A-Za-z\s]+?)(\d{12})(\d{4})(Supervisor|Worker|Admin|Salesperson)([A-Za-z]+)"
@@ -2202,7 +2205,7 @@ elif menu == "👥 Dynamic User & Access Management":
                 skipped_count = 0
     
                 for m in matches:
-                    aadhaar_val = m[2].strip()
+                    aadhaar_val = "".join(filter(str.isdigit, str(m[2])))
                     if aadhaar_val in existing_aadhaars:
                         skipped_count += 1
                         continue
@@ -2222,11 +2225,12 @@ elif menu == "👥 Dynamic User & Access Management":
                     existing_aadhaars.add(aadhaar_val)
                     imported_count += 1
     
+                st.cache_data.clear()
                 if imported_count > 0:
                     st.success(f"Successfully imported {imported_count} new worker(s)!")
                 if skipped_count > 0:
-                    st.warning(f"Skipped {skipped_count} duplicate record(s) matching existing Aadhaar numbers.")
-                st.rerun()   
+                    st.warning(f"Skipped {skipped_count} record(s): This Aadhar number is already registered.")
+                st.rerun()
 
 # --- SUPERVISOR: NEW ORDER ---
 elif menu == "New Installation Order":
