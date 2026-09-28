@@ -111,6 +111,7 @@ def show_order_executed_modal(order_id: str, client_name: str, lead_name: str):
     if st.button("Close & Continue", use_container_width=True, key="btn_close_exec_dialog"):
         st.rerun()
 
+
 def render_view_logs_and_update_status():
     st.markdown("## 🔍 View Daily Logs & Update Status")
 
@@ -131,10 +132,6 @@ def render_view_logs_and_update_status():
         status = str(s.get("status") or "In Progress").strip().title()
 
         if not site_id:
-            continue
-
-        # Skip sites that are already finished/handovered
-        if status in ["Completed", "Handovered"]:
             continue
 
         c_name = str(
@@ -279,6 +276,7 @@ def render_view_logs_and_update_status():
                 )
     else:
         st.info("No submitted field logs found for this installation ID.")
+
 
 # ==========================================
 # 2. PAGE CONFIG & RESPONSIVE GLOBAL THEME
@@ -663,41 +661,40 @@ st.sidebar.divider()
 
 if user_role == "Admin":
     menu_options = [
-        "📈 Admin Analytics Dashboard",
-        "💰 Sales Analytics Report",
-        "👨‍💼 Employee Analytics & Reports",
+        "Admin Analytics Dashboard",
+        "Sales Analytics Report",
+        "Employee Analytics & Reports",
         "👥 Dynamic User & Access Management",
-        "🚗 TA/DA Payroll & Travel Summary",
-        "🕵️ Advanced Field Logs Inspector",
-        "🛢️ Master Database",
+        "TA/DA Payroll & Travel Summary",
+        "Advanced Field Logs Inspector",
+        "Master Database",
     ]
 elif user_role == "Salesperson":
     menu_options = [
-        "💼 My Sales Dashboard",
+        "My Sales Dashboard",
         "📝 Log Visit & Order Deal",
         "🔍 Track Site Progress",
-        "⚙️ My Profile & Settings",
+        "My Profile & Settings",
     ]
 elif user_role == "Supervisor":
     menu_options = [
         "🔔 New Installation Requests",
-        "➕ New Installation Order",
-        "✍️ Log Daily Tasks",
+        "New Installation Order",
+        "Log Daily Tasks",
         "💰 Log Site Daily Expenses",
-        "🔍 View Logs & Update Status",
-        "🗓️ Handover Date Dashboard",
-        "📌 Active Tasks Dashboard",
-        "👔 Employee Analytics & Reports",
-        "👨‍🏫 Team Head Dashboard",
-        "🛢️ Master Database",
+        "View Logs & Update Status",
+        "Handover Date Dashboard",
+        "Active Tasks Dashboard",
+        "Employee Analytics & Reports",
+        "Team Head Dashboard",
+        "Master Database",
     ]
-    
 else:  # Worker (Helper, Installer, Manager)
     menu_options = [
-        "📊 My Work Dashboard",
-        "✍️ Log Daily Tasks",
-        "🏆 My Work History & Performance",
-        "👤 My Profile & Settings",
+        "My Work Dashboard",
+        "Log Daily Tasks",
+        "My Work History & Performance",
+        "My Profile & Settings",
     ]
 
 menu = st.sidebar.radio("Navigation Menu", menu_options)
@@ -984,7 +981,6 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 # ==========================================
 
 # --- SUPERVISOR: VIEW LOGS & UPDATE STATUS ---
-
 if menu == "View Logs & Update Status":
     render_restricted_work_input if False else render_view_logs_and_update_status()
 
@@ -2152,125 +2148,302 @@ elif menu == "👥 Dynamic User & Access Management":
                     else:
                         new_email = ""
                 with c2:
-                    new_id_no = st.text_input("ID / Document Number *", placeholder="Enter official ID details")
+                    new_aadhaar = st.text_input("Aadhaar Number *", max_chars=12, placeholder="12-digit number")
                     new_pin = st.text_input("4-Digit PIN / Password *", type="password")
                     new_base = st.text_input("Base Station / City", value="Jaipur")
 
                 submit_new_user = st.form_submit_button("Create User & Sync to Database", use_container_width=True)
                 if submit_new_user:
-                    clean_id = str(new_id_no).strip()
+                    clean_aadhaar = str(new_aadhaar).strip()
                     clean_phone = str(new_phone).strip()
 
-                    # Validate ID Duplication
-                    existing_ids = []
+                    # Validate Aadhaar Duplication
+                    existing_aadhaars = []
                     if not df_workers.empty and "aadhaar_no" in df_workers.columns:
-                        existing_ids = df_workers["aadhaar_no"].astype(str).str.strip().tolist()
+                        existing_aadhaars = df_workers["aadhaar_no"].astype(str).str.strip().tolist()
 
                     if not new_name or not new_pin or not clean_phone:
                         st.error("Please fill in Full Name, Phone Number, and PIN.")
                     elif len(clean_phone) != 10 or not clean_phone.isdigit():
                         st.error("Please enter a valid 10-digit phone number.")
-                    elif selected_role != "Worker" and new_email and not validate_email(new_email):
+                    elif selected_role != "Worker" and (not new_email or not validate_email(new_email)):
                         st.error("Please enter a valid email address.")
-                    elif clean_id and clean_id in existing_ids:
-                        st.error("This ID number is already registered under another account!")
+                    elif not clean_aadhaar or len(clean_aadhaar) != 12 or not clean_aadhaar.isdigit():
+                        st.error("Aadhaar number must contain exactly 12 numeric digits.")
+                    elif clean_aadhaar in existing_aadhaars:
+                        st.error("⚠️ Duplicate Aadhaar Number detected! An employee with this Aadhaar already exists.")
                     else:
-                        user_data = {
+                        user_dict = {
                             "worker_id": auto_generated_id,
                             "name": new_name.strip(),
+                            "phone_no": clean_phone,
+                            "email": new_email.strip() if selected_role != "Worker" else "",
+                            "aadhaar_no": clean_aadhaar,
+                            "pin": str(new_pin).strip(),
                             "role": selected_role,
                             "designation": worker_designation if selected_role == "Worker" else selected_role,
-                            "phone_no": clean_phone,
-                            "email": new_email.strip(),
-                            "aadhaar_no": clean_id,
-                            "pin": new_pin.strip(),
                             "base_location": new_base.strip(),
                         }
-                        append_to_sheet("Workers_Master", user_data)
+                        append_to_sheet("Workers_Master", user_dict)
                         st.session_state["user_created_success"] = True
-                        st.session_state["created_user_name"] = new_name.strip()
+                        st.session_state["created_user_name"] = new_name
                         st.rerun()
 
     # 2. UPDATE USER TAB
     with tab_edit:
-        st.subheader("Update User Profile & Settings")
+        st.subheader("✏️ Update User Profile & Access")
         if df_workers.empty or "name" not in df_workers.columns:
-            st.info("No registered users found to edit.")
+            st.info("No user profiles available to update.")
         else:
-            all_users = sorted(df_workers["name"].dropna().unique().tolist())
-            selected_user_to_edit = st.selectbox("Select User to Update *", options=all_users, key="edit_user_select")
+            selected_edit_user = st.selectbox("Select User Profile to Edit", sorted(df_workers["name"].unique().tolist()))
+            user_data = df_workers[df_workers["name"] == selected_edit_user].iloc[0]
 
-            user_row = df_workers[df_workers["name"] == selected_user_to_edit].iloc[0]
+            col_l, col_center, col_r = st.columns([0.1, 0.8, 0.1])
+            with col_center:
+                with st.form("edit_user_form"):
+                    e_role = st.selectbox(
+                        "Update System Access Role",
+                        ["Worker", "Supervisor", "Salesperson", "Admin"],
+                        index=["Worker", "Supervisor", "Salesperson", "Admin"].index(user_data.get("role", "Worker")),
+                    )
+                    
+                    e_desig = user_data.get("designation", "")
+                    desig_idx = WORKER_DESIGNATIONS.index(e_desig) if e_desig in WORKER_DESIGNATIONS else 0
+                    
+                    e_designation = st.selectbox(
+                        "Update Field Designation",
+                        WORKER_DESIGNATIONS,
+                        index=desig_idx
+                    ) if e_role == "Worker" else e_role
 
-            with st.form("edit_user_form"):
-                st.caption(f"Editing Details for **{selected_user_to_edit}** (`{user_row.get('worker_id')}`)")
-                
-                ec1, ec2 = st.columns(2)
-                with ec1:
-                    edit_role = st.selectbox("System Role", ["Worker", "Supervisor", "Salesperson", "Admin"], index=["Worker", "Supervisor", "Salesperson", "Admin"].index(user_row.get("role", "Worker")) if user_row.get("role") in ["Worker", "Supervisor", "Salesperson", "Admin"] else 0)
-                    edit_phone = st.text_input("Phone Number", value=str(user_row.get("phone_no", "")), max_chars=10)
-                    edit_email = st.text_input("Email Address", value=str(user_row.get("email", "")))
-                with ec2:
-                    edit_base = st.text_input("Base Station", value=str(user_row.get("base_location", "Jaipur")))
-                    edit_pin = st.text_input("Security PIN / Password", value=str(user_row.get("pin", "")), type="password")
+                    e_phone = st.text_input("Update Phone Number", value=str(user_data.get("phone_no", "")))
 
-                submit_edit_user = st.form_submit_button("💾 Update User Details", use_container_width=True)
-                if submit_edit_user:
-                    updates = {
-                        "role": edit_role,
-                        "phone_no": str(edit_phone).strip(),
-                        "email": str(edit_email).strip(),
-                        "base_location": str(edit_base).strip(),
-                        "pin": str(edit_pin).strip(),
-                    }
-                    success = update_sheet_row("Workers_Master", "name", selected_user_to_edit, updates)
-                    if success:
-                        st.success(f"Profile for **{selected_user_to_edit}** updated successfully!")
-                        st.rerun()
+                    if e_role != "Worker":
+                        e_email = st.text_input("Update Email", value=str(user_data.get("email", "")))
+                    else:
+                        e_email = ""
 
-    # 3. DELETE USER TAB
+                    e_aadhaar = st.text_input("Update Aadhaar Number", value=str(user_data.get("aadhaar_no", "")), max_chars=12)
+                    e_pin = st.text_input("Update PIN", value=str(user_data.get("pin", "")))
+                    e_base = st.text_input("Update Base Location", value=str(user_data.get("base_location", "Jaipur")))
+
+                    submit_edit = st.form_submit_button("Update Profile in Database", use_container_width=True)
+                    if submit_edit:
+                        clean_e_aadhaar = str(e_aadhaar).strip()
+                        
+                        # Validate Aadhaar duplicate during update
+                        other_users_aadhaar = []
+                        if not df_workers.empty and "aadhaar_no" in df_workers.columns:
+                            other_users = df_workers[df_workers["name"] != selected_edit_user]
+                            other_users_aadhaar = other_users["aadhaar_no"].astype(str).str.strip().tolist()
+
+                        if e_role != "Worker" and e_email and not validate_email(e_email):
+                            st.error("Please enter a valid email address.")
+                        elif clean_e_aadhaar and (len(clean_e_aadhaar) != 12 or not clean_e_aadhaar.isdigit()):
+                            st.error("Aadhaar number must contain exactly 12 numeric digits.")
+                        elif clean_e_aadhaar in other_users_aadhaar:
+                            st.error("⚠️ Duplicate Aadhaar Number detected! Another employee with this Aadhaar already exists.")
+                        else:
+                            updates = {
+                                "role": e_role,
+                                "designation": e_designation,
+                                "phone_no": e_phone.strip(),
+                                "email": e_email.strip() if e_role != "Worker" else "",
+                                "aadhaar_no": clean_e_aadhaar,
+                                "pin": e_pin,
+                                "base_location": e_base,
+                            }
+                            update_sheet_row("Workers_Master", "name", selected_edit_user, updates)
+                            st.success(f"Updated **{selected_edit_user}** successfully!")
+                            st.rerun()
+
+    # 3. DELETE USER TAB (ADMIN ONLY)
     with tab_del:
         st.subheader("❌ Delete User Account")
-        if df_workers.empty or "name" not in df_workers.columns:
-            st.info("No registered users found to delete.")
+        if user_role != "Admin":
+            st.error("🔒 Security Restriction: Only Admin accounts can delete user profiles.")
+        elif df_workers.empty or "name" not in df_workers.columns:
+            st.info("No users available to delete.")
         else:
-            all_users = sorted(df_workers["name"].dropna().unique().tolist())
-            user_to_delete = st.selectbox("Select User Account to Permanently Delete *", options=all_users, key="delete_user_select")
+            deletable_users = df_workers[df_workers["name"] != user_name]
+            
+            if deletable_users.empty:
+                st.info("No other user profiles available to delete.")
+            else:
+                user_to_delete = st.selectbox("Select User Profile to Permanently Delete", deletable_users["name"].tolist(), key="del_user_select")
+                del_target_info = deletable_users[deletable_users["name"] == user_to_delete].iloc[0]
+                
+                st.warning(f"⚠️ Are you sure you want to delete **{user_to_delete}** (`{del_target_info.get('worker_id', 'N/A')}`)? This action cannot be undone.")
+                
+                col_del_btn1, col_del_btn2 = st.columns([1, 2])
+                with col_del_btn1:
+                    if st.button("🗑️ Confirm & Delete User", key="btn_confirm_delete_user"):
+                        success = delete_sheet_row("Workers_Master", "name", user_to_delete)
+                        if success:
+                            st.success(f"User **{user_to_delete}** deleted successfully from database.")
+                            st.rerun()
+                        else:
+                            st.error("Failed to delete user. Please retry.")
 
-            st.error(f"⚠️ Warning: This will permanently remove **{user_to_delete}** from Workers_Master!")
+# --- SUPERVISOR: NEW INSTALLATION ORDER ---
+elif menu == "New Installation Order":
+    st.header("⚡ Create & Execute New Installation Order")
+    st.caption("Convert pending sales orders or create custom supervisor installation orders.")
 
-            confirm_del = st.checkbox(f"I confirm that I want to delete {user_to_delete}")
-            if st.button("🗑️ Permanently Delete User", key="btn_del_user"):
-                if not confirm_del:
-                    st.error("Please check the confirmation box before deleting.")
-                else:
-                    success = delete_sheet_row("Workers_Master", "name", user_to_delete)
-                    if success:
-                        st.success(f"User **{user_to_delete}** has been removed!")
-                        st.rerun()
+    df_workers = read_sheet("Workers_Master")
+    df_sites = read_sheet("Sites_Master")
+    
+    worker_options = format_worker_dropdown_options(df_workers)
+    salesperson_options = []
 
-    st.divider()
-    st.subheader("📋 Registered System Users Master List")
-    st.dataframe(df_workers, use_container_width=True)
+    if not df_workers.empty and "name" in df_workers.columns:
+        sp_df = df_workers[df_workers["role"].astype(str).str.strip().str.title() == "Salesperson"]
+        if not sp_df.empty:
+            salesperson_options = (sp_df["worker_id"].astype(str) + " - " + sp_df["name"].astype(str)).tolist()
 
-# --- MASTER DATABASE (SUPERVISOR & ADMIN ONLY) ---
-elif menu == "🛢️ Master Database":
-    st.header("🛢️ Master Database Inspector")
-    st.caption("Direct view access to system database tabs.")
+    st.markdown("### 🔗 Order Creation & Linkage Type")
+    existing_sp_orders = {}
+    
+    if not df_sites.empty and "installation_id" in df_sites.columns:
+        unassigned_df = df_sites[
+            df_sites.get("team_lead", pd.Series()).astype(str).str.strip().replace(["", "nan", "None", "Unassigned"], "") == ""
+        ]
+        for _, r in unassigned_df.iterrows():
+            s_id = str(r.get("installation_id")).strip()
+            c_n = str(r.get("client_name", "N/A")).strip()
+            existing_sp_orders[f"{s_id} — {c_n}"] = r.to_dict()
 
-    wb_tabs = ["Sites_Master", "Workers_Master", "Worker_Daily_Logs", "Expense_Logs", "Task_Assignments"]
-    selected_tab = st.selectbox("Select Database Sheet", wb_tabs)
+    link_type = st.radio(
+        "Order Source:",
+        options=["Select Existing Salesperson Order ID", "Create Custom Site ID (Direct Supervisor Order)"],
+        horizontal=True
+    )
 
-    df_tab = read_sheet(selected_tab)
-
-    if df_tab.empty:
-        st.info(f"No records stored in **{selected_tab}**.")
+    selected_sp_row = {}
+    if link_type == "Select Existing Salesperson Order ID":
+        if not existing_sp_orders:
+            st.info("ℹ️ No pending Salesperson orders found requiring team assignment. You can create a Direct Supervisor Order.")
+            visit_id = f"INST-2026-{os.urandom(2).hex().upper()}"
+        else:
+            selected_sp_label = st.selectbox("Select Pending Sales Order ID *", options=list(existing_sp_orders.keys()))
+            selected_sp_row = existing_sp_orders[selected_sp_label]
+            visit_id = selected_sp_row.get("installation_id", "")
+            st.info(f"📌 **Selected Salesperson Order ID:** `{visit_id}` | Client: **{selected_sp_row.get('client_name')}** | Deal: **₹{selected_sp_row.get('deal_amount', 'N/A')}**")
     else:
-        st.dataframe(df_tab, use_container_width=True)
-        excel_db = generate_excel_download(df_tab, f"{selected_tab}.xlsx")
-        st.download_button(
-            f"📥 Export {selected_tab} to Excel",
-            data=excel_db,
-            file_name=f"{selected_tab}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+        visit_id = f"INST-2026-{os.urandom(2).hex().upper()}"
+        st.info(f"🆔 **Automated Direct Order ID:** `{visit_id}`")
+
+    # Order Form Setup
+    with st.form("new_installation_order_form"):
+        col_client, col_team, col_dates = st.columns(3)
+
+        with col_client:
+            st.markdown("### 🏢 Client Info")
+            client_name = st.text_input("Client / Company Name *", value=str(selected_sp_row.get("client_name", "")), placeholder="e.g. Reliance Logistics")
+            client_phone = st.text_input("Client Mobile No. *", value=str(selected_sp_row.get("client_phone", "")), placeholder="e.g. 9876543210", max_chars=10)
+            client_email = st.text_input("Client Email", value=str(selected_sp_row.get("client_email", "")))
+
+        with col_team:
+            st.markdown("### 👨‍🔧 Team & Sales")
+            sel_lead = st.selectbox("Assign Team Lead *", options=worker_options)
+            sel_helpers = st.multiselect("Assign Helpers / Crew", options=[w for w in worker_options if w != sel_lead])
+            
+            # Match default Salesperson if linking existing order
+            sp_default_idx = 0
+            curr_sp_name = str(selected_sp_row.get("salesperson_name", "")).strip()
+            if curr_sp_name:
+                for idx, opt in enumerate(salesperson_options):
+                    if curr_sp_name in opt:
+                        sp_default_idx = idx + 1
+                        break
+
+            sel_sp = st.selectbox("Assigned Salesperson", options=["None"] + salesperson_options, index=sp_default_idx)
+
+        with col_dates:
+            st.markdown("### 📅 Timeline & Location")
+            site_city = st.text_input("Site City *", value=str(selected_sp_row.get("site_city", user_base_location)))
+            site_address = st.text_area("Site Address", value=str(selected_sp_row.get("site_address", "")), placeholder="Full site address...")
+            
+            order_date = st.date_input("Order Date", value=datetime.now())
+            target_handover = st.date_input("Target Handover Date", value=datetime.now() + timedelta(days=20))
+
+        st.divider()
+        st.markdown("### 📦 Product Requirements")
+        product_notes = st.text_area("Products / Deal Summary", value=str(selected_sp_row.get("products_summary", "")), placeholder="Detail shutter dimensions, quantities, motor specifications, or control systems...")
+
+        btn_label = "⚡ EXECUTE ORDER & ACTIVATE SITE" if link_type == "Select Existing Salesperson Order ID" else "🚀 SUBMIT & ACTIVATE INSTALLATION ORDER"
+        submit_order = st.form_submit_button(btn_label, use_container_width=True)
+
+        if submit_order:
+            clean_phone = str(client_phone).strip()
+            clean_email = str(client_email).strip()
+
+            if not client_name.strip() or not clean_phone or not site_city.strip() or not sel_lead:
+                st.error("Please fill in Client Name, Mobile Number, Site City, and Assign a Team Lead.")
+            elif len(clean_phone) != 10 or not clean_phone.isdigit():
+                st.error("Please enter a valid 10-digit mobile number.")
+            elif clean_email and not validate_email(clean_email):
+                st.error("Please enter a valid email address.")
+            else:
+                clean_lead = sel_lead.split(" (")[0].strip()
+                clean_helpers = [h.split(" (")[0].strip() for h in sel_helpers]
+                
+                sp_id = ""
+                sp_name = ""
+                if sel_sp != "None":
+                    sp_parts = sel_sp.split(" - ")
+                    sp_id = sp_parts[0].strip()
+                    sp_name = sp_parts[1].strip() if len(sp_parts) > 1 else ""
+
+                order_payload = {
+                    "installation_id": visit_id,
+                    "client_name": client_name.strip(),
+                    "client_phone": clean_phone,
+                    "client_email": clean_email,
+                    "salesperson_id": sp_id or selected_sp_row.get("salesperson_id", ""),
+                    "salesperson_name": sp_name or selected_sp_row.get("salesperson_name", ""),
+                    "team_lead": clean_lead,
+                    "team_members": ", ".join(clean_helpers),
+                    "site_city": site_city.strip(),
+                    "site_address": site_address.strip(),
+                    "order_date": str(order_date),
+                    "handover_date": str(target_handover),
+                    "deal_status": "Confirmed Order",
+                    "products_summary": product_notes.strip(),
+                    "status": "In Progress",
+                }
+
+                if link_type == "Select Existing Salesperson Order ID" and existing_sp_orders:
+                    update_sheet_row("Sites_Master", "installation_id", visit_id, order_payload)
+                else:
+                    append_to_sheet("Sites_Master", order_payload)
+
+                # TRIGGER POP-UP MODAL UPON SUCCESSFUL EXECUTION
+                show_order_executed_modal(visit_id, client_name.strip(), clean_lead)
+
+# --- MASTER DATABASE (ADMIN / SUPERVISOR) ---
+elif menu == "Master Database":
+    st.header("🗄️ Master Database Tables")
+    st.caption("View raw system records across database collections.")
+
+    tab_sites, tab_workers, tab_logs, tab_expenses = st.tabs(["Sites Master", "Workers Master", "Daily Logs", "Expense Logs"])
+
+    with tab_sites:
+        st.subheader("Sites Master Database")
+        df_sites = read_sheet("Sites_Master")
+        st.dataframe(df_sites, use_container_width=True)
+
+    with tab_workers:
+        st.subheader("Workers Master Database")
+        df_workers = read_sheet("Workers_Master")
+        st.dataframe(df_workers, use_container_width=True)
+
+    with tab_logs:
+        st.subheader("Daily Logs Database")
+        df_logs = read_sheet("Worker_Daily_Logs")
+        st.dataframe(df_logs, use_container_width=True)
+
+    with tab_expenses:
+        st.subheader("Expense Logs Database")
+        df_expenses = read_sheet("Expense_Logs")
+        st.dataframe(df_expenses, use_container_width=True)
