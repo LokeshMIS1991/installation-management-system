@@ -97,12 +97,27 @@ def format_worker_dropdown_options(df_workers: pd.DataFrame) -> list:
     return sorted(list(set(options)))
 
 
+@st.dialog("🎉 Order Successfully Executed!")
+def show_order_executed_modal(order_id: str, client_name: str, lead_name: str):
+    st.balloons()
+    st.success(f"**Order ID `{order_id}` has been successfully executed & activated!**")
+    st.markdown(
+        f"""
+        * **Client Name:** {client_name}
+        * **Assigned Team Lead:** {lead_name}
+        * **Execution Status:** Updated to **In Progress** in Master Database.
+        """
+    )
+    if st.button("Close & Continue", use_container_width=True, key="btn_close_exec_dialog"):
+        st.rerun()
+
+
 def render_view_logs_and_update_status():
     st.markdown("## 🔍 View Daily Logs & Update Status")
 
     df_sites = read_sheet("Sites_Master")
     if df_sites.empty:
-        st.warning("No installation records found.")
+        st.warning("No installation records found in Sites_Master database.")
         return
 
     df_sites.columns = [
@@ -116,7 +131,7 @@ def render_view_logs_and_update_status():
         site_id = str(s.get("installation_id", "")).strip()
         status = str(s.get("status") or "In Progress").strip().title()
 
-        if not site_id or status in ["Handovered", "Handover", "Completed"]:
+        if not site_id:
             continue
 
         c_name = str(
@@ -134,7 +149,7 @@ def render_view_logs_and_update_status():
         city = str(s.get("site_city") or s.get("city") or "N/A").strip()
         lead = str(s.get("team_lead") or s.get("lead") or "N/A").strip()
 
-        display_label = f"{site_id} — {c_name}" if c_name != "N/A" else site_id
+        display_label = f"{site_id} — {c_name} [{status}]" if c_name != "N/A" else f"{site_id} [{status}]"
 
         site_map[display_label] = site_id
         site_data[site_id] = {
@@ -146,7 +161,7 @@ def render_view_logs_and_update_status():
         }
 
     if not site_map:
-        st.info("No active installation sites found (all sites completed or handovered).")
+        st.info("No active installation sites found in database.")
         return
 
     selected_label = st.selectbox(
@@ -965,7 +980,94 @@ def render_restricted_work_input(target_worker_name, is_crew_log=False):
 # 7. ROUTING & MODULE IMPLEMENTATION
 # ==========================================
 
-if menu == "💰 Log Site Daily Expenses":
+# --- SUPERVISOR: VIEW LOGS & UPDATE STATUS ---
+if menu == "View Logs & Update Status":
+    render_restricted_work_input if False else render_view_logs_and_update_status()
+
+# --- SUPERVISOR: HANDOVER DATE DASHBOARD ---
+elif menu == "Handover Date Dashboard":
+    st.header("📅 Site Handover Date Dashboard & Delivery Tracker")
+    st.caption("Monitor upcoming project handovers, identify delayed/overdue installations, and update delivery targets.")
+
+    df_sites = read_sheet("Sites_Master")
+
+    if df_sites.empty:
+        st.warning("No installation site records found in Sites_Master.")
+    else:
+        df_sites_clean = df_sites.copy()
+        df_sites_clean.columns = [str(c).strip().lower().replace(" ", "_") for c in df_sites_clean.columns]
+
+        today = datetime.now().date()
+
+        if "handover_date" in df_sites_clean.columns:
+            df_sites_clean["handover_dt"] = pd.to_datetime(df_sites_clean["handover_date"], errors="coerce").dt.date
+        else:
+            df_sites_clean["handover_dt"] = None
+
+        total_sites = len(df_sites_clean)
+        completed_sites = len(df_sites_clean[df_sites_clean["status"].astype(str).str.strip().str.title().isin(["Handovered", "Completed"])])
+        active_sites = df_sites_clean[~df_sites_clean["status"].astype(str).str.strip().str.title().isin(["Handovered", "Completed"])].copy()
+        
+        overdue_sites = active_sites[active_sites["handover_dt"].apply(lambda d: d is not None and d < today)]
+        due_this_week = active_sites[active_sites["handover_dt"].apply(lambda d: d is not None and today <= d <= (today + timedelta(days=7)))]
+
+        k1, k2, k3, k4 = st.columns(4)
+        with k1:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{len(active_sites)}</div><div class="kpi-label">Active Running Sites</div></div>', unsafe_allow_html=True)
+        with k2:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number" style="color:#D32F2F;">{len(overdue_sites)}</div><div class="kpi-label">Overdue Target Handovers</div></div>', unsafe_allow_html=True)
+        with k3:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number" style="color:#10418A;">{len(due_this_week)}</div><div class="kpi-label">Handovers Due This Week</div></div>', unsafe_allow_html=True)
+        with k4:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number" style="color:#00A859;">{completed_sites}</div><div class="kpi-label">Handovered / Completed</div></div>', unsafe_allow_html=True)
+
+        st.divider()
+
+        st.subheader(" Timeline Overview of Running Sites")
+        if not active_sites.empty:
+            active_sites["days_remaining"] = active_sites["handover_dt"].apply(lambda d: (d - today).days if d is not None else None)
+            
+            fig_handover = px.bar(
+                active_sites.dropna(subset=["days_remaining"]),
+                x="installation_id",
+                y="days_remaining",
+                color="status",
+                hover_data=["client_name", "site_city", "team_lead", "handover_date"],
+                title="Days Remaining Until Handover Target per Site",
+                labels={"days_remaining": "Days Remaining (+ Future / - Overdue)", "installation_id": "Site ID"},
+            )
+            st.plotly_chart(fig_handover, use_container_width=True)
+
+            st.divider()
+            st.subheader("✏️ Quick Update Site Target Handover Date")
+            site_options = {
+                f"{r.get('installation_id')} — {r.get('client_name', 'N/A')} (Target: {r.get('handover_date', 'N/A')})": str(r.get('installation_id')).strip()
+                for _, r in active_sites.iterrows()
+            }
+
+            if site_options:
+                col_sel, col_new_date, col_btn_date = st.columns([2, 1.5, 1])
+                with col_sel:
+                    target_label = st.selectbox("Select Site to Reschedule Handover", options=list(site_options.keys()))
+                    target_id = site_options[target_label]
+                with col_new_date:
+                    new_handover_dt = st.date_input("New Agreed Handover Date", value=today + timedelta(days=7))
+                with col_btn_date:
+                    st.write(" ")
+                    st.write(" ")
+                    if st.button("Update Handover Date", key="btn_update_handover_dt"):
+                        success = update_sheet_row("Sites_Master", "installation_id", target_id, {"handover_date": str(new_handover_dt)})
+                        if success:
+                            st.success(f"Handover date for `{target_id}` updated to **{new_handover_dt}**!")
+                            st.rerun()
+
+            st.divider()
+            st.subheader("📋 Active Sites Handover Schedule Table")
+            disp_cols = [c for c in ["installation_id", "client_name", "client_phone", "site_city", "team_lead", "order_date", "handover_date", "days_remaining", "status"] if c in active_sites.columns]
+            st.dataframe(active_sites[disp_cols].sort_values(by="handover_date", ascending=True), use_container_width=True)
+
+# --- SUPERVISOR: LOG SITE DAILY EXPENSES ---
+elif menu == "💰 Log Site Daily Expenses":
     st.header("💰 Supervisor Daily Site Expense Logging")
     st.caption("Record daily operational costs for running sites.")
 
@@ -1162,88 +1264,125 @@ elif menu == "Advanced Field Logs Inspector":
 
 # --- SUPERVISOR / ADMIN: EMPLOYEE ANALYTICS & REPORTS ---
 elif menu == "Employee Analytics & Reports":
-    st.header("👥 Employee Work Analytics & Performance Metrics")
-    st.caption("Detailed productivity tracking, task distributions, and employee field logs.")
+    st.header("👥 Employee Work Analytics & Dynamic Performance Reports")
+    st.caption("Comprehensive productivity tracking, time distribution, and individual employee analytics.")
 
     df_logs = read_sheet("Worker_Daily_Logs")
     df_workers = read_sheet("Workers_Master")
 
-    if df_logs.empty:
-        st.info("No employee daily work logs found in the database.")
+    if df_workers.empty:
+        st.warning("No workers found in Workers_Master.")
     else:
-        # High-level Employee KPI Overview
-        total_workers = df_logs["worker_name"].nunique() if "worker_name" in df_logs.columns else 0
-        total_hours = df_logs["hours_spent"].sum() if "hours_spent" in df_logs.columns else 0
-        total_days = df_logs["logged_date"].nunique() if "logged_date" in df_logs.columns else 0
-        total_travel_days = len(df_logs[df_logs["is_travel_day"].astype(str).str.title() == "Yes"]) if "is_travel_day" in df_logs.columns else 0
+        # Get list of all personnel
+        all_workers = sorted(df_workers["name"].dropna().unique().tolist())
+
+        # Overall Metrics Summary
+        total_workers_cnt = len(all_workers)
+        total_hours = df_logs["hours_spent"].sum() if not df_logs.empty and "hours_spent" in df_logs.columns else 0
+        total_days = df_logs["logged_date"].nunique() if not df_logs.empty and "logged_date" in df_logs.columns else 0
+        total_travel_days = len(df_logs[df_logs["is_travel_day"].astype(str).str.title() == "Yes"]) if not df_logs.empty and "is_travel_day" in df_logs.columns else 0
 
         e1, e2, e3, e4 = st.columns(4)
         with e1:
-            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{total_workers}</div><div class="kpi-label">Active Field Workers</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{total_workers_cnt}</div><div class="kpi-label">Total System Personnel</div></div>', unsafe_allow_html=True)
         with e2:
             st.markdown(f'<div class="kpi-card"><div class="kpi-number">{total_hours} hrs</div><div class="kpi-label">Total Field Work Hours</div></div>', unsafe_allow_html=True)
         with e3:
-            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{total_days}</div><div class="kpi-label">Unique Work Days</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{total_days}</div><div class="kpi-label">Unique Active Days</div></div>', unsafe_allow_html=True)
         with e4:
             st.markdown(f'<div class="kpi-card"><div class="kpi-number">{total_travel_days}</div><div class="kpi-label">Outstation Travel Days</div></div>', unsafe_allow_html=True)
 
         st.divider()
 
-        # Graphs Overview
-        g1, g2 = st.columns(2)
-        with g1:
-            st.subheader("⏳ Total Work Hours per Employee")
-            worker_hrs = df_logs.groupby("worker_name")["hours_spent"].sum().reset_index()
-            fig_worker_hrs = px.bar(
-                worker_hrs,
-                x="worker_name",
-                y="hours_spent",
-                color="hours_spent",
-                labels={"worker_name": "Worker Name", "hours_spent": "Total Hours"},
-            )
-            st.plotly_chart(fig_worker_hrs, use_container_width=True)
+        # Dynamic Visual Charts Overview
+        if not df_logs.empty:
+            g1, g2 = st.columns(2)
+            with g1:
+                st.subheader("⏳ Work Hours per Employee")
+                worker_hrs = df_logs.groupby("worker_name")["hours_spent"].sum().reset_index()
+                fig_worker_hrs = px.bar(
+                    worker_hrs,
+                    x="worker_name",
+                    y="hours_spent",
+                    color="hours_spent",
+                    labels={"worker_name": "Worker Name", "hours_spent": "Total Hours"},
+                )
+                st.plotly_chart(fig_worker_hrs, use_container_width=True)
 
-        with g2:
-            st.subheader("🛠️ Category Time Allocation")
-            cat_hrs = df_logs.groupby("task_category")["hours_spent"].sum().reset_index()
-            fig_cat = px.pie(
-                cat_hrs,
-                names="task_category",
-                values="hours_spent",
-                hole=0.4,
-            )
-            st.plotly_chart(fig_cat, use_container_width=True)
+            with g2:
+                st.subheader("🛠️ Task Category Distribution")
+                cat_hrs = df_logs.groupby("task_category")["hours_spent"].sum().reset_index()
+                fig_cat = px.pie(
+                    cat_hrs,
+                    names="task_category",
+                    values="hours_spent",
+                    hole=0.4,
+                )
+                st.plotly_chart(fig_cat, use_container_width=True)
 
         st.divider()
 
-        # Individual Worker Specific Drilldown
-        st.subheader("👤 Individual Worker Analytics Filter")
-        all_workers_list = sorted(df_logs["worker_name"].dropna().unique().tolist())
-        selected_emp = st.selectbox("Select Worker for Specific Report", all_workers_list)
+        # DYNAMIC INDIVIDUAL EMPLOYEE REPORT DRILLDOWN
+        st.subheader("👤 Dynamic Report per Employee")
+        
+        selected_emp = st.selectbox("Select Employee to View Dynamic Individual Report *", options=all_workers)
+        
+        emp_meta = df_workers[df_workers["name"] == selected_emp]
+        emp_role = emp_meta.iloc[0].get("role", "N/A") if not emp_meta.empty else "N/A"
+        emp_desig = emp_meta.iloc[0].get("designation", "N/A") if not emp_meta.empty else "N/A"
+        emp_id = emp_meta.iloc[0].get("worker_id", "N/A") if not emp_meta.empty else "N/A"
+        emp_base = emp_meta.iloc[0].get("base_location", "Jaipur") if not emp_meta.empty else "Jaipur"
 
-        emp_logs = df_logs[df_logs["worker_name"] == selected_emp]
+        emp_logs = df_logs[df_logs["worker_name"] == selected_emp] if not df_logs.empty and "worker_name" in df_logs.columns else pd.DataFrame()
 
-        if not emp_logs.empty:
-            st.write(f"### Report Summary for **{selected_emp}**")
-            w_hrs = emp_logs["hours_spent"].sum()
-            w_days = emp_logs["logged_date"].nunique()
-            w_sites = emp_logs["installation_id"].nunique()
+        st.markdown(
+            f"""
+            <div class="card-box">
+                <h3 style="margin:0; color:{COLOR_PRIMARY};">{selected_emp} ({emp_id})</h3>
+                <p style="margin:5px 0;"><b>Role:</b> {emp_role} | <b>Designation:</b> {emp_desig} | <b>Base Station:</b> {emp_base}</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-            m1, m2, m3 = st.columns(3)
-            with m1:
-                st.markdown(f'<div class="kpi-card"><div class="kpi-number">{w_hrs} hrs</div><div class="kpi-label">Hours Contributed</div></div>', unsafe_allow_html=True)
-            with m2:
-                st.markdown(f'<div class="kpi-card"><div class="kpi-number">{w_days} Days</div><div class="kpi-label">Days Logged</div></div>', unsafe_allow_html=True)
-            with m3:
-                st.markdown(f'<div class="kpi-card"><div class="kpi-number">{w_sites} Sites</div><div class="kpi-label">Sites Assigned</div></div>', unsafe_allow_html=True)
+        w_hrs = emp_logs["hours_spent"].sum() if not emp_logs.empty and "hours_spent" in emp_logs.columns else 0
+        w_days = emp_logs["logged_date"].nunique() if not emp_logs.empty and "logged_date" in emp_logs.columns else 0
+        w_sites = emp_logs["installation_id"].nunique() if not emp_logs.empty and "installation_id" in emp_logs.columns else 0
+        w_travels = len(emp_logs[emp_logs["is_travel_day"].astype(str).str.title() == "Yes"]) if not emp_logs.empty and "is_travel_day" in emp_logs.columns else 0
 
-            st.dataframe(emp_logs, use_container_width=True)
+        m1, m2, m3, m4 = st.columns(4)
+        with m1:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{w_hrs} hrs</div><div class="kpi-label">Hours Logged</div></div>', unsafe_allow_html=True)
+        with m2:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{w_days} Days</div><div class="kpi-label">Days Logged</div></div>', unsafe_allow_html=True)
+        with m3:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{w_sites} Sites</div><div class="kpi-label">Sites Assigned</div></div>', unsafe_allow_html=True)
+        with m4:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-number">{w_travels} Days</div><div class="kpi-label">Travel Days</div></div>', unsafe_allow_html=True)
+
+        if emp_logs.empty:
+            st.info(f"No daily activity logs found for {selected_emp} yet.")
+        else:
+            col_chart1, col_chart2 = st.columns(2)
+            with col_chart1:
+                st.caption("Daily Logged Hours Timeline")
+                fig_emp_daily = px.bar(emp_logs, x="logged_date", y="hours_spent", color="installation_id", title=f"{selected_emp} - Daily Hours per Site")
+                st.plotly_chart(fig_emp_daily, use_container_width=True)
+            with col_chart2:
+                st.caption("Task Allocation Breakdown")
+                if "task_category" in emp_logs.columns:
+                    fig_emp_cat = px.pie(emp_logs, names="task_category", values="hours_spent", title=f"{selected_emp} - Time Allocation")
+                    st.plotly_chart(fig_emp_cat, use_container_width=True)
+
+            st.write("#### 📜 Submitted Field Logs for " + selected_emp)
+            disp_cols = [c for c in ["logged_date", "site_day", "installation_id", "task_category", "task_name", "hours_spent", "minutes_spent", "is_travel_day", "site_remarks"] if c in emp_logs.columns]
+            st.dataframe(emp_logs[disp_cols].sort_values(by="logged_date", ascending=False), use_container_width=True)
 
             excel_emp = generate_excel_download(emp_logs, f"{selected_emp}_Analytics.xlsx")
             st.download_button(
-                f"📥 Download {selected_emp} Analytics Excel",
+                f"📥 Download {selected_emp}'s Report Excel",
                 data=excel_emp,
-                file_name=f"{selected_emp}_Analytics.xlsx",
+                file_name=f"{selected_emp}_Analytics_Report.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
 
@@ -1973,7 +2112,6 @@ elif menu == "👥 Dynamic User & Access Management":
         st.toast(f"👤 Account for {new_user} created successfully!", icon="✅")
         del st.session_state["user_created_success"]
 
-    # Updated tabs without Batch Process Raw String
     tabs_list = ["➕ Add Single User", "✏️ Update User", "❌ Delete User (Admin Only)"]
     tab_add, tab_edit, tab_del = st.tabs(tabs_list)
 
@@ -2093,7 +2231,7 @@ elif menu == "👥 Dynamic User & Access Management":
                     if submit_edit:
                         clean_e_aadhaar = str(e_aadhaar).strip()
                         
-                        # Validate Aadhaar duplicate during update (excluding current user's existing aadhaar)
+                        # Validate Aadhaar duplicate during update
                         other_users_aadhaar = []
                         if not df_workers.empty and "aadhaar_no" in df_workers.columns:
                             other_users = df_workers[df_workers["name"] != selected_edit_user]
@@ -2127,7 +2265,6 @@ elif menu == "👥 Dynamic User & Access Management":
         elif df_workers.empty or "name" not in df_workers.columns:
             st.info("No users available to delete.")
         else:
-            # Filter out logged-in admin from self-deletion
             deletable_users = df_workers[df_workers["name"] != user_name]
             
             if deletable_users.empty:
@@ -2148,9 +2285,11 @@ elif menu == "👥 Dynamic User & Access Management":
                         else:
                             st.error("Failed to delete user. Please retry.")
 
-# --- SUPERVISOR: NEW ORDER ---
+# --- SUPERVISOR: NEW INSTALLATION ORDER ---
 elif menu == "New Installation Order":
-    st.header("Create New Installation Order")
+    st.header("⚡ Create & Execute New Installation Order")
+    st.caption("Convert pending sales orders or create custom supervisor installation orders.")
+
     df_workers = read_sheet("Workers_Master")
     df_sites = read_sheet("Sites_Master")
     
@@ -2162,61 +2301,78 @@ elif menu == "New Installation Order":
         if not sp_df.empty:
             salesperson_options = (sp_df["worker_id"].astype(str) + " - " + sp_df["name"].astype(str)).tolist()
 
-    if "products_count" not in st.session_state:
-        st.session_state.products_count = 1
-
-    st.markdown("### 🔗 Order Creation & Linkage")
+    st.markdown("### 🔗 Order Creation & Linkage Type")
     existing_sp_orders = {}
+    
     if not df_sites.empty and "installation_id" in df_sites.columns:
         unassigned_df = df_sites[
-            df_sites.get("team_lead", pd.Series()).astype(str).str.strip().replace(["", "nan", "None"], "") == ""
+            df_sites.get("team_lead", pd.Series()).astype(str).str.strip().replace(["", "nan", "None", "Unassigned"], "") == ""
         ]
         for _, r in unassigned_df.iterrows():
             s_id = str(r.get("installation_id")).strip()
-            c_n = str(r.get("client_name")).strip()
-            existing_sp_orders[f"{s_id} — {c_n}"] = s_id
+            c_n = str(r.get("client_name", "N/A")).strip()
+            existing_sp_orders[f"{s_id} — {c_n}"] = r.to_dict()
 
     link_type = st.radio(
         "Order Source:",
-        options=["Create Custom Site ID (Direct Supervisor Order)", "Select Existing Salesperson Order ID"],
+        options=["Select Existing Salesperson Order ID", "Create Custom Site ID (Direct Supervisor Order)"],
         horizontal=True
     )
 
-    if link_type == "Select Existing Salesperson Order ID" and existing_sp_orders:
-        selected_sp_label = st.selectbox("Select Pending Sales Order *", options=list(existing_sp_orders.keys()))
-        visit_id = existing_sp_orders[selected_sp_label]
-        st.info(f"📌 **Linking to Existing Salesperson Order ID:** `{visit_id}`")
+    selected_sp_row = {}
+    if link_type == "Select Existing Salesperson Order ID":
+        if not existing_sp_orders:
+            st.info("ℹ️ No pending Salesperson orders found requiring team assignment. You can create a Direct Supervisor Order.")
+            visit_id = f"INST-2026-{os.urandom(2).hex().upper()}"
+        else:
+            selected_sp_label = st.selectbox("Select Pending Sales Order ID *", options=list(existing_sp_orders.keys()))
+            selected_sp_row = existing_sp_orders[selected_sp_label]
+            visit_id = selected_sp_row.get("installation_id", "")
+            st.info(f"📌 **Selected Salesperson Order ID:** `{visit_id}` | Client: **{selected_sp_row.get('client_name')}** | Deal: **₹{selected_sp_row.get('deal_amount', 'N/A')}**")
     else:
         visit_id = f"INST-2026-{os.urandom(2).hex().upper()}"
-        st.info(f"🆔 **Automated Site / Order ID:** `{visit_id}`")
+        st.info(f"🆔 **Automated Direct Order ID:** `{visit_id}`")
 
+    # Order Form Setup
     with st.form("new_installation_order_form"):
         col_client, col_team, col_dates = st.columns(3)
 
         with col_client:
             st.markdown("### 🏢 Client Info")
-            client_name = st.text_input("Client / Company Name *", placeholder="e.g. Reliance Logistics")
-            client_phone = st.text_input("Client Mobile No. *", placeholder="e.g. 9876543210", max_chars=10)
-            client_email = st.text_input("Client Email")
+            client_name = st.text_input("Client / Company Name *", value=str(selected_sp_row.get("client_name", "")), placeholder="e.g. Reliance Logistics")
+            client_phone = st.text_input("Client Mobile No. *", value=str(selected_sp_row.get("client_phone", "")), placeholder="e.g. 9876543210", max_chars=10)
+            client_email = st.text_input("Client Email", value=str(selected_sp_row.get("client_email", "")))
 
         with col_team:
             st.markdown("### 👨‍🔧 Team & Sales")
             sel_lead = st.selectbox("Assign Team Lead *", options=worker_options)
             sel_helpers = st.multiselect("Assign Helpers / Crew", options=[w for w in worker_options if w != sel_lead])
-            sel_sp = st.selectbox("Assigned Salesperson", options=["None"] + salesperson_options)
+            
+            # Match default Salesperson if linking existing order
+            sp_default_idx = 0
+            curr_sp_name = str(selected_sp_row.get("salesperson_name", "")).strip()
+            if curr_sp_name:
+                for idx, opt in enumerate(salesperson_options):
+                    if curr_sp_name in opt:
+                        sp_default_idx = idx + 1
+                        break
+
+            sel_sp = st.selectbox("Assigned Salesperson", options=["None"] + salesperson_options, index=sp_default_idx)
 
         with col_dates:
             st.markdown("### 📅 Timeline & Location")
-            site_city = st.text_input("Site City *", value=user_base_location)
-            site_address = st.text_area("Site Address", placeholder="Full site address...")
+            site_city = st.text_input("Site City *", value=str(selected_sp_row.get("site_city", user_base_location)))
+            site_address = st.text_area("Site Address", value=str(selected_sp_row.get("site_address", "")), placeholder="Full site address...")
+            
             order_date = st.date_input("Order Date", value=datetime.now())
             target_handover = st.date_input("Target Handover Date", value=datetime.now() + timedelta(days=20))
 
         st.divider()
         st.markdown("### 📦 Product Requirements")
-        product_notes = st.text_area("Products / Deal Summary", placeholder="Detail shutter dimensions, quantities, motor specifications, or control systems...")
+        product_notes = st.text_area("Products / Deal Summary", value=str(selected_sp_row.get("products_summary", "")), placeholder="Detail shutter dimensions, quantities, motor specifications, or control systems...")
 
-        submit_order = st.form_submit_button("🚀 Submit & Activate Installation Order", use_container_width=True)
+        btn_label = "⚡ EXECUTE ORDER & ACTIVATE SITE" if link_type == "Select Existing Salesperson Order ID" else "🚀 SUBMIT & ACTIVATE INSTALLATION ORDER"
+        submit_order = st.form_submit_button(btn_label, use_container_width=True)
 
         if submit_order:
             clean_phone = str(client_phone).strip()
@@ -2244,8 +2400,8 @@ elif menu == "New Installation Order":
                     "client_name": client_name.strip(),
                     "client_phone": clean_phone,
                     "client_email": clean_email,
-                    "salesperson_id": sp_id,
-                    "salesperson_name": sp_name,
+                    "salesperson_id": sp_id or selected_sp_row.get("salesperson_id", ""),
+                    "salesperson_name": sp_name or selected_sp_row.get("salesperson_name", ""),
                     "team_lead": clean_lead,
                     "team_members": ", ".join(clean_helpers),
                     "site_city": site_city.strip(),
@@ -2262,8 +2418,8 @@ elif menu == "New Installation Order":
                 else:
                     append_to_sheet("Sites_Master", order_payload)
 
-                st.success(f"🎉 Installation Order **{visit_id}** created and assigned to **{clean_lead}** successfully!")
-                st.rerun()
+                # TRIGGER POP-UP MODAL UPON SUCCESSFUL EXECUTION
+                show_order_executed_modal(visit_id, client_name.strip(), clean_lead)
 
 # --- MASTER DATABASE (ADMIN / SUPERVISOR) ---
 elif menu == "Master Database":
@@ -2283,7 +2439,7 @@ elif menu == "Master Database":
         st.dataframe(df_workers, use_container_width=True)
 
     with tab_logs:
-        st.subheader("Worker Daily Logs Database")
+        st.subheader("Daily Logs Database")
         df_logs = read_sheet("Worker_Daily_Logs")
         st.dataframe(df_logs, use_container_width=True)
 
