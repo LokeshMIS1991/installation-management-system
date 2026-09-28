@@ -663,40 +663,41 @@ st.sidebar.divider()
 
 if user_role == "Admin":
     menu_options = [
-        "Admin Analytics Dashboard",
-        "Sales Analytics Report",
-        "Employee Analytics & Reports",
+        "📈 Admin Analytics Dashboard",
+        "💰 Sales Analytics Report",
+        "👨‍💼 Employee Analytics & Reports",
         "👥 Dynamic User & Access Management",
-        "TA/DA Payroll & Travel Summary",
-        "Advanced Field Logs Inspector",
-        "Master Database",
+        "🚗 TA/DA Payroll & Travel Summary",
+        "🕵️ Advanced Field Logs Inspector",
+        "🛢️ Master Database",
     ]
 elif user_role == "Salesperson":
     menu_options = [
-        "My Sales Dashboard",
+        "💼 My Sales Dashboard",
         "📝 Log Visit & Order Deal",
         "🔍 Track Site Progress",
-        "My Profile & Settings",
+        "⚙️ My Profile & Settings",
     ]
 elif user_role == "Supervisor":
     menu_options = [
         "🔔 New Installation Requests",
-        "New Installation Order",
-        "Log Daily Tasks",
+        "➕ New Installation Order",
+        "✍️ Log Daily Tasks",
         "💰 Log Site Daily Expenses",
-        "View Logs & Update Status",
-        "Handover Date Dashboard",
-        "Active Tasks Dashboard",
-        "Employee Analytics & Reports",
-        "Team Head Dashboard",
-        "Master Database",
+        "🔍 View Logs & Update Status",
+        "🗓️ Handover Date Dashboard",
+        "📌 Active Tasks Dashboard",
+        "👔 Employee Analytics & Reports",
+        "👨‍🏫 Team Head Dashboard",
+        "🛢️ Master Database",
     ]
+    
 else:  # Worker (Helper, Installer, Manager)
     menu_options = [
-        "My Work Dashboard",
-        "Log Daily Tasks",
-        "My Work History & Performance",
-        "My Profile & Settings",
+        "📊 My Work Dashboard",
+        "✍️ Log Daily Tasks",
+        "🏆 My Work History & Performance",
+        "👤 My Profile & Settings",
     ]
 
 menu = st.sidebar.radio("Navigation Menu", menu_options)
