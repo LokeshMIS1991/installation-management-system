@@ -33,7 +33,7 @@ LOGO_PATH = BASE_DIR / "Company Logo.jpeg"
 EMAIL_REGEX = r"^[\w\.-]+@[\w\.-]+\.\w+$"
 
 # Field Worker Designations
-WORKER_DESIGNATIONS = ["Installer", "Helper", "Manager","Painter","Electrician"]
+WORKER_DESIGNATIONS = ["Installer", "Helper", "Manager", "Painter", "Electrician"]
 
 # ==========================================
 # 1. HELPER FUNCTIONS & WORK ID GENERATOR
@@ -469,7 +469,7 @@ def read_sheet(sheet_name: str) -> pd.DataFrame:
         data = sheet.get_all_records()
         df = pd.DataFrame(data)
         
-        # Redact government identity columns for privacy compliance
+        # Privacy protection step for sheet readings
         if sheet_name == "Workers_Master" and "aadhaar_no" in df.columns:
             df["aadhaar_no"] = df["aadhaar_no"].astype(str)
             
@@ -1977,7 +1977,7 @@ elif menu == "👥 Dynamic User & Access Management":
     tabs_list = ["➕ Add Single User", "✏️ Update User", "❌ Delete User (Admin Only)"]
     tab_add, tab_edit, tab_del = st.tabs(tabs_list)
 
-    # 1. ADD USER TAB (WITH UNIQUE AADHAAR CHECK)
+    # 1. ADD USER TAB
     with tab_add:
         st.subheader("Add Employee / Salesperson / Supervisor")
         col_l, col_center, col_r = st.columns([0.1, 0.8, 0.1])
@@ -2198,3 +2198,96 @@ elif menu == "New Installation Order":
             client_name = st.text_input("Client / Company Name *", placeholder="e.g. Reliance Logistics")
             client_phone = st.text_input("Client Mobile No. *", placeholder="e.g. 9876543210", max_chars=10)
             client_email = st.text_input("Client Email")
+
+        with col_team:
+            st.markdown("### 👨‍🔧 Team & Sales")
+            sel_lead = st.selectbox("Assign Team Lead *", options=worker_options)
+            sel_helpers = st.multiselect("Assign Helpers / Crew", options=[w for w in worker_options if w != sel_lead])
+            sel_sp = st.selectbox("Assigned Salesperson", options=["None"] + salesperson_options)
+
+        with col_dates:
+            st.markdown("### 📅 Timeline & Location")
+            site_city = st.text_input("Site City *", value=user_base_location)
+            site_address = st.text_area("Site Address", placeholder="Full site address...")
+            order_date = st.date_input("Order Date", value=datetime.now())
+            target_handover = st.date_input("Target Handover Date", value=datetime.now() + timedelta(days=20))
+
+        st.divider()
+        st.markdown("### 📦 Product Requirements")
+        product_notes = st.text_area("Products / Deal Summary", placeholder="Detail shutter dimensions, quantities, motor specifications, or control systems...")
+
+        submit_order = st.form_submit_button("🚀 Submit & Activate Installation Order", use_container_width=True)
+
+        if submit_order:
+            clean_phone = str(client_phone).strip()
+            clean_email = str(client_email).strip()
+
+            if not client_name.strip() or not clean_phone or not site_city.strip() or not sel_lead:
+                st.error("Please fill in Client Name, Mobile Number, Site City, and Assign a Team Lead.")
+            elif len(clean_phone) != 10 or not clean_phone.isdigit():
+                st.error("Please enter a valid 10-digit mobile number.")
+            elif clean_email and not validate_email(clean_email):
+                st.error("Please enter a valid email address.")
+            else:
+                clean_lead = sel_lead.split(" (")[0].strip()
+                clean_helpers = [h.split(" (")[0].strip() for h in sel_helpers]
+                
+                sp_id = ""
+                sp_name = ""
+                if sel_sp != "None":
+                    sp_parts = sel_sp.split(" - ")
+                    sp_id = sp_parts[0].strip()
+                    sp_name = sp_parts[1].strip() if len(sp_parts) > 1 else ""
+
+                order_payload = {
+                    "installation_id": visit_id,
+                    "client_name": client_name.strip(),
+                    "client_phone": clean_phone,
+                    "client_email": clean_email,
+                    "salesperson_id": sp_id,
+                    "salesperson_name": sp_name,
+                    "team_lead": clean_lead,
+                    "team_members": ", ".join(clean_helpers),
+                    "site_city": site_city.strip(),
+                    "site_address": site_address.strip(),
+                    "order_date": str(order_date),
+                    "handover_date": str(target_handover),
+                    "deal_status": "Confirmed Order",
+                    "products_summary": product_notes.strip(),
+                    "status": "In Progress",
+                }
+
+                if link_type == "Select Existing Salesperson Order ID" and existing_sp_orders:
+                    update_sheet_row("Sites_Master", "installation_id", visit_id, order_payload)
+                else:
+                    append_to_sheet("Sites_Master", order_payload)
+
+                st.success(f"🎉 Installation Order **{visit_id}** created and assigned to **{clean_lead}** successfully!")
+                st.rerun()
+
+# --- MASTER DATABASE (ADMIN / SUPERVISOR) ---
+elif menu == "Master Database":
+    st.header("🗄️ Master Database Tables")
+    st.caption("View raw system records across database collections.")
+
+    tab_sites, tab_workers, tab_logs, tab_expenses = st.tabs(["Sites Master", "Workers Master", "Daily Logs", "Expense Logs"])
+
+    with tab_sites:
+        st.subheader("Sites Master Database")
+        df_sites = read_sheet("Sites_Master")
+        st.dataframe(df_sites, use_container_width=True)
+
+    with tab_workers:
+        st.subheader("Workers Master Database")
+        df_workers = read_sheet("Workers_Master")
+        st.dataframe(df_workers, use_container_width=True)
+
+    with tab_logs:
+        st.subheader("Worker Daily Logs Database")
+        df_logs = read_sheet("Worker_Daily_Logs")
+        st.dataframe(df_logs, use_container_width=True)
+
+    with tab_expenses:
+        st.subheader("Expense Logs Database")
+        df_expenses = read_sheet("Expense_Logs")
+        st.dataframe(df_expenses, use_container_width=True)
