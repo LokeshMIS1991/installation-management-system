@@ -985,17 +985,80 @@ if menu == "View Logs & Update Status":
     render_restricted_work_input if False else render_view_logs_and_update_status()
 
 # --- SUPERVISOR: HANDOVER DATE DASHBOARD ---
+elif menu == "View Logs & Update Status":
+    st.header("📋 Site Logs & Status Updates")
+    
+    df_sites = read_sheet("Sites_Master")
+    
+    if df_sites.empty:
+        st.warning("No installation site records found in Sites_Master.")
+    else:
+        df_sites_clean = df_sites.copy()
+        df_sites_clean.columns = [str(c).strip().lower().replace(" ", "_") for c in df_sites_clean.columns]
+        
+        # Filter out completed and handovered sites
+        active_sites_for_logs = df_sites_clean[
+            ~df_sites_clean["status"].astype(str).str.strip().str.title().isin(["Handovered", "Completed"])
+        ].copy()
+        
+        if active_sites_for_logs.empty:
+            st.info("No active running sites available for logging or updates.")
+        else:
+            site_options = {
+                f"{r.get('installation_id')} — {r.get('client_name', 'N/A')} ({r.get('status', 'N/A')})": str(r.get('installation_id')).strip()
+                for _, r in active_sites_for_logs.iterrows()
+            }
+            
+            selected_site_label = st.selectbox("Select Active Site to View / Update", options=list(site_options.keys()))
+            selected_site_id = site_options[selected_site_label]
+            
+            # Place the remainder of your existing "View Logs & Update Status" code below using selected_site_id
+
+
 elif menu == "Handover Date Dashboard":
     st.header("📅 Site Handover Date Dashboard & Delivery Tracker")
     st.caption("Monitor upcoming project handovers, identify delayed/overdue installations, and update delivery targets.")
 
     df_sites = read_sheet("Sites_Master")
+    df_logs = read_sheet("Logs_Activity")
 
     if df_sites.empty:
         st.warning("No installation site records found in Sites_Master.")
     else:
         df_sites_clean = df_sites.copy()
         df_sites_clean.columns = [str(c).strip().lower().replace(" ", "_") for c in df_sites_clean.columns]
+
+        # Compute progress percentage per site using Logs_Activity data
+        if not df_logs.empty:
+            df_logs_clean = df_logs.copy()
+            df_logs_clean.columns = [str(c).strip().lower().replace(" ", "_") for c in df_logs_clean.columns]
+            
+            if "installation_id" in df_logs_clean.columns:
+                df_logs_clean["installation_id"] = df_logs_clean["installation_id"].astype(str).str.strip()
+                
+                # Check status column in logs or fall back to log count
+                if "status" in df_logs_clean.columns:
+                    log_counts = df_logs_clean.groupby("installation_id").agg(
+                        total_tasks=("status", "count"),
+                        completed_tasks=("status", lambda x: x.astype(str).str.strip().str.title().isin(["Completed", "Done"]).sum())
+                    ).reset_index()
+                    
+                    log_counts["progress_%"] = log_counts.apply(
+                        lambda r: round((r["completed_tasks"] / r["total_tasks"]) * 100, 1) if r["total_tasks"] > 0 else 0,
+                        axis=1
+                    )
+                else:
+                    log_counts = df_logs_clean.groupby("installation_id").size().reset_index(name="log_entries_count")
+                    log_counts["progress_%"] = 0  # Placeholder if no completion status column exists in logs
+                
+                df_sites_clean["installation_id"] = df_sites_clean["installation_id"].astype(str).str.strip()
+                df_sites_clean = df_sites_clean.merge(log_counts, on="installation_id", how="left")
+            else:
+                df_sites_clean["progress_%"] = 0
+        else:
+            df_sites_clean["progress_%"] = 0
+
+        df_sites_clean["progress_%"] = df_sites_clean["progress_%"].fillna(0)
 
         today = datetime.now().date()
 
@@ -1023,7 +1086,7 @@ elif menu == "Handover Date Dashboard":
 
         st.divider()
 
-        st.subheader(" Timeline Overview of Running Sites")
+        st.subheader("📊 Timeline Overview & Site Progress")
         if not active_sites.empty:
             active_sites["days_remaining"] = active_sites["handover_dt"].apply(lambda d: (d - today).days if d is not None else None)
             
@@ -1032,16 +1095,16 @@ elif menu == "Handover Date Dashboard":
                 x="installation_id",
                 y="days_remaining",
                 color="status",
-                hover_data=["client_name", "site_city", "team_lead", "handover_date"],
+                hover_data=["client_name", "site_city", "team_lead", "handover_date", "progress_%"],
                 title="Days Remaining Until Handover Target per Site",
-                labels={"days_remaining": "Days Remaining (+ Future / - Overdue)", "installation_id": "Site ID"},
+                labels={"days_remaining": "Days Remaining (+ Future / - Overdue)", "installation_id": "Site ID", "progress_%": "Progress (%)"},
             )
             st.plotly_chart(fig_handover, use_container_width=True)
 
             st.divider()
             st.subheader("✏️ Quick Update Site Target Handover Date")
             site_options = {
-                f"{r.get('installation_id')} — {r.get('client_name', 'N/A')} (Target: {r.get('handover_date', 'N/A')})": str(r.get('installation_id')).strip()
+                f"{r.get('installation_id')} — {r.get('client_name', 'N/A')} (Progress: {r.get('progress_%', 0)}% | Target: {r.get('handover_date', 'N/A')})": str(r.get('installation_id')).strip()
                 for _, r in active_sites.iterrows()
             }
 
@@ -1062,10 +1125,23 @@ elif menu == "Handover Date Dashboard":
                             st.rerun()
 
             st.divider()
-            st.subheader("📋 Active Sites Handover Schedule Table")
-            disp_cols = [c for c in ["installation_id", "client_name", "client_phone", "site_city", "team_lead", "order_date", "handover_date", "days_remaining", "status"] if c in active_sites.columns]
-            st.dataframe(active_sites[disp_cols].sort_values(by="handover_date", ascending=True), use_container_width=True)
-
+            st.subheader("📋 Active Sites Handover Schedule & Progress Table")
+            disp_cols = [c for c in ["installation_id", "client_name", "client_phone", "site_city", "team_lead", "order_date", "handover_date", "days_remaining", "progress_%", "status"] if c in active_sites.columns]
+            
+            st.dataframe(
+                active_sites[disp_cols].sort_values(by="handover_date", ascending=True),
+                column_config={
+                    "progress_%": st.column_config.ProgressColumn(
+                        "Progress (%)",
+                        help="Site progress calculated from tasks",
+                        format="%d%%",
+                        min_value=0,
+                        max_value=100,
+                    )
+                },
+                use_container_width=True
+            )
+            
 # --- SUPERVISOR: LOG SITE DAILY EXPENSES ---
 elif menu == "💰 Log Site Daily Expenses":
     st.header("💰 Supervisor Daily Site Expense Logging")
