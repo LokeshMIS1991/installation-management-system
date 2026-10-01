@@ -48,6 +48,7 @@ PRODUCT_CATALOG = {
 # ==========================================
 TASK_CATEGORIES = [
     "Civil & Mounting Work",
+    "Frame / Structural Work",
     "Track Leveling",
     "Wiring & Electrical",
     "Commissioning & Testing",
@@ -61,9 +62,12 @@ TASK_CATEGORIES = [
 # ==========================================
 DELAY_REASONS = [
     "No Delay",
-    "Power Supply Issue",
+    "Power Supply Issue (Electricity)",
+    "Frame / Structural Work",
+    "Scaffolding",
     "Civil Work Delay",
     "Client Hold",
+    "Material Shifting",
     "Material Missing",
     "Weather Delay",
     "Other",
@@ -72,7 +76,9 @@ DELAY_REASONS = [
 HOLD_REASONS = [
     "Power Supply Issue",
     "Civil Work Delay",
-    "Client Hold",
+    "Client Hold", "Frame / Structural Work",
+    "Scaffolding",
+    "Material Shifting",
     "Material Missing",
     "Weather Delay",
     "Other",
